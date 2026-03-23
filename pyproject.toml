@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "central-mcp-server"
+version = "0.1.0"
+description = "Unofficial MCP server for HPE Aruba Networking Central"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["mcp", "central", "networking", "monitoring"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+    "fastmcp>=3.1.1",
+    "python-dotenv>=1.0.0",
+    "pycentral==2.0a16",
+]
+
+[project.scripts]
+central-mcp = "server:run"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+include = [
+    "server.py",
+    "config.py",
+    "models.py",
+    "utils.py",
+    "services/",
+    "tools/",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.6",
+    "watchfiles>=1.1.1",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+# Add files or directories to exclude
+extend-exclude = ["routers/", "main.py"]
