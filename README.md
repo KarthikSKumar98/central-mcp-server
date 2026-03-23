@@ -175,12 +175,13 @@ Add to `.vscode/mcp.json` in your workspace:
 {
   "servers": {
     "central-mcp": {
+	  "type": "stdio",
       "command": "uvx",
-      "args": ["central-mcp-server"],
+      "args": ["--from", "central-mcp-server", "central-mcp"],
       "env": {
-        "CENTRAL_BASE_URL": "https://us5.api.central.arubanetworks.com",
-        "CENTRAL_CLIENT_ID": "your-client-id",
-        "CENTRAL_CLIENT_SECRET": "your-client-secret"
+        "CENTRAL_BASE_URL": "<CENTRAL_BASE_URL>",
+        "CENTRAL_CLIENT_ID": "<CENTRAL_CLIENT_ID>",
+        "CENTRAL_CLIENT_SECRET": "<CENTRAL_CLIENT_SECRET>",
       }
     }
   }
