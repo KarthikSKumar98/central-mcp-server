@@ -1,3 +1,0 @@
-fastapi==0.128.0
-pycentral==2.0a13
-fastapi-mcp==0.4.0
