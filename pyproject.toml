@@ -15,7 +15,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
-    "fastmcp>=3.1.1",
+    "fastmcp[code-mode]>=3.1.1",
     "python-dotenv>=1.0.0",
     "pycentral==2.0a16",
 ]
