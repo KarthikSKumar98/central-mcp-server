@@ -328,3 +328,21 @@ class Event(BaseModel):
     )
     reason: str | None = Field(description="Reason or cause of the event.")
     severity: str | None = Field(description="Severity level of the event.")
+
+
+class PaginatedAlerts(BaseModel):
+    items: list[Alert] = Field(description="Page of alert records.")
+    total: int = Field(description="Total alerts matching the filter across all pages.")
+    next_cursor: int | None = Field(
+        default=None,
+        description="Cursor for the next page. Pass as `cursor` in the next call. None means no more pages.",
+    )
+
+
+class PaginatedEvents(BaseModel):
+    items: list[Event] = Field(description="Page of event records.")
+    total: int = Field(description="Total events matching the filter across all pages.")
+    next_cursor: int | None = Field(
+        default=None,
+        description="Cursor for the next page. Pass as `cursor` in the next call. None means no more pages.",
+    )
