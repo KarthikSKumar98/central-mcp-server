@@ -10,8 +10,9 @@ _INSTRUCTIONS = (Path(__file__).parent / "INSTRUCTIONS.md").read_text()
 
 @asynccontextmanager
 async def lifespan(_server: FastMCP):
-    conn = get_conn()
+    conn = None
     try:
+        conn = get_conn()
         verify_connection(conn)
     except Exception as e:
         raise RuntimeError(
