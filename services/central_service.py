@@ -41,3 +41,24 @@ def get_conn():
     if central_conn is None:
         central_conn = get_central_connection()
     return central_conn
+
+
+def verify_connection(conn) -> None:
+    """
+    Verify credentials are valid by making a lightweight GET to the Central API.
+    Raises RuntimeError with a clear message if the connection fails.
+    """
+    from utils import retry_central_command
+
+    try:
+        retry_central_command(
+            conn,
+            api_method="GET",
+            api_path="network-monitoring/v1/sites-health",
+            api_params={"limit": 1},
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Central API connectivity check failed: {exc}. "
+            "Check CENTRAL_BASE_URL, CENTRAL_CLIENT_ID, and CENTRAL_CLIENT_SECRET in .env"
+        ) from exc

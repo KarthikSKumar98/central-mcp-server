@@ -1,9 +1,13 @@
 import os
 from dotenv import load_dotenv
+from platformdirs import user_config_dir
 
-# Dev fallback only: in production, credentials are passed via the MCP client's env block.
-# When installed via `fastmcp install --env KEY=VALUE`, this load_dotenv is a no-op.
+# Load credentials in priority order (each call only sets vars not already set):
+#   1. OS environment variables — highest priority (set by MCP client or shell)
+#   2. .env.local — dev override when running the server directly
+#   3. ~/.config/central-mcp-server/.env (platform-appropriate path) — user config file
 load_dotenv(".env.local", override=False)
+load_dotenv(os.path.join(user_config_dir("central-mcp-server"), ".env"), override=False)
 
 # These can be overridden by MCP inputs or environment variables
 CENTRAL_BASE_URL = os.getenv("CENTRAL_BASE_URL", "")

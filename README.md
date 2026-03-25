@@ -66,6 +66,28 @@ OAuth credentials created through the HPE GreenLake Platform:
 
 ---
 
+### Create Your Credentials File
+
+Create a credentials file in your user config directory. The server reads it automatically on startup — no environment variables or per-client configuration needed.
+
+| Platform | Path |
+|----------|------|
+| macOS | `~/Library/Application Support/central-mcp-server/.env` |
+| Linux | `~/.config/central-mcp-server/.env` |
+| Windows | `%APPDATA%\central-mcp-server\.env` |
+
+File contents:
+
+```
+CENTRAL_BASE_URL=https://us5.api.central.arubanetworks.com
+CENTRAL_CLIENT_ID=your-client-id
+CENTRAL_CLIENT_SECRET=your-client-secret
+```
+
+Replace the placeholder values with your actual credentials.
+
+---
+
 ### Installation
 
 Install via [`uv`](https://docs.astral.sh/uv/getting-started/installation/):
@@ -74,13 +96,9 @@ Install via [`uv`](https://docs.astral.sh/uv/getting-started/installation/):
 uv tool install central-mcp-server
 ```
 
-> **Note:** `uv tool install central-mcp-server` requires the package to be published to PyPI. To install locally from source, clone the repo and run `uv tool install .` from the repo root instead.
-
 ---
 
 ### MCP Client Configuration
-
-Replace the placeholder values with your actual credentials in all examples below.
 
 #### Claude Desktop
 
@@ -91,12 +109,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
   "mcpServers": {
     "central-mcp": {
       "command": "uvx",
-      "args": ["central-mcp-server"],
-      "env": {
-        "CENTRAL_BASE_URL": "https://us5.api.central.arubanetworks.com",
-        "CENTRAL_CLIENT_ID": "your-client-id",
-        "CENTRAL_CLIENT_SECRET": "your-client-secret"
-      }
+      "args": ["central-mcp-server"]
     }
   }
 }
@@ -105,26 +118,12 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 #### Claude Code
 
 ```bash
-claude mcp add central-mcp \
-  -e CENTRAL_BASE_URL=https://us5.api.central.arubanetworks.com \
-  -e CENTRAL_CLIENT_ID=your-client-id \
-  -e CENTRAL_CLIENT_SECRET=your-client-secret \
-  -- uvx central-mcp-server
+claude mcp add central-mcp -- uvx central-mcp-server
 ```
-
-Credentials are stored in Claude's own settings outside your workspace and are not included in messages sent to Anthropic.
 
 #### GitHub Copilot (VS Code)
 
-First, export credentials as system environment variables (one-time, in `~/.zshrc` or equivalent):
-
-```bash
-export CENTRAL_BASE_URL="https://us5.api.central.arubanetworks.com"
-export CENTRAL_CLIENT_ID="your-client-id"
-export CENTRAL_CLIENT_SECRET="your-client-secret"
-```
-
-Then add `.vscode/mcp.json` to your workspace — this file contains no secrets and is safe to commit:
+Add `.vscode/mcp.json` to your workspace — this file contains no secrets and is safe to commit:
 
 ```json
 {
@@ -132,12 +131,7 @@ Then add `.vscode/mcp.json` to your workspace — this file contains no secrets 
     "central-mcp": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["central-mcp-server"],
-      "env": {
-        "CENTRAL_BASE_URL": "${env:CENTRAL_BASE_URL}",
-        "CENTRAL_CLIENT_ID": "${env:CENTRAL_CLIENT_ID}",
-        "CENTRAL_CLIENT_SECRET": "${env:CENTRAL_CLIENT_SECRET}"
-      }
+      "args": ["central-mcp-server"]
     }
   }
 }
@@ -223,7 +217,7 @@ source .venv/bin/activate
 uv sync
 ```
 
-Create `.env.local` with your credentials:
+Create `.env` with your credentials:
 
 ```
 CENTRAL_BASE_URL=https://us5.api.central.arubanetworks.com

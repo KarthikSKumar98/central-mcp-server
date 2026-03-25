@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from fastmcp import FastMCP
 from fastmcp.experimental.transforms.code_mode import CodeMode
-from services.central_service import get_conn
+from services.central_service import get_conn, verify_connection
 from tools import sites, devices, clients, alerts, prompts, events
 
 _INSTRUCTIONS = (Path(__file__).parent / "INSTRUCTIONS.md").read_text()
@@ -11,6 +11,13 @@ _INSTRUCTIONS = (Path(__file__).parent / "INSTRUCTIONS.md").read_text()
 @asynccontextmanager
 async def lifespan(_server: FastMCP):
     conn = get_conn()
+    try:
+        verify_connection(conn)
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to connect to Central: {e}\n"
+            "Ensure credentials in .env are correct and the server is reachable."
+        ) from e
     try:
         yield {"conn": conn}
     finally:
