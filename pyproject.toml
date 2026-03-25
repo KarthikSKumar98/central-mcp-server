@@ -20,6 +20,11 @@ dependencies = [
     "pycentral==2.0a17",
 ]
 
+[project.urls]
+Documentation = "https://developer.arubanetworks.com/new-central/docs/central-mcp-overview"
+Repository = "https://github.com/KarthikSKumar98/central-mcp-server"
+Issues = "https://github.com/KarthikSKumar98/central-mcp-server/issues"
+
 [project.scripts]
 central-mcp-server = "server:run"
 
