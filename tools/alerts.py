@@ -47,9 +47,12 @@ def register(mcp):
         cursor: Optional[int] = None,
     ) -> PaginatedAlerts | str:
         """
-        Returns a filtered list of alerts for a specific site. Call central_get_site_name_id_mapping
-        first to obtain site_id values, then use this to drill into active issues by device
-        type or category.
+        REQUIRES site_id — call central_get_sites(site_names=["<site name>"]) and extract
+        site_id from the returned SiteData. Do NOT call this tool without a site_id; it will
+        fail validation.
+
+        Returns a filtered list of alerts for a specific site. Use this to drill into active
+        issues by device type or category after identifying the target site.
 
         Results are sorted by severity descending by default (Critical first), making the most
         important alerts appear in the first page. To page through results, pass the `next_cursor`
@@ -59,7 +62,7 @@ def register(mcp):
         If no alerts match the criteria, returns a message indicating so.
 
         Parameters:
-            - site_id: Site identifier from central_get_site_name_id_mapping (required).
+            - site_id: Site identifier. Obtain by calling central_get_sites(site_names=["<name>"]) and reading site_id from the result.
             - status: "Active" (default) for unresolved alerts, "Cleared" for resolved ones.
             - device_type: Narrow to a device class — "Access Point", "Gateway", "Switch", or "Bridge".
             - category: Narrow to an alert domain — "Clients", "System", "LAN", "WLAN", "WAN",
