@@ -66,28 +66,6 @@ OAuth credentials created through the HPE GreenLake Platform:
 
 ---
 
-### Create Your Credentials File
-
-Create a credentials file in your user config directory. The server reads it automatically on startup — no environment variables or per-client configuration needed.
-
-| Platform | Path |
-|----------|------|
-| macOS | `~/Library/Application Support/central-mcp-server/.env` |
-| Linux | `~/.config/central-mcp-server/.env` |
-| Windows | `%APPDATA%\central-mcp-server\.env` |
-
-File contents:
-
-```
-CENTRAL_BASE_URL=https://us5.api.central.arubanetworks.com
-CENTRAL_CLIENT_ID=your-client-id
-CENTRAL_CLIENT_SECRET=your-client-secret
-```
-
-Replace the placeholder values with your actual credentials.
-
----
-
 ### Installation
 
 Install via [`uv`](https://docs.astral.sh/uv/getting-started/installation/):
@@ -100,6 +78,8 @@ uv tool install central-mcp-server
 
 ### MCP Client Configuration
 
+Replace the placeholder values with your actual credentials in all examples below.
+
 #### Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
@@ -109,7 +89,12 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
   "mcpServers": {
     "central-mcp": {
       "command": "uvx",
-      "args": ["central-mcp-server"]
+      "args": ["central-mcp-server"],
+      "env": {
+        "CENTRAL_BASE_URL": "https://us5.api.central.arubanetworks.com",
+        "CENTRAL_CLIENT_ID": "your-client-id",
+        "CENTRAL_CLIENT_SECRET": "your-client-secret"
+      }
     }
   }
 }
@@ -118,12 +103,16 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 #### Claude Code
 
 ```bash
-claude mcp add central-mcp -- uvx central-mcp-server
+claude mcp add central-mcp \
+  -e CENTRAL_BASE_URL=https://us5.api.central.arubanetworks.com \
+  -e CENTRAL_CLIENT_ID=your-client-id \
+  -e CENTRAL_CLIENT_SECRET=your-client-secret \
+  -- uvx central-mcp-server
 ```
 
 #### GitHub Copilot (VS Code)
 
-Add `.vscode/mcp.json` to your workspace — this file contains no secrets and is safe to commit:
+Add `.vscode/mcp.json` to your workspace root and add that path to `.gitignore` to keep credentials out of version control:
 
 ```json
 {
@@ -131,10 +120,20 @@ Add `.vscode/mcp.json` to your workspace — this file contains no secrets and i
     "central-mcp": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["central-mcp-server"]
+      "args": ["central-mcp-server"],
+      "env": {
+        "CENTRAL_BASE_URL": "https://us5.api.central.arubanetworks.com",
+        "CENTRAL_CLIENT_ID": "your-client-id",
+        "CENTRAL_CLIENT_SECRET": "your-client-secret"
+      }
     }
   }
 }
+```
+
+Add to `.gitignore`:
+```
+.vscode/mcp.json
 ```
 
 See the [VS Code setup guide](./docs/guide-2-github-copilot.md) for full steps and troubleshooting.
