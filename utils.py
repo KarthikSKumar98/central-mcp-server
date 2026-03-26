@@ -1,3 +1,4 @@
+import logging
 import random
 import time
 from dataclasses import dataclass
@@ -5,6 +6,8 @@ from models import SiteData, SiteMetrics
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import List
+
+_logger = logging.getLogger(__name__)
 from models import (
     Alert,
     Client,
@@ -90,7 +93,14 @@ def fetch_site_data_parallel(central_conn) -> tuple:
             executor.submit(paginated_fetch, central_conn, endpoint, SITE_LIMIT)
             for endpoint in endpoints
         ]
-        results = [future.result() for future in futures]
+        results = []
+        for endpoint, future in zip(endpoints, futures):
+            exc = future.exception()
+            if exc is not None:
+                _logger.warning("Parallel fetch failed for %s: %s", endpoint, exc)
+                results.append([])
+            else:
+                results.append(future.result())
 
     return process_site_health_data(*results)
 
