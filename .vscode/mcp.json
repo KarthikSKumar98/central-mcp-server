@@ -1,9 +1,0 @@
-{
-	"servers": {
-		"central-mcp": {
-			"url": "http://localhost:8001/mcp",
-			"type": "http"
-		}
-	},
-	"inputs": []
-}
