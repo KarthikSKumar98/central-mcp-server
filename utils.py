@@ -94,19 +94,19 @@ def process_site_health_data(site_health, device_health, client_health):
         dict: Dictionary of site names to SiteData objects
     """
     processed_sites = {
-        site["name"]: transform_to_site_data(site) for site in site_health
+        site["siteName"]: transform_to_site_data(site) for site in site_health
     }
 
     for site in device_health:
-        if site["name"] in processed_sites:
-            processed_sites[site["name"]].metrics.devices["Details"] = groups_to_map(
-                site["deviceTypes"]
+        if site["siteName"] in processed_sites:
+            processed_sites[site["siteName"]].metrics.devices["Details"] = (
+                groups_to_map(site["deviceTypes"])
             )
 
     for site in client_health:
-        if site["name"] in processed_sites:
-            processed_sites[site["name"]].metrics.clients["Details"] = groups_to_map(
-                site["clientTypes"]
+        if site["siteName"] in processed_sites:
+            processed_sites[site["siteName"]].metrics.clients["Details"] = (
+                groups_to_map(site["clientTypes"])
             )
 
     return processed_sites
@@ -116,23 +116,16 @@ def paginated_fetch(
     central_conn,
     api_path: str,
     limit: int,
-    total_key: str = "total",
     additional_params: dict = None,
-    use_cursor: bool = True,
-    different_response_key: str = None,
-    items_key: str = "items",
-    offset_start: int = 0,
 ):
     """
-    Generic paginated fetch helper supporting both offset and cursor-based pagination.
+    Fetch all pages from a cursor-based Central API endpoint.
 
     Args:
         central_conn: Central API connection object
         api_path: API endpoint path
         limit: Number of items per request
-        total_key: Key name for total count in response
         additional_params: Additional query parameters to include
-        use_cursor: If True, use cursor-based pagination (next). If False, use offset-based.
 
     Returns:
         list: All fetched items across all pages
@@ -140,42 +133,19 @@ def paginated_fetch(
     total = None
     items = []
     base_params = additional_params.copy() if additional_params else {}
-    if use_cursor:
-        # Cursor-based pagination (preferred for API stability)
-        next_cursor = 1
-        while total is None or next_cursor is not None:
-            params = {**base_params, "limit": limit, "next": next_cursor}
-            response = retry_central_command(
-                central_conn,
-                api_method="GET",
-                api_path=api_path,
-                api_params=params,
-            )
-            if different_response_key:
-                response["msg"] = response["msg"].get(different_response_key, {})
-            if total is None:
-                total = response["msg"].get(total_key, 0)
-
-            items.extend(response["msg"].get(items_key, []))
-            next_cursor = response["msg"].get("next")
-    else:
-        # Offset-based pagination (legacy fallback)
-        offset = offset_start
-        while total is None or len(items) < total:
-            params = {**base_params, "limit": limit, "offset": offset}
-            response = retry_central_command(
-                central_conn,
-                api_method="GET",
-                api_path=api_path,
-                api_params=params,
-            )
-            if total is None:
-                total = response["msg"].get(total_key, 0)
-            if different_response_key:
-                response["msg"] = response["msg"].get(different_response_key, {})
-
-            items.extend(response["msg"].get(items_key, []))
-            offset += limit
+    next_cursor = 1
+    while total is None or next_cursor is not None:
+        params = {**base_params, "limit": limit, "next": next_cursor}
+        response = retry_central_command(
+            central_conn,
+            api_method="GET",
+            api_path=api_path,
+            api_params=params,
+        )
+        if total is None:
+            total = response["msg"].get("total", 0)
+        items.extend(response["msg"].get("items", []))
+        next_cursor = response["msg"].get("next")
     return items
 
 
@@ -260,7 +230,7 @@ def transform_to_site_data(site_raw: dict) -> SiteData:
 
     return SiteData(
         site_id=site_raw.get("id"),
-        name=site_raw.get("name"),
+        name=site_raw.get("siteName"),
         address=site_raw.get("address", {}),
         location={"lat": lat, "lng": lng},
         metrics=metrics,
