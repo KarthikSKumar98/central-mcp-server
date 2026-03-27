@@ -292,3 +292,49 @@ def test_clean_client_data_wired_strips_wireless_fields():
     assert c.bssid is None
     assert c.wireless_band is None
     assert c.radio_mac is None
+
+
+# ---------------------------------------------------------------------------
+# clean_alert_data
+# ---------------------------------------------------------------------------
+from utils import clean_alert_data
+from models import Alert
+
+_RAW_ALERT = {
+    "summary": "Device Offline",
+    "clearedReason": None,
+    "createdAt": "2026-03-21T10:00:00Z",
+    "priority": "High",
+    "updatedAt": "2026-03-21T10:05:00Z",
+    "deviceType": "Access Point",
+    "updatedBy": "system",
+    "name": "AP Offline",
+    "status": "Active",
+    "category": "System",
+    "severity": "Critical",
+}
+
+
+def test_clean_alert_data_returns_alert_models():
+    result = clean_alert_data([_RAW_ALERT])
+    assert len(result) == 1
+    assert isinstance(result[0], Alert)
+
+
+def test_clean_alert_data_field_mapping():
+    a = clean_alert_data([_RAW_ALERT])[0]
+    assert a.summary == "Device Offline"
+    assert a.severity == "Critical"
+    assert a.status == "Active"
+    assert a.category == "System"
+    assert a.priority == "High"
+    assert a.cleared_reason is None
+    assert a.device_type == "Access Point"
+
+
+def test_clean_alert_data_multiple():
+    raw2 = {**_RAW_ALERT, "summary": "CPU High", "severity": "Major"}
+    result = clean_alert_data([_RAW_ALERT, raw2])
+    assert len(result) == 2
+    assert result[1].summary == "CPU High"
+    assert result[1].severity == "Major"
