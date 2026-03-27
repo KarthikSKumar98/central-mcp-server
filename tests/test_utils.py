@@ -497,6 +497,7 @@ def test_transform_to_site_data_null_location():
 # ---------------------------------------------------------------------------
 from utils import process_site_health_data
 
+# Read-only fixtures — do not mutate these in tests; use copies if you need to modify values.
 _SITE_HEALTH = [
     {
         "siteName": "HQ",
@@ -584,3 +585,13 @@ def test_process_site_health_data_multiple_sites():
     result = process_site_health_data(site_health, [], [])
     assert "HQ" in result
     assert "Branch" in result
+
+
+def test_process_site_health_data_unknown_site_in_client_health_skipped():
+    result = process_site_health_data(
+        _SITE_HEALTH,
+        [],
+        [{"siteName": "Unknown", "clientTypes": []}],
+    )
+    assert len(result) == 1
+    assert "HQ" in result
