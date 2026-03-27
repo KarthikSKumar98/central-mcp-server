@@ -101,6 +101,7 @@ def test_compute_time_window_yesterday_full_day():
     start, end = compute_time_window("yesterday")
     assert start.hour == 0 and start.minute == 0 and start.second == 0
     assert end.hour == 23 and end.minute == 59 and end.second == 59
+    assert end.microsecond == 999999
     assert start.date() == end.date()
 
 
