@@ -490,3 +490,97 @@ def test_transform_to_site_data_null_location():
     result = transform_to_site_data(raw)
     assert result.location["lat"] is None
     assert result.location["lng"] is None
+
+
+# ---------------------------------------------------------------------------
+# process_site_health_data
+# ---------------------------------------------------------------------------
+from utils import process_site_health_data
+
+_SITE_HEALTH = [
+    {
+        "siteName": "HQ",
+        "id": "site-1",
+        "health": {},
+        "devices": {},
+        "clients": {},
+        "alerts": {},
+        "address": {},
+        "location": None,
+    }
+]
+_DEVICE_HEALTH = [
+    {
+        "siteName": "HQ",
+        "deviceTypes": [
+            {
+                "name": "Access Points",
+                "health": {"groups": [{"name": "Good", "value": 3}]},
+            }
+        ],
+    }
+]
+_CLIENT_HEALTH = [
+    {
+        "siteName": "HQ",
+        "clientTypes": [
+            {
+                "name": "Wireless",
+                "health": {"groups": [{"name": "Good", "value": 10}]},
+            }
+        ],
+    }
+]
+
+
+def test_process_site_health_data_returns_dict_keyed_by_sitename():
+    result = process_site_health_data(_SITE_HEALTH, [], [])
+    assert isinstance(result, dict)
+    assert "HQ" in result
+    assert isinstance(result["HQ"], SiteData)
+
+
+def test_process_site_health_data_merges_device_details():
+    result = process_site_health_data(_SITE_HEALTH, _DEVICE_HEALTH, [])
+    assert result["HQ"].metrics.devices["Details"]["Access Points"]["Good"] == 3
+
+
+def test_process_site_health_data_merges_client_details():
+    result = process_site_health_data(_SITE_HEALTH, [], _CLIENT_HEALTH)
+    assert result["HQ"].metrics.clients["Details"]["Wireless"]["Good"] == 10
+
+
+def test_process_site_health_data_unknown_site_in_device_health_skipped():
+    result = process_site_health_data(
+        _SITE_HEALTH, [{"siteName": "Unknown", "deviceTypes": []}], []
+    )
+    assert len(result) == 1
+    assert "HQ" in result
+
+
+def test_process_site_health_data_multiple_sites():
+    site_health = [
+        {
+            "siteName": "HQ",
+            "id": "site-1",
+            "health": {},
+            "devices": {},
+            "clients": {},
+            "alerts": {},
+            "address": {},
+            "location": None,
+        },
+        {
+            "siteName": "Branch",
+            "id": "site-2",
+            "health": {},
+            "devices": {},
+            "clients": {},
+            "alerts": {},
+            "address": {},
+            "location": None,
+        },
+    ]
+    result = process_site_health_data(site_health, [], [])
+    assert "HQ" in result
+    assert "Branch" in result
