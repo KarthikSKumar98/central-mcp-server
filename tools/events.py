@@ -160,18 +160,21 @@ def register(mcp):
         """
         start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
 
-        conn = ctx.lifespan_context["conn"]
-        response = conn.command(
-            api_method="GET",
-            api_path="network-troubleshooting/v1/event-filters",
-            api_params={
-                "context-type": context_type,
-                "context-identifier": context_identifier,
-                "start-at": start_at,
-                "end-at": end_at,
-                "site-id": site_id,
-            },
-        )
-        if response["code"] != 200:
-            return format_tool_error("fetching event filters", Exception(str(response["msg"])))
+        try:
+            conn = ctx.lifespan_context["conn"]
+            response = conn.command(
+                api_method="GET",
+                api_path="network-troubleshooting/v1/event-filters",
+                api_params={
+                    "context-type": context_type,
+                    "context-identifier": context_identifier,
+                    "start-at": start_at,
+                    "end-at": end_at,
+                    "site-id": site_id,
+                },
+            )
+            if response["code"] != 200:
+                return format_tool_error("fetching event filters", Exception(str(response["msg"])))
+        except Exception as e:
+            return format_tool_error("fetching event filters", e)
         return clean_event_filters(response["msg"])

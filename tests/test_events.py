@@ -340,6 +340,20 @@ async def test_get_events_count_returns_error_on_non_200(tools):
     assert "fetching event filters" in result
 
 
+@pytest.mark.asyncio
+async def test_get_events_returns_error_on_404(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = {
+        "code": 404, "msg": "Not Found"
+    }
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
+        result = await tools["central_get_events"](
+            ctx, context_type="SITE", context_identifier="s1", site_id="s1"
+        )
+    assert isinstance(result, str)
+    assert "fetching events" in result
+
+
 # ---------------------------------------------------------------------------
 # clean_event_filters
 # ---------------------------------------------------------------------------
