@@ -8,9 +8,7 @@ from utils import (
     clean_alert_data,
 )
 from tools import READ_ONLY
-
-# API hard cap; limit param must not exceed this
-ALERT_LIMIT = 100
+from constants import ALERT_LIMIT
 
 ALERT_FILTER_FIELDS: dict[str, FilterField] = {
     "status": FilterField("status"),
@@ -43,7 +41,7 @@ def register(mcp):
             ]
         ] = None,
         sort: str = "severity desc",
-        limit: int = 50,
+        limit: int = ALERT_LIMIT,
         cursor: Optional[int] = None,
     ) -> PaginatedAlerts | str:
         """

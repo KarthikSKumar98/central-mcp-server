@@ -3,6 +3,7 @@ from models import SiteData, SiteMetrics
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import List
+from constants import SITE_LIMIT
 from models import (
     Alert,
     Client,
@@ -52,7 +53,6 @@ def build_odata_filter(pairs: list[tuple["FilterField", str]]) -> str | None:
     return " and ".join(parts)
 
 
-SITE_LIMIT = 100
 
 
 def fetch_site_data_parallel(central_conn) -> tuple:

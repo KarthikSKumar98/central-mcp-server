@@ -7,9 +7,7 @@ from utils import (
     retry_central_command,
 )
 from tools import READ_ONLY
-
-# API hard cap; limit param must not exceed this
-EVENT_LIMIT = 100
+from constants import EVENT_LIMIT
 
 CONTEXT_TYPE = Literal[
     "SITE",
@@ -55,7 +53,7 @@ def register(mcp):
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
         search: Optional[str] = None,
-        limit: int = 50,
+        limit: int = EVENT_LIMIT,
         cursor: Optional[int] = None,
     ) -> PaginatedEvents | str:
         """
