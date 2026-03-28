@@ -23,7 +23,7 @@ def _fake_time_window():
 
 
 def _make_events_response(events=None, total=0, next_cursor=None):
-    return {"msg": {"events": events or [], "total": total, "next": next_cursor}}
+    return {"code": 200, "msg": {"events": events or [], "total": total, "next": next_cursor}}
 
 
 RAW_EVENT = {
@@ -53,16 +53,12 @@ RAW_EVENT = {
 @pytest.mark.asyncio
 async def test_get_events_required_params_in_query(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_events_response()
-        ) as mock_cmd,
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response()
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         await tools["central_get_events"](
             ctx, context_type="SITE", context_identifier="site-abc", site_id="site-abc"
         )
-    params = mock_cmd.call_args.kwargs["api_params"]
+    params = ctx.lifespan_context["conn"].command.call_args.kwargs["api_params"]
     assert params["context-type"] == "SITE"
     assert params["context-identifier"] == "site-abc"
     assert params["site-id"] == "site-abc"
@@ -71,14 +67,8 @@ async def test_get_events_required_params_in_query(tools):
 @pytest.mark.asyncio
 async def test_get_events_default_time_range(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_events_response()
-        ),
-        patch(
-            "tools.events.compute_time_window", return_value=_fake_time_window()
-        ) as mock_ctw,
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response()
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()) as mock_ctw:
         await tools["central_get_events"](
             ctx, context_type="SITE", context_identifier="s1", site_id="s1"
         )
@@ -88,14 +78,8 @@ async def test_get_events_default_time_range(tools):
 @pytest.mark.asyncio
 async def test_get_events_custom_time_range(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_events_response()
-        ),
-        patch(
-            "tools.events.compute_time_window", return_value=_fake_time_window()
-        ) as mock_ctw,
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response()
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()) as mock_ctw:
         await tools["central_get_events"](
             ctx,
             context_type="SITE",
@@ -109,12 +93,8 @@ async def test_get_events_custom_time_range(tools):
 @pytest.mark.asyncio
 async def test_get_events_explicit_times_override_time_range(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_events_response()
-        ) as mock_cmd,
-        patch("tools.events.compute_time_window") as mock_ctw,
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response()
+    with patch("tools.events.compute_time_window") as mock_ctw:
         await tools["central_get_events"](
             ctx,
             context_type="SITE",
@@ -124,7 +104,7 @@ async def test_get_events_explicit_times_override_time_range(tools):
             end_time="2026-03-21T23:59:59.999Z",
         )
     mock_ctw.assert_not_called()
-    params = mock_cmd.call_args.kwargs["api_params"]
+    params = ctx.lifespan_context["conn"].command.call_args.kwargs["api_params"]
     assert params["start-at"] == "2026-03-21T00:00:00.000Z"
     assert params["end-at"] == "2026-03-21T23:59:59.999Z"
 
@@ -132,12 +112,8 @@ async def test_get_events_explicit_times_override_time_range(tools):
 @pytest.mark.asyncio
 async def test_get_events_search_included(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_events_response()
-        ) as mock_cmd,
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response()
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         await tools["central_get_events"](
             ctx,
             context_type="SITE",
@@ -145,34 +121,25 @@ async def test_get_events_search_included(tools):
             site_id="s1",
             search="ap-1",
         )
-    assert mock_cmd.call_args.kwargs["api_params"]["search"] == "ap-1"
+    assert ctx.lifespan_context["conn"].command.call_args.kwargs["api_params"]["search"] == "ap-1"
 
 
 @pytest.mark.asyncio
 async def test_get_events_no_search_when_omitted(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_events_response()
-        ) as mock_cmd,
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response()
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         await tools["central_get_events"](
             ctx, context_type="SITE", context_identifier="s1", site_id="s1"
         )
-    assert "search" not in mock_cmd.call_args.kwargs["api_params"]
+    assert "search" not in ctx.lifespan_context["conn"].command.call_args.kwargs["api_params"]
 
 
 @pytest.mark.asyncio
 async def test_get_events_returns_event_objects(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command",
-            return_value=_make_events_response(events=[RAW_EVENT], total=1),
-        ),
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response(events=[RAW_EVENT], total=1)
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         result = await tools["central_get_events"](
             ctx, context_type="SITE", context_identifier="s1", site_id="s1"
         )
@@ -184,60 +151,43 @@ async def test_get_events_returns_event_objects(tools):
 @pytest.mark.asyncio
 async def test_get_events_default_limit(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_events_response()
-        ) as mock_cmd,
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response()
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         await tools["central_get_events"](
             ctx, context_type="SITE", context_identifier="s1", site_id="s1"
         )
-    assert mock_cmd.call_args.kwargs["api_params"]["limit"] == 50
+    assert ctx.lifespan_context["conn"].command.call_args.kwargs["api_params"]["limit"] == 50
 
 
 @pytest.mark.asyncio
 async def test_get_events_no_cursor_when_none(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_events_response()
-        ) as mock_cmd,
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response()
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         await tools["central_get_events"](
             ctx, context_type="SITE", context_identifier="s1", site_id="s1"
         )
-    assert "next" not in mock_cmd.call_args.kwargs["api_params"]
+    assert "next" not in ctx.lifespan_context["conn"].command.call_args.kwargs["api_params"]
 
 
 @pytest.mark.asyncio
 async def test_get_events_cursor_forwarded(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_events_response()
-        ) as mock_cmd,
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response()
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         await tools["central_get_events"](
             ctx, context_type="SITE", context_identifier="s1", site_id="s1", cursor=5
         )
-    assert mock_cmd.call_args.kwargs["api_params"]["next"] == 5
+    assert ctx.lifespan_context["conn"].command.call_args.kwargs["api_params"]["next"] == 5
 
 
 @pytest.mark.asyncio
 async def test_get_events_returns_paginated_model(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command",
-            return_value=_make_events_response(
-                events=[RAW_EVENT], total=200, next_cursor=3
-            ),
-        ),
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response(
+        events=[RAW_EVENT], total=200, next_cursor=3
+    )
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         result = await tools["central_get_events"](
             ctx, context_type="SITE", context_identifier="s1", site_id="s1"
         )
@@ -251,11 +201,10 @@ async def test_get_events_returns_paginated_model(tools):
 async def test_get_events_uses_events_key_from_response(tools):
     """Items must come from msg["events"], not msg["items"]."""
     ctx = make_ctx()
-    wrong_key_response = {"msg": {"items": [RAW_EVENT], "total": 1, "next": None}}
-    with (
-        patch("tools.events.retry_central_command", return_value=wrong_key_response),
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = {
+        "code": 200, "msg": {"items": [RAW_EVENT], "total": 1, "next": None}
+    }
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         result = await tools["central_get_events"](
             ctx, context_type="SITE", context_identifier="s1", site_id="s1"
         )
@@ -265,12 +214,8 @@ async def test_get_events_uses_events_key_from_response(tools):
 @pytest.mark.asyncio
 async def test_get_events_empty_returns_empty_paginated(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_events_response()
-        ),
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response()
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         result = await tools["central_get_events"](
             ctx, context_type="SITE", context_identifier="s1", site_id="s1"
         )
@@ -288,6 +233,7 @@ def _make_count_response(total: int):
     # categories must sum to total since clean_event_filters computes total from them
     categories = [{"category": "System", "count": total}] if total else []
     return {
+        "code": 200,
         "msg": {
             "total": total,
             "categories": categories,
@@ -300,12 +246,8 @@ def _make_count_response(total: int):
 @pytest.mark.asyncio
 async def test_get_events_count_returns_total(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_count_response(42)
-        ),
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_count_response(42)
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         result = await tools["central_get_events_count"](
             ctx, context_type="SITE", context_identifier="s1", site_id="s1"
         )
@@ -315,19 +257,15 @@ async def test_get_events_count_returns_total(tools):
 @pytest.mark.asyncio
 async def test_get_events_count_required_params(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_count_response(0)
-        ) as mock_cmd,
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_count_response(0)
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         await tools["central_get_events_count"](
             ctx,
             context_type="ACCESS_POINT",
             context_identifier="SN123",
             site_id="site-99",
         )
-    params = mock_cmd.call_args.kwargs["api_params"]
+    params = ctx.lifespan_context["conn"].command.call_args.kwargs["api_params"]
     assert params["context-type"] == "ACCESS_POINT"
     assert params["context-identifier"] == "SN123"
     assert params["site-id"] == "site-99"
@@ -336,14 +274,8 @@ async def test_get_events_count_required_params(tools):
 @pytest.mark.asyncio
 async def test_get_events_count_default_time_range(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_count_response(0)
-        ),
-        patch(
-            "tools.events.compute_time_window", return_value=_fake_time_window()
-        ) as mock_ctw,
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_count_response(0)
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()) as mock_ctw:
         await tools["central_get_events_count"](
             ctx, context_type="SITE", context_identifier="s1", site_id="s1"
         )
@@ -353,12 +285,8 @@ async def test_get_events_count_default_time_range(tools):
 @pytest.mark.asyncio
 async def test_get_events_count_explicit_times_override_time_range(tools):
     ctx = make_ctx()
-    with (
-        patch(
-            "tools.events.retry_central_command", return_value=_make_count_response(0)
-        ) as mock_cmd,
-        patch("tools.events.compute_time_window") as mock_ctw,
-    ):
+    ctx.lifespan_context["conn"].command.return_value = _make_count_response(0)
+    with patch("tools.events.compute_time_window") as mock_ctw:
         await tools["central_get_events_count"](
             ctx,
             context_type="SITE",
@@ -368,7 +296,7 @@ async def test_get_events_count_explicit_times_override_time_range(tools):
             end_time="2026-03-21T23:59:59.999Z",
         )
     mock_ctw.assert_not_called()
-    params = mock_cmd.call_args.kwargs["api_params"]
+    params = ctx.lifespan_context["conn"].command.call_args.kwargs["api_params"]
     assert params["start-at"] == "2026-03-21T00:00:00.000Z"
     assert params["end-at"] == "2026-03-21T23:59:59.999Z"
 
@@ -376,14 +304,40 @@ async def test_get_events_count_explicit_times_override_time_range(tools):
 @pytest.mark.asyncio
 async def test_get_events_count_missing_total_returns_zero(tools):
     ctx = make_ctx()
-    with (
-        patch("tools.events.retry_central_command", return_value={"msg": {}}),
-        patch("tools.events.compute_time_window", return_value=_fake_time_window()),
-    ):
+    ctx.lifespan_context["conn"].command.return_value = {"code": 200, "msg": {}}
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
         result = await tools["central_get_events_count"](
             ctx, context_type="SITE", context_identifier="s1", site_id="s1"
         )
     assert result.total == 0
+
+
+@pytest.mark.asyncio
+async def test_get_events_returns_error_on_non_200(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = {
+        "code": 500, "msg": "Internal Server Error"
+    }
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
+        result = await tools["central_get_events"](
+            ctx, context_type="SITE", context_identifier="s1", site_id="s1"
+        )
+    assert isinstance(result, str)
+    assert "fetching events" in result
+
+
+@pytest.mark.asyncio
+async def test_get_events_count_returns_error_on_non_200(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = {
+        "code": 500, "msg": "Internal Server Error"
+    }
+    with patch("tools.events.compute_time_window", return_value=_fake_time_window()):
+        result = await tools["central_get_events_count"](
+            ctx, context_type="SITE", context_identifier="s1", site_id="s1"
+        )
+    assert isinstance(result, str)
+    assert "fetching event filters" in result
 
 
 # ---------------------------------------------------------------------------

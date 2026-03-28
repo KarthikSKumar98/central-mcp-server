@@ -1,12 +1,14 @@
+from typing import Literal
+
 from fastmcp import Context
-from typing import Literal, Optional
+
+from constants import EVENT_LIMIT
 from models import Event, EventFilters, PaginatedEvents
-from utils import (
+from tools import READ_ONLY
 from utils.common import (
     compute_time_window,
     format_rfc3339,
     format_tool_error,
-    retry_central_command,
 )
 from utils.events import clean_event_filters
 
@@ -27,8 +29,8 @@ TIME_RANGE = Literal[
 
 def _resolve_time_window(
     time_range: str,
-    start_time: Optional[str],
-    end_time: Optional[str],
+    start_time: str | None,
+    end_time: str | None,
 ) -> tuple[str, str]:
     """Return (start_at, end_at) as RFC 3339 strings.
 
@@ -50,14 +52,13 @@ def register(mcp):
         context_identifier: str,
         site_id: str,
         time_range: TIME_RANGE = "last_1h",
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-        search: Optional[str] = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        search: str | None = None,
         limit: int = EVENT_LIMIT,
-        cursor: Optional[int] = None,
+        cursor: int | None = None,
     ) -> PaginatedEvents | str:
-        """
-        Retrieve events for a given context (site, device, or client) within a specified time range.
+        """Retrieve events for a given context (site, device, or client) within a specified time range.
 
         Use central_get_events_count first to understand what event types and volumes exist before
         fetching full event records.
@@ -65,7 +66,8 @@ def register(mcp):
         To page through results, pass the `next_cursor` value from the previous response as `cursor`
         in the next call. When `next_cursor` is None, there are no more pages.
 
-        Parameters:
+        Parameters
+        ----------
         - context_type: Type of context entity — what context_identifier refers to. Allowed values:
           SITE, ACCESS_POINT, SWITCH, GATEWAY, WIRELESS_CLIENT, WIRED_CLIENT, BRIDGE.
         - context_identifier: Identifier for the context — site ID if context_type is SITE, device
@@ -85,6 +87,7 @@ def register(mcp):
 
         WARNING: last_30d can match thousands of events. Use central_get_events_count first to
         assess volume, then page incrementally using cursor.
+
         """
         start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
 
@@ -103,12 +106,14 @@ def register(mcp):
             query_params["next"] = cursor
 
         try:
-            response = retry_central_command(
-                ctx.lifespan_context["conn"],
+            conn = ctx.lifespan_context["conn"]
+            response = conn.command(
                 api_method="GET",
                 api_path="network-troubleshooting/v1/events",
                 api_params=query_params,
             )
+            if response["code"] != 200:
+                return format_tool_error("fetching events", Exception(str(response["msg"])))
         except Exception as e:
             return format_tool_error("fetching events", e)
 
@@ -127,16 +132,16 @@ def register(mcp):
         context_identifier: str,
         site_id: str,
         time_range: TIME_RANGE = "last_1h",
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-    ) -> EventFilters:
-        """
-        Return a breakdown of event counts for a context without fetching full event details.
+        start_time: str | None = None,
+        end_time: str | None = None,
+    ) -> EventFilters | str:
+        """Return a breakdown of event counts for a context without fetching full event details.
 
         Use this before central_get_events to understand what types and volumes of events exist,
         avoiding the overhead of retrieving all event records.
 
-        Parameters:
+        Parameters
+        ----------
         - context_type: Type of context entity. Allowed values: SITE, ACCESS_POINT, SWITCH,
           GATEWAY, WIRELESS_CLIENT, WIRED_CLIENT, BRIDGE.
         - context_identifier: Identifier for the context — site ID, device serial number, or
@@ -151,11 +156,12 @@ def register(mcp):
 
         Returns an EventFilters object: total event count plus breakdowns by event name, source
         type, and category.
+
         """
         start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
 
-        response = retry_central_command(
-            ctx.lifespan_context["conn"],
+        conn = ctx.lifespan_context["conn"]
+        response = conn.command(
             api_method="GET",
             api_path="network-troubleshooting/v1/event-filters",
             api_params={
@@ -166,4 +172,6 @@ def register(mcp):
                 "site-id": site_id,
             },
         )
+        if response["code"] != 200:
+            return format_tool_error("fetching event filters", Exception(str(response["msg"])))
         return clean_event_filters(response["msg"])
