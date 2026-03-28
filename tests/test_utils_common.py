@@ -114,53 +114,46 @@ def test_compute_time_window_invalid_raises():
 # ---------------------------------------------------------------------------
 # paginated_fetch
 # ---------------------------------------------------------------------------
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
 from utils.common import paginated_fetch
 
 
 def _page(items, next_cursor=None, total=None):
-    """Build a fake retry_central_command response."""
+    """Build a fake conn.command response."""
     if total is None:
         total = len(items)
     return {"code": 200, "msg": {"items": items, "total": total, "next": next_cursor}}
 
 
 def test_paginated_fetch_single_page():
-    conn = object()
-    with patch("utils.common.retry_central_command", return_value=_page([{"id": 1}])) as mock:
-        result = paginated_fetch(conn, "some/path", limit=100)
+    conn = MagicMock()
+    conn.command.return_value = _page([{"id": 1}])
+    result = paginated_fetch(conn, "some/path", limit=100)
     assert result == [{"id": 1}]
-    mock.assert_called_once_with(
-        conn,
-        api_method="GET",
-        api_path="some/path",
-        api_params={"limit": 100, "next": 1},
-    )
+    conn.command.assert_called_once_with("GET", "some/path", api_params={"limit": 100, "next": 1})
 
 
 def test_paginated_fetch_multi_page_accumulates_items():
-    conn = object()
-    responses = [
+    conn = MagicMock()
+    conn.command.side_effect = [
         _page([{"id": 1}], next_cursor=2, total=2),
         _page([{"id": 2}], next_cursor=None, total=2),
     ]
-    with patch("utils.common.retry_central_command", side_effect=responses):
-        result = paginated_fetch(conn, "some/path", limit=1)
+    result = paginated_fetch(conn, "some/path", limit=1)
     assert result == [{"id": 1}, {"id": 2}]
 
 
 def test_paginated_fetch_empty_result():
-    conn = object()
-    with patch("utils.common.retry_central_command", return_value=_page([], total=0)):
-        result = paginated_fetch(conn, "some/path", limit=100)
+    conn = MagicMock()
+    conn.command.return_value = _page([], total=0)
+    result = paginated_fetch(conn, "some/path", limit=100)
     assert result == []
 
 
 def test_paginated_fetch_passes_additional_params():
-    conn = object()
-    with patch("utils.common.retry_central_command", return_value=_page([])) as mock:
-        paginated_fetch(conn, "some/path", limit=50, additional_params={"filter": "x eq 'y'"})
-    _, kwargs = mock.call_args
-    assert kwargs["api_params"]["filter"] == "x eq 'y'"
-    assert kwargs["api_params"]["limit"] == 50
+    conn = MagicMock()
+    conn.command.return_value = _page([])
+    paginated_fetch(conn, "some/path", limit=50, additional_params={"filter": "x eq 'y'"})
+    assert conn.command.call_args.kwargs["api_params"]["filter"] == "x eq 'y'"
+    assert conn.command.call_args.kwargs["api_params"]["limit"] == 50

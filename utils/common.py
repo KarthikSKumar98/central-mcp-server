@@ -63,12 +63,9 @@ def paginated_fetch(
     next_cursor = 1
     while total is None or next_cursor is not None:
         params = {**base_params, "limit": limit, "next": next_cursor}
-        response = retry_central_command(
-            central_conn,
-            api_method="GET",
-            api_path=api_path,
-            api_params=params,
-        )
+        response = central_conn.command("GET", api_path, api_params=params)
+        if response["code"] != 200:
+            raise Exception(f"API error {response['code']}: {response['msg']}")
         if total is None:
             total = response["msg"].get("total", 0)
         items.extend(response["msg"].get("items", []))
