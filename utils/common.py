@@ -73,61 +73,6 @@ def paginated_fetch(
     return items
 
 
-def retry_central_command(
-    central_conn, api_method, api_path, api_params=None, max_retries=5
-):
-    """Call central_conn.command and retry immediately up to max_retries on transient errors.
-
-    Does not sleep between attempts. On persistent server errors (5xx) or rate-limit (429)
-    this raises APIRetryError so the caller can abort and avoid partial DB writes.
-    Client errors (4xx) are raised immediately.
-    """
-    api_params = api_params or {}
-    last_response = None
-    for attempt in range(1, max_retries + 1):
-        try:
-            resp = central_conn.command(
-                api_method=api_method, api_path=api_path, api_params=api_params
-            )
-        except Exception as exc:
-            central_conn.logger.error(
-                "Central transport error attempt %d/%d %s %s: %s",
-                attempt,
-                max_retries,
-                api_method,
-                api_path,
-                exc,
-            )
-            last_response = {"code": 0, "msg": str(exc)}
-            continue
-
-        code = resp.get("code", 0)
-        # success
-        if 200 <= code < 300:
-            return resp
-
-        # retry on server errors or rate limiting
-        if code == 429 or 500 <= code < 600:
-            central_conn.logger.warning(
-                "Central transient response code=%s for %s %s (attempt %d/%d)",
-                code,
-                api_method,
-                api_path,
-                attempt,
-                max_retries,
-            )
-            last_response = resp
-            continue
-
-        # client errors -> raise immediately
-        if 400 <= code < 500:
-            raise Exception(f"Client error from central: {resp}")
-
-        last_response = resp
-
-    raise Exception(f"Failed after {max_retries} attempts: {last_response}")
-
-
 def format_tool_error(operation: str, error: Exception) -> str:
     """Return a consistent error string for tool failure responses."""
     return f"Error {operation}: {error}"
