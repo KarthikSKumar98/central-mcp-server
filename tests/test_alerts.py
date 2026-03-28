@@ -1,8 +1,11 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 import tools.alerts as mod
+from models import Alert, PaginatedAlerts
 from tests.conftest import FakeMCP, make_ctx
-from models import PaginatedAlerts
+from utils.alerts import clean_alert_data
 
 
 @pytest.fixture
@@ -187,3 +190,47 @@ async def test_get_alerts_empty_returns_string(tools):
     ):
         result = await tools["central_get_alerts"](ctx, site_id="site-1")
     assert result == "No alerts found matching criteria"
+
+
+# ---------------------------------------------------------------------------
+# clean_alert_data
+# ---------------------------------------------------------------------------
+
+_RAW_ALERT_DATA = {
+    "summary": "Device Offline",
+    "clearedReason": None,
+    "createdAt": "2026-03-21T10:00:00Z",
+    "priority": "High",
+    "updatedAt": "2026-03-21T10:05:00Z",
+    "deviceType": "Access Point",
+    "updatedBy": "system",
+    "name": "AP Offline",
+    "status": "Active",
+    "category": "System",
+    "severity": "Critical",
+}
+
+
+def test_clean_alert_data_returns_alert_models():
+    result = clean_alert_data([_RAW_ALERT_DATA])
+    assert len(result) == 1
+    assert isinstance(result[0], Alert)
+
+
+def test_clean_alert_data_field_mapping():
+    a = clean_alert_data([_RAW_ALERT_DATA])[0]
+    assert a.summary == "Device Offline"
+    assert a.severity == "Critical"
+    assert a.status == "Active"
+    assert a.category == "System"
+    assert a.priority == "High"
+    assert a.cleared_reason is None
+    assert a.device_type == "Access Point"
+
+
+def test_clean_alert_data_multiple():
+    raw2 = {**_RAW_ALERT_DATA, "summary": "CPU High", "severity": "Major"}
+    result = clean_alert_data([_RAW_ALERT_DATA, raw2])
+    assert len(result) == 2
+    assert result[1].summary == "CPU High"
+    assert result[1].severity == "Major"

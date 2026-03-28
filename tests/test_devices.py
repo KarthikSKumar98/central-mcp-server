@@ -1,7 +1,11 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 import tools.devices as mod
+from models import Device
 from tests.conftest import FakeMCP, make_ctx
+from utils.devices import clean_device_data
 
 RAW_DEVICE = {
     "serialNumber": "SN123",
@@ -180,3 +184,65 @@ async def test_find_device_multiple_results(tools):
     ):
         result = await tools["central_find_device"](ctx, device_name="switch-01")
     assert "Multiple devices found" in result
+
+
+# ---------------------------------------------------------------------------
+# clean_device_data
+# ---------------------------------------------------------------------------
+
+_RAW_DEVICE = {
+    "serialNumber": "SN123",
+    "macAddress": "aa:bb:cc:dd:ee:ff",
+    "deviceType": "ACCESS_POINT",
+    "model": "AP-635",
+    "partNumber": "JZ123A",
+    "deviceName": "MyAP",
+    "deviceFunction": None,
+    "status": "ONLINE",
+    "isProvisioned": "Yes",
+    "role": None,
+    "deployment": None,
+    "tier": "ADVANCED_AP",
+    "firmwareVersion": "10.6.0",
+    "siteId": "site-1",
+    "siteName": "HQ",
+    "deviceGroupName": "Group1",
+    "scopeId": "scope-1",
+    "ipv4": "192.168.1.1",
+    "stackId": None,
+}
+
+
+def test_clean_device_data_returns_device_models():
+    result = clean_device_data([_RAW_DEVICE])
+    assert len(result) == 1
+    assert isinstance(result[0], Device)
+
+
+def test_clean_device_data_field_mapping():
+    d = clean_device_data([_RAW_DEVICE])[0]
+    assert d.serial_number == "SN123"
+    assert d.mac_address == "aa:bb:cc:dd:ee:ff"
+    assert d.device_type == "ACCESS_POINT"
+    assert d.name == "MyAP"
+    assert d.firmware_version == "10.6.0"
+    assert d.site_id == "site-1"
+    assert d.site_name == "HQ"
+
+
+def test_clean_device_data_is_provisioned_yes():
+    d = clean_device_data([_RAW_DEVICE])[0]
+    assert d.is_provisioned is True
+
+
+def test_clean_device_data_is_provisioned_no():
+    raw = {**_RAW_DEVICE, "isProvisioned": "No"}
+    d = clean_device_data([raw])[0]
+    assert d.is_provisioned is False
+
+
+def test_clean_device_data_no_site():
+    raw = {**_RAW_DEVICE, "siteId": None, "siteName": None}
+    d = clean_device_data([raw])[0]
+    assert d.site_id is None
+    assert d.site_name is None

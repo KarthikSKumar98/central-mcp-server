@@ -1,9 +1,12 @@
-import pytest
 from datetime import datetime, timezone
 from unittest.mock import patch
+
+import pytest
+
 import tools.events as mod
+from models import Event, EventFilters, PaginatedEvents
 from tests.conftest import FakeMCP, make_ctx
-from models import Event, PaginatedEvents
+from utils.events import clean_event_filters
 
 
 @pytest.fixture
@@ -381,3 +384,60 @@ async def test_get_events_count_missing_total_returns_zero(tools):
             ctx, context_type="SITE", context_identifier="s1", site_id="s1"
         )
     assert result.total == 0
+
+
+# ---------------------------------------------------------------------------
+# clean_event_filters
+# ---------------------------------------------------------------------------
+
+_RAW_EVENT_FILTERS = {
+    "categories": [
+        {"category": "Clients", "count": 30},
+        {"category": "System", "count": 10},
+    ],
+    "eventNames": [
+        {"eventId": "32", "eventName": "Client DHCP Acknowledge", "count": 25},
+    ],
+    "sourceTypes": [
+        {"sourceType": "Wireless Client", "count": 30},
+    ],
+}
+
+
+def test_clean_event_filters_returns_model():
+    result = clean_event_filters(_RAW_EVENT_FILTERS)
+    assert isinstance(result, EventFilters)
+
+
+def test_clean_event_filters_total_is_sum_of_categories():
+    result = clean_event_filters(_RAW_EVENT_FILTERS)
+    assert result.total == 40  # 30 + 10
+
+
+def test_clean_event_filters_categories():
+    result = clean_event_filters(_RAW_EVENT_FILTERS)
+    assert len(result.categories) == 2
+    assert result.categories[0].category == "Clients"
+    assert result.categories[0].count == 30
+
+
+def test_clean_event_filters_event_names():
+    result = clean_event_filters(_RAW_EVENT_FILTERS)
+    assert len(result.event_names) == 1
+    assert result.event_names[0].event_id == "32"
+    assert result.event_names[0].event_name == "Client DHCP Acknowledge"
+    assert result.event_names[0].count == 25
+
+
+def test_clean_event_filters_source_types():
+    result = clean_event_filters(_RAW_EVENT_FILTERS)
+    assert len(result.source_types) == 1
+    assert result.source_types[0].source_type == "Wireless Client"
+
+
+def test_clean_event_filters_empty_response():
+    result = clean_event_filters({})
+    assert result.total == 0
+    assert result.categories == []
+    assert result.event_names == []
+    assert result.source_types == []
