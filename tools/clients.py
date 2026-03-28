@@ -1,7 +1,8 @@
 from typing import Literal
 
-from fastmcp import Context
+from fastmcp import Context, FastMCP
 from pycentral.new_monitoring.clients import Clients
+
 from models import Client
 from tools import READ_ONLY
 from utils.clients import clean_client_data
@@ -19,7 +20,8 @@ CLIENT_FILTER_FIELDS: dict[str, FilterField] = {
 }
 
 
-def register(mcp):
+def register(mcp: FastMCP) -> None:
+    """Register client tools with the MCP server."""
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_clients(
@@ -35,7 +37,7 @@ def register(mcp):
         start_query_time: str | None = None,
         end_query_time: str | None = None,
     ) -> list[Client] | str:
-        """Returns a filtered list of clients from Central using OData v4.0 filter syntax.
+        """Return a filtered list of clients from Central using OData v4.0 filter syntax.
 
         Prefer this over any full-inventory fetch for targeted queries by site, status, or
         connection type. Call central_get_site_name_id_mapping first to obtain site_id values for filtering.

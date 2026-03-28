@@ -1,4 +1,8 @@
-def register(mcp):
+from fastmcp import FastMCP
+
+
+def register(mcp: FastMCP) -> None:
+    """Register prompt tools with the MCP server."""
 
     @mcp.prompt
     def network_health_overview() -> str:

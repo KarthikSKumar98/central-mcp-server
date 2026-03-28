@@ -1,7 +1,8 @@
 from typing import Literal
 
-from fastmcp import Context
+from fastmcp import Context, FastMCP
 from pycentral.new_monitoring import MonitoringDevices
+
 from models import Device
 from tools import READ_ONLY
 from utils.common import FilterField, build_odata_filter, format_tool_error
@@ -19,7 +20,8 @@ DEVICE_FILTER_FIELDS: dict[str, FilterField] = {
 }
 
 
-def register(mcp):
+def register(mcp: FastMCP) -> None:
+    """Register device tools with the MCP server."""
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_devices(
@@ -34,7 +36,7 @@ def register(mcp):
         site_assigned: bool | None = None,
         sort: str | None = None,
     ) -> list[Device] | str:
-        """Returns a filtered list of devices from Central using OData v4.0 filter syntax.
+        """Return a filtered list of devices from Central using OData v4.0 filter syntax.
 
         Prefer this over any full-inventory fetch for targeted queries by site, type, model,
         or status. Call central_get_site_name_id_mapping first to obtain site_id values for filtering.
