@@ -1,3 +1,7 @@
+---
+name: New Tool
+---
+
 ## What this adds
 <!-- One sentence: what category and what they return -->
 

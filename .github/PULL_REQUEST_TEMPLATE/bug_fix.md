@@ -1,3 +1,8 @@
+---
+name: Bug Fix
+---
+Fixes #<!-- issue number -->
+
 ## What broke and why
 <!-- One sentence: root cause -->
 
