@@ -50,7 +50,9 @@ def verify_connection(conn) -> None:
     """
     try:
         conn.command(
-            api_method="GET", api_path="network-monitoring/v1/sites-health", api_params={"limit": 1}
+            api_method="GET",
+            api_path="network-monitoring/v1/sites-health",
+            api_params={"limit": 1},
         )
     except Exception as exc:
         raise RuntimeError(
