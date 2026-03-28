@@ -131,7 +131,16 @@ def test_paginated_fetch_single_page():
     conn.command.return_value = _page([{"id": 1}])
     result = paginated_fetch(conn, "some/path", limit=100)
     assert result == [{"id": 1}]
-    conn.command.assert_called_once_with("GET", "some/path", api_params={"limit": 100, "next": 1})
+    conn.command.assert_called_once_with(
+        api_method="GET", api_path="some/path", api_params={"limit": 100, "next": 1}
+    )
+
+
+def test_paginated_fetch_raises_on_non_200():
+    conn = MagicMock()
+    conn.command.return_value = {"code": 500, "msg": "Internal Server Error"}
+    with pytest.raises(Exception, match="API error 500"):
+        paginated_fetch(conn, "some/path", limit=10)
 
 
 def test_paginated_fetch_multi_page_accumulates_items():
