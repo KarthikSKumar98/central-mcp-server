@@ -164,6 +164,17 @@ async def test_get_alerts_empty_returns_string(tools):
     assert result == "No alerts found matching criteria"
 
 
+@pytest.mark.asyncio
+async def test_get_alerts_returns_error_on_non_200(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = {
+        "code": 500, "msg": "Internal Server Error"
+    }
+    result = await tools["central_get_alerts"](ctx, site_id="site-1")
+    assert isinstance(result, str)
+    assert "fetching alerts" in result
+
+
 # ---------------------------------------------------------------------------
 # clean_alert_data
 # ---------------------------------------------------------------------------

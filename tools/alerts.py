@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal
 
 from fastmcp import Context
 
@@ -84,7 +84,7 @@ def register(mcp):
             api_params=query_params,
         )
         if response["code"] != 200:
-            return format_tool_error("fetching alerts", response["msg"])
+            return format_tool_error("fetching alerts", Exception(str(response["msg"])))
         msg = response["msg"]
         raw_items = msg.get("items", [])
         if not raw_items:
