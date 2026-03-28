@@ -113,7 +113,7 @@ def register(mcp):
                 api_params=query_params,
             )
             if response["code"] != 200:
-                return format_tool_error("fetching events", Exception(str(response["msg"])))
+                return format_tool_error("fetching events", response["msg"])
         except Exception as e:
             return format_tool_error("fetching events", e)
 
@@ -174,7 +174,7 @@ def register(mcp):
                 },
             )
             if response["code"] != 200:
-                return format_tool_error("fetching event filters", Exception(str(response["msg"])))
+                return format_tool_error("fetching event filters", response["msg"])
         except Exception as e:
             return format_tool_error("fetching event filters", e)
         return clean_event_filters(response["msg"])
