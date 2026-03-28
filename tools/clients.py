@@ -1,7 +1,7 @@
 from fastmcp import Context
 from typing import List, Optional, Literal
 from models import Client
-from utils import clean_client_data, build_odata_filter, FilterField
+from utils import clean_client_data, build_odata_filter, FilterField, format_tool_error
 from pycentral.new_monitoring.clients import Clients
 from tools import READ_ONLY
 
@@ -76,7 +76,7 @@ def register(mcp):
                 filter_str=filter_str,
             )
         except Exception as e:
-            return f"Error occurred while fetching clients: {e}"
+            return format_tool_error("fetching clients", e)
 
         if not clients:
             return "No clients found matching the specified criteria."
@@ -105,8 +105,7 @@ def register(mcp):
         except Exception as e:
             if MISSING_CLIENT_RESPONSE in str(e):
                 return f"No client found with MAC address '{mac_address}'."
-            else:
-                return f"Error occurred while fetching client details: {e}"
+            return format_tool_error("fetching client details", e)
 
         if not result:
             return f"No client found with MAC address '{mac_address}'."

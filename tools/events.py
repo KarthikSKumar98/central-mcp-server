@@ -4,6 +4,7 @@ from models import Event, EventFilters, PaginatedEvents
 from utils import (
     clean_event_filters,
     compute_time_window,
+    format_tool_error,
     retry_central_command,
 )
 from tools import READ_ONLY
@@ -110,7 +111,7 @@ def register(mcp):
                 api_params=query_params,
             )
         except Exception as e:
-            return f"Error fetching events: {e}"
+            return format_tool_error("fetching events", e)
 
         msg = response["msg"]
         raw_events = msg.get("events", [])  # key is "events", not "items"

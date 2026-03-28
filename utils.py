@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from models import SiteData, SiteMetrics
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import List
 from constants import SITE_LIMIT
@@ -213,6 +214,13 @@ def compute_health_score(health_obj: dict) -> int | None:
             + (health_obj["Good"] * 1)
         )
     return None
+
+
+def format_tool_error(operation: str, error: Exception) -> str:
+    """Return a consistent error string for tool failure responses."""
+    return f"Error {operation}: {error}"
+
+
 def transform_to_site_data(site_raw: dict) -> SiteData:
     """Transform raw Central API data to standardized SiteData model."""
     health_obj = groups_to_map(site_raw.get("health", {}))

@@ -1,7 +1,7 @@
 from fastmcp import Context
 from typing import List, Optional, Literal
 from models import Device
-from utils import clean_device_data, build_odata_filter, FilterField
+from utils import clean_device_data, build_odata_filter, FilterField, format_tool_error
 from pycentral.new_monitoring import MonitoringDevices
 from tools import READ_ONLY
 
@@ -87,7 +87,7 @@ def register(mcp):
                 sort=sort,
             )
         except Exception as e:
-            return f"Error fetching devices: {e}"
+            return format_tool_error("fetching devices", e)
 
         if not devices:
             return "No devices found matching the specified criteria."
@@ -123,7 +123,7 @@ def register(mcp):
                 central_conn=ctx.lifespan_context["conn"], filter_str=filter_str
             )
         except Exception as e:
-            return f"Error occurred while fetching device data: {e}"
+            return format_tool_error("fetching device data", e)
         if "items" not in device_resp:
             return f"Unexpected API error response: {device_resp}"
 
