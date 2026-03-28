@@ -1,7 +1,7 @@
 from fastmcp import Context
 from typing import List
 from models import SiteData
-from utils import fetch_site_data_parallel, groups_to_map
+from utils import fetch_site_data_parallel, groups_to_map, compute_health_score
 from pycentral.new_monitoring import MonitoringSites
 from tools import READ_ONLY
 
@@ -55,13 +55,7 @@ def register(mcp):
         mapping = {}
         for site in sites:
             health_obj = groups_to_map(site.get("health", {}))
-            summary = None
-            if all(k in health_obj for k in ["Poor", "Fair", "Good"]):
-                summary = round(
-                    (health_obj["Poor"] * 0)
-                    + (health_obj["Fair"] * 0.5)
-                    + (health_obj["Good"] * 1)
-                )
+            summary = compute_health_score(health_obj)
             mapping[site["siteName"]] = {
                 "site_id": site.get("id"),
                 "health": summary,

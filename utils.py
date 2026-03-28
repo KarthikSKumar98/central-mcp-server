@@ -204,15 +204,21 @@ def retry_central_command(
     raise Exception(f"Failed after {max_retries} attempts: {last_response}")
 
 
-def transform_to_site_data(site_raw: dict) -> SiteData:
-    """Transform raw Central API data to standardized SiteData model."""
-    health_obj = groups_to_map(site_raw.get("health", {}))
+def compute_health_score(health_obj: dict) -> int | None:
+    """Compute weighted health score from Poor/Fair/Good counts. Returns None if keys are absent."""
     if all(k in health_obj for k in ["Poor", "Fair", "Good"]):
-        health_obj["Summary"] = round(
+        return round(
             (health_obj["Poor"] * 0)
             + (health_obj["Fair"] * 0.5)
             + (health_obj["Good"] * 1)
         )
+    return None
+def transform_to_site_data(site_raw: dict) -> SiteData:
+    """Transform raw Central API data to standardized SiteData model."""
+    health_obj = groups_to_map(site_raw.get("health", {}))
+    score = compute_health_score(health_obj)
+    if score is not None:
+        health_obj["Summary"] = score
         health_obj.pop("Total", None)
 
     devices_obj = groups_to_map(site_raw.get("devices", {}))
