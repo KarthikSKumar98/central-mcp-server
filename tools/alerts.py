@@ -1,6 +1,6 @@
 from typing import Literal
 
-from fastmcp import Context
+from fastmcp import Context, FastMCP
 
 from constants import ALERT_LIMIT
 from models import PaginatedAlerts
@@ -16,26 +16,29 @@ ALERT_FILTER_FIELDS: dict[str, FilterField] = {
 }
 
 
-def register(mcp):
+def register(mcp: FastMCP) -> None:
+    """Register alert tools with the MCP server."""
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_alerts(
         ctx: Context,
         site_id: str,
         status: Literal["Active", "Cleared", "Deferred"] | None = "Active",
-        device_type: Literal["Access Point", "Gateway", "Switch", "Bridge"] | None = None,
-        category: Literal["Clients", "System", "LAN", "WLAN", "WAN", "Cluster", "Routing", "Security"] | None = None,
+        device_type: Literal["Access Point", "Gateway", "Switch", "Bridge"]
+        | None = None,
+        category: Literal[
+            "Clients", "System", "LAN", "WLAN", "WAN", "Cluster", "Routing", "Security"
+        ]
+        | None = None,
         sort: str = "severity desc",
         limit: int = ALERT_LIMIT,
         cursor: int | None = None,
     ) -> PaginatedAlerts | str:
-        """REQUIRES site_id — call central_get_sites(site_names=["<site name>"]) and extract
+        """Return a filtered list of alerts for a specific site which can be used this to drill into active issues by device type or category after identifying the target site.
+
+        REQUIRES site_id — call central_get_sites(site_names=["<site name>"]) and extract
         site_id from the returned SiteData. Do NOT call this tool without a site_id; it will
         fail validation.
-
-        Returns a filtered list of alerts for a specific site. Use this to drill into active
-        issues by device type or category after identifying the target site.
-
         Results are sorted by severity descending by default (Critical first), making the most
         important alerts appear in the first page. To page through results, pass the `next_cursor`
         value from the previous response as `cursor` in the next call. When `next_cursor` is None,

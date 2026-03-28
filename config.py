@@ -1,4 +1,5 @@
 import os
+
 from dotenv import load_dotenv
 from platformdirs import user_config_dir
 
@@ -15,8 +16,8 @@ CENTRAL_CLIENT_SECRET = os.getenv("CENTRAL_CLIENT_SECRET", "")
 
 
 def validate_credentials():
-    """
-    Validate that all required credentials are set.
+    """Validate that all required credentials are set.
+
     Raises ValueError if any are missing.
     """
     if not CENTRAL_BASE_URL:

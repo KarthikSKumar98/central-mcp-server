@@ -1,17 +1,19 @@
-from fastmcp import Context
+from fastmcp import Context, FastMCP
 from pycentral.new_monitoring import MonitoringSites
+
 from models import SiteData
 from tools import READ_ONLY
 from utils.sites import compute_health_score, fetch_site_data_parallel, groups_to_map
 
 
-def register(mcp):
+def register(mcp: FastMCP) -> None:
+    """Register site tools with the MCP server."""
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_sites(
         ctx: Context, site_names: list[str] | None = None
     ) -> list[SiteData]:
-        """Returns detailed metrics for one or more sites.
+        """Return detailed metrics for one or more sites.
 
         Prefer calling with a site_names filter targeting only the sites you care about.
         Do NOT call without a filter unless the user explicitly requests data for all sites —
@@ -34,9 +36,10 @@ def register(mcp):
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_site_name_id_mapping(ctx: Context) -> dict:
-        """Returns a lightweight mapping of all site names to their IDs and health scores. The list is
-        sorted by health score (lowest to highest — worst to best) to help quickly identify sites
-        that may need attention. Sites with unknown/None health values are placed last.
+        """Return a lightweight mapping of all site names to their IDs and health scores.
+
+        The list is sorted by health score (lowest to highest — worst to best) to help quickly
+        identify sites that may need attention. Sites with unknown/None health values are placed last.
 
         Use this before calling central_get_sites or any endpoint that requires a site_id. It is
         especially useful when the user provides a partial or ambiguous site name — verify

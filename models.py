@@ -1,7 +1,7 @@
-from typing import Dict, Any
-from pydantic import BaseModel, Field
-
 from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
 class SourceType(str, Enum):
@@ -14,28 +14,28 @@ class SourceType(str, Enum):
 
 
 class SiteMetrics(BaseModel):
-    """Standardized site metrics structure"""
+    """Standardized site metrics structure."""
 
-    health: Dict[str, Any] = Field(
+    health: dict[str, Any] = Field(
         default_factory=dict,
         description="Health score distribution: Poor/Fair/Good percentages plus a Summary score (0–100, weighted average where Good=1, Fair=0.5, Poor=0).",
     )
-    devices: Dict[str, Any] = Field(
+    devices: dict[str, Any] = Field(
         default_factory=dict,
         description="Device counts for the site. Contains 'Summary' (Poor/Fair/Good/Total) and optional 'Details' broken down by device type (Access Points, Switches, Gateways, Bridges).",
     )
-    clients: Dict[str, Any] = Field(
+    clients: dict[str, Any] = Field(
         default_factory=dict,
         description="Client counts for the site. Contains 'Summary' (Poor/Fair/Good/Total) and optional 'Details' broken down by medium (Wired, Wireless).",
     )
-    alerts: Dict[str, Any] | int = Field(
+    alerts: dict[str, Any] | int = Field(
         default_factory=dict,
         description="Alert counts for the site: Critical (int) and Total (int).",
     )
 
 
 class SiteData(BaseModel):
-    """Standardized site data structure"""
+    """Standardized site data structure."""
 
     site_id: str = Field(
         description="Unique identifier for the site in Central. Used to reference the site in other API calls."
@@ -51,7 +51,7 @@ class SiteData(BaseModel):
 
 
 class Device(BaseModel):
-    """Device inventory data structure (duplicates removed)"""
+    """Device inventory data structure (duplicates removed)."""
 
     # Primary identifiers
     serial_number: str = Field(
@@ -116,7 +116,7 @@ class Device(BaseModel):
 
 
 class Client(BaseModel):
-    """Client device data structure"""
+    """Client device data structure."""
 
     # Primary identifiers
     mac: str | None = Field(description="MAC address of the client.")

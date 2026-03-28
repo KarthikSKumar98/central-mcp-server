@@ -93,10 +93,7 @@ def transform_to_site_data(site_raw: dict) -> SiteData:
 
 
 def groups_to_map(obj):
-    """Transform an object that either is {"groups":[...], ...}
-    or wraps that as a parent (e.g. {"health": {"groups":[...], "count": ...}})
-    or is a list of device/client types with nested health groups.
-    """
+    """Transform an object that either is {"groups":[...], ...} or wraps that as a parent (e.g. {"health": {"groups":[...], "count": ...}}) or is a list of device/client types with nested health groups."""
     if not isinstance(obj, dict) and not isinstance(obj, list):
         return obj
 

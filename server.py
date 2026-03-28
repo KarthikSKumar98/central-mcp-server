@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 from fastmcp import FastMCP
 from fastmcp.experimental.transforms.code_mode import CodeMode
+
 from services.central_service import get_conn, verify_connection
-from tools import sites, devices, clients, alerts, prompts, events
+from tools import alerts, clients, devices, events, prompts, sites
 
 _INSTRUCTIONS = (Path(__file__).parent / "INSTRUCTIONS.md").read_text()
 
@@ -46,10 +48,6 @@ def run():
 
 if __name__ == "__main__":
     mcp.run()
+
+    # For local development with auto-reload, use the following command instead of mcp.run():
     # mcp.run(transport="sse", host="127.0.0.1", port=8001)
-
-# Test
-# uv run pytest tests/ -v
-
-# Tool Test
-# python -m watchfiles --filter python "python server.py" .

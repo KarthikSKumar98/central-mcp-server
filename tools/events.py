@@ -1,6 +1,6 @@
 from typing import Literal
 
-from fastmcp import Context
+from fastmcp import Context, FastMCP
 
 from constants import EVENT_LIMIT
 from models import Event, EventFilters, PaginatedEvents
@@ -43,7 +43,8 @@ def _resolve_time_window(
     return format_rfc3339(start_dt), format_rfc3339(end_dt)
 
 
-def register(mcp):
+def register(mcp: FastMCP) -> None:
+    """Register alert tools with the MCP server."""
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_events(
