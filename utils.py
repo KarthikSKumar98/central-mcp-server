@@ -1,18 +1,20 @@
-from dataclasses import dataclass
-from models import SiteData, SiteMetrics
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import List
+
 from constants import SITE_LIMIT
+
 from models import (
     Alert,
     Client,
     Device,
+    EventCategoryCount,
     EventFilters,
     EventNameCount,
     EventSourceTypeCount,
-    EventCategoryCount,
+    SiteData,
+    SiteMetrics,
 )
 
 
@@ -23,8 +25,7 @@ class FilterField:
 
 
 def build_odata_filter(pairs: list[tuple["FilterField", str]]) -> str | None:
-    """
-    Build an OData v4.0 filter string from (FilterField, value) pairs.
+    """Build an OData v4.0 filter string from (FilterField, value) pairs.
 
     - Uses 'in (...)' for comma-separated values, 'eq' for single values.
     - Raises ValueError if a value is not in FilterField.allowed_values (when defined).
@@ -57,14 +58,14 @@ def build_odata_filter(pairs: list[tuple["FilterField", str]]) -> str | None:
 
 
 def fetch_site_data_parallel(central_conn) -> tuple:
-    """
-    Fetch site health, device health, and client health data in parallel.
+    """Fetch site health, device health, and client health data in parallel.
 
     Args:
         central_conn: Central API connection object
 
     Returns:
         tuple: (site_health_data, device_health_data, client_health_data)
+    
     """
     endpoints = [
         "network-monitoring/v1/sites-health",
@@ -83,8 +84,7 @@ def fetch_site_data_parallel(central_conn) -> tuple:
 
 
 def process_site_health_data(site_health, device_health, client_health):
-    """
-    Combine site health, device health, and client health data into unified site objects.
+    """Combine site health, device health, and client health data into unified site objects.
 
     Args:
         site_health: List of site health data
@@ -93,6 +93,7 @@ def process_site_health_data(site_health, device_health, client_health):
 
     Returns:
         dict: Dictionary of site names to SiteData objects
+
     """
     processed_sites = {
         site["siteName"]: transform_to_site_data(site) for site in site_health
@@ -119,8 +120,7 @@ def paginated_fetch(
     limit: int,
     additional_params: dict = None,
 ):
-    """
-    Fetch all pages from a cursor-based Central API endpoint.
+    """Fetch all pages from a cursor-based Central API endpoint.
 
     Args:
         central_conn: Central API connection object
@@ -130,6 +130,7 @@ def paginated_fetch(
 
     Returns:
         list: All fetched items across all pages
+
     """
     total = None
     items = []
@@ -257,8 +258,7 @@ def transform_to_site_data(site_raw: dict) -> SiteData:
 
 
 def groups_to_map(obj):
-    """
-    Transform an object that either is {"groups":[...], ...}
+    """Transform an object that either is {"groups":[...], ...}
     or wraps that as a parent (e.g. {"health": {"groups":[...], "count": ...}})
     or is a list of device/client types with nested health groups.
     """
@@ -329,8 +329,7 @@ def _safe_float(value):
 
 
 def clean_device_data(devices: list[dict]) -> list[Device]:
-    """
-    Remove duplicate fields from device inventory data.
+    """Remove duplicate fields from device inventory data.
 
     Removes:
     - 'softwareVersion' (keeping 'firmwareVersion')
@@ -341,6 +340,7 @@ def clean_device_data(devices: list[dict]) -> list[Device]:
 
     Returns:
         List of cleaned device dictionaries
+
     """
     cleaned_devices = []
     for device in devices:
@@ -372,8 +372,7 @@ def clean_device_data(devices: list[dict]) -> list[Device]:
 
 
 def clean_client_data(clients: list[dict]) -> list[Client]:
-    """
-    Transform client API response to match Client model schema.
+    """Transform client API response to match Client model schema.
 
     Converts camelCase fields to snake_case and removes duplicates.
 
@@ -382,6 +381,7 @@ def clean_client_data(clients: list[dict]) -> list[Client]:
 
     Returns:
         List of cleaned client dictionaries matching Client model schema
+
     """
     cleaned_clients = []
     for client in clients:
@@ -451,7 +451,7 @@ def clean_client_data(clients: list[dict]) -> list[Client]:
     return cleaned_clients
 
 
-def clean_alert_data(alerts: List[dict]) -> List[Alert]:
+def clean_alert_data(alerts: list[dict]) -> list[Alert]:
     cleaned_alerts = []
     for alert in alerts:
         cleaned_alerts.append(

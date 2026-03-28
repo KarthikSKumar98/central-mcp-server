@@ -66,7 +66,9 @@ def register(mcp):
         mapping = dict(
             sorted(
                 mapping.items(),
-                key=lambda item: item[1]["health"] if item[1]["health"] is not None else float("inf"),
+                key=lambda item: (
+                    item[1]["health"] if item[1]["health"] is not None else float("inf")
+                ),
                 reverse=False,
             )
         )
