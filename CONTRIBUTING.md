@@ -42,11 +42,12 @@ uv run pytest tests/ -v   # run all tests
 Follow these steps for every new tool:
 
 1. **Add the tool function** to `tools/<domain>.py` (create a new file for a new domain)
-2. **Register it** inside the `register(mcp)` function using `@mcp.tool(annotations=READ_ONLY)`
-3. **Define return types** as Pydantic `BaseModel` subclasses in `models.py`
-4. **Add mock tests** to `tests/test_<domain>.py` (see [Tests](#tests) below)
-5. **Lint**: `ruff check . && ruff format .`
-6. **Test**: `uv run pytest tests/ -v` — all tests must pass
+2. **Add helper functions** — if your tool needs data-transform helpers (e.g. `clean_*_data`), add them to `utils/<domain>.py` (create the file if it's a new domain). Shared infrastructure (retry, pagination, OData filtering, error formatting) goes in `utils/common.py`.
+3. **Register it** inside the `register(mcp)` function using `@mcp.tool(annotations=READ_ONLY)`
+4. **Define return types** as Pydantic `BaseModel` subclasses in `models.py`
+5. **Add mock tests** to `tests/test_<domain>.py` (see [Tests](#tests) below)
+6. **Lint**: `ruff check . && ruff format .`
+7. **Test**: `uv run pytest tests/ -v` — all tests must pass
 
 ---
 
@@ -113,11 +114,13 @@ async def central_get_sites(...):
 
 ### Error handling
 
-Return a descriptive string on failure. Do not raise exceptions to the caller:
+Return a descriptive string on failure using `format_tool_error` from `utils.common`. Do not raise exceptions to the caller:
 
 ```python
+from utils.common import format_tool_error
+# ...
 except Exception as e:
-    return f"Failed to retrieve sites: {e}"
+    return format_tool_error("fetching sites", e)
 ```
 
 ### Linting
