@@ -4,6 +4,7 @@ from models import Event, EventFilters, PaginatedEvents
 from utils import (
     clean_event_filters,
     compute_time_window,
+    format_rfc3339,
     format_tool_error,
     retry_central_command,
 )
@@ -38,8 +39,7 @@ def _resolve_time_window(
     if start_time and end_time:
         return start_time, end_time
     start_dt, end_dt = compute_time_window(time_range)
-    fmt = lambda dt: dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
-    return fmt(start_dt), fmt(end_dt)
+    return format_rfc3339(start_dt), format_rfc3339(end_dt)
 
 
 def register(mcp):

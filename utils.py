@@ -221,6 +221,11 @@ def format_tool_error(operation: str, error: Exception) -> str:
     return f"Error {operation}: {error}"
 
 
+def format_rfc3339(dt: datetime) -> str:
+    """Format a datetime as an RFC 3339 string with millisecond precision."""
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
 def transform_to_site_data(site_raw: dict) -> SiteData:
     """Transform raw Central API data to standardized SiteData model."""
     health_obj = groups_to_map(site_raw.get("health", {}))
