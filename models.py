@@ -238,35 +238,6 @@ class Alert(BaseModel):
     )
 
 
-class ApplicationVisibility(BaseModel):
-    experience: dict | None = Field(description="Application experience metrics.")
-    dest_location: list[dict] | None = Field(
-        description="Destination location details for the application traffic."
-    )
-    risk: str | None = Field(description="Risk classification of the application.")
-    application_host_type: str | None = Field(
-        description="Host type (e.g., cloud, on-prem)."
-    )
-    name: str | None = Field(description="Application name.")
-    tx_bytes: int | None = Field(
-        description="Total bytes transmitted by the application."
-    )
-    rx_bytes: int | None = Field(description="Total bytes received by the application.")
-    last_used_time: str | None = Field(
-        description="Timestamp when the application was last used."
-    )
-    tls_version: str | None = Field(description="TLS version used by the application.")
-    certificate_expiry_date: str | None = Field(
-        description="Expiry date of the application's TLS certificate."
-    )
-    categories: list[str] | None = Field(
-        description="List of categories the application belongs to."
-    )
-    state: str | None = Field(
-        description="Current state of the application visibility entry."
-    )
-
-
 class EventNameCount(BaseModel):
     event_id: str = Field(description="Event type identifier.")
     event_name: str = Field(description="Human-readable event name.")
