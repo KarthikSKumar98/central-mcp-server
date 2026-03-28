@@ -1,9 +1,8 @@
 from fastmcp import Context
-from typing import List, Optional, Literal
-from models import Client
-from utils import clean_client_data, build_odata_filter, FilterField, format_tool_error
 from pycentral.new_monitoring.clients import Clients
 from tools import READ_ONLY
+from utils.clients import clean_client_data
+from utils.common import FilterField, build_odata_filter, format_tool_error
 
 MISSING_CLIENT_RESPONSE = "Resource not found for the given input."
 # API field name mappings — Literal annotations in the function signature are the source of

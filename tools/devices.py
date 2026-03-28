@@ -4,6 +4,8 @@ from models import Device
 from utils import clean_device_data, build_odata_filter, FilterField, format_tool_error
 from pycentral.new_monitoring import MonitoringDevices
 from tools import READ_ONLY
+from utils.common import FilterField, build_odata_filter, format_tool_error
+from utils.devices import clean_device_data
 
 # API field definitions — update allowed_values when Central adds/removes enum options
 DEVICE_FILTER_FIELDS: dict[str, FilterField] = {

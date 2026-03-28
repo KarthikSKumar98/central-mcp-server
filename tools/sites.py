@@ -4,6 +4,7 @@ from models import SiteData
 from utils import fetch_site_data_parallel, groups_to_map, compute_health_score
 from pycentral.new_monitoring import MonitoringSites
 from tools import READ_ONLY
+from utils.sites import compute_health_score, fetch_site_data_parallel, groups_to_map
 
 
 def register(mcp):
