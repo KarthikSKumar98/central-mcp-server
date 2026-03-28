@@ -46,7 +46,7 @@ def get_conn():
 
 def verify_connection(conn) -> None:
     """Verify credentials are valid by making a lightweight GET to the Central API.
-    
+
     Raises RuntimeError with a clear message if the connection fails.
     """
     try:

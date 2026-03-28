@@ -48,6 +48,6 @@ def run():
 
 if __name__ == "__main__":
     mcp.run()
-    
+
     # For local development with auto-reload, use the following command instead of mcp.run():
     # mcp.run(transport="sse", host="127.0.0.1", port=8001)

@@ -24,14 +24,18 @@ def register(mcp: FastMCP) -> None:
         ctx: Context,
         site_id: str,
         status: Literal["Active", "Cleared", "Deferred"] | None = "Active",
-        device_type: Literal["Access Point", "Gateway", "Switch", "Bridge"] | None = None,
-        category: Literal["Clients", "System", "LAN", "WLAN", "WAN", "Cluster", "Routing", "Security"] | None = None,
+        device_type: Literal["Access Point", "Gateway", "Switch", "Bridge"]
+        | None = None,
+        category: Literal[
+            "Clients", "System", "LAN", "WLAN", "WAN", "Cluster", "Routing", "Security"
+        ]
+        | None = None,
         sort: str = "severity desc",
         limit: int = ALERT_LIMIT,
         cursor: int | None = None,
     ) -> PaginatedAlerts | str:
         """Return a filtered list of alerts for a specific site which can be used this to drill into active issues by device type or category after identifying the target site.
-        
+
         REQUIRES site_id — call central_get_sites(site_names=["<site name>"]) and extract
         site_id from the returned SiteData. Do NOT call this tool without a site_id; it will
         fail validation.
