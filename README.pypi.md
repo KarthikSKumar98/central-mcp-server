@@ -1,5 +1,7 @@
 # central-mcp-server
 
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/central-mcp-server)
+![PyPI - License](https://img.shields.io/pypi/l/central-mcp-server)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 Community MCP server for HPE Aruba Networking Central. This exposes your Central data as tools that AI assistants can query directly.
