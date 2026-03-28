@@ -54,5 +54,37 @@ dev = [
 asyncio_mode = "auto"
 
 [tool.ruff]
-# Add files or directories to exclude
-extend-exclude = ["routers/", "main.py"]
+extend-exclude = ["tests/"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle
+    "I",      # isort
+    "UP",     # pyupgrade
+    "T20",    # flake8-print: prevents stdout corruption (MCP critical)
+    "T10",    # flake8-debugger: prevents silent hangs (MCP critical)
+    "D",      # pydocstyle: tool descriptions surfaced to LLM
+    "ANN",    # annotations: type hints used for JSON schema generation
+    "ASYNC",  # flake8-async: async best practices for tool functions
+]
+
+ignore = [
+    # Formatter conflicts
+    "D203", "D213", "COM812", "E501",
+    # Skip non-essential docstring locations
+    "D100", "D101", "D104", "D105", "D106", "D107",
+    # Skip less-useful annotation cases
+    "ANN002", "ANN003", "ANN204",
+    # Allow inline string exceptions for fast LLM feedback
+    "EM101", "EM102", "TRY002", "TRY003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# D and ANN strictly enforced only in tools/ — LLM descriptions and schemas live there
+# D417 suppressed in tools/ — ctx parameter is boilerplate in every tool, not worth documenting
+"tools/*.py"    = ["D417"]
+"utils/*.py"    = ["D102", "D103", "ANN001", "ANN201", "ANN202"]
+"services/*.py" = ["D102", "D103", "ANN001", "ANN201", "ANN202"]
+"models.py"     = ["D102", "D103", "ANN001", "ANN201", "ANN202"]
+"config.py"     = ["D102", "D103", "ANN001", "ANN201", "ANN202"]
+"server.py"     = ["D103", "ANN001", "ANN201", "ANN202"]
