@@ -1,7 +1,11 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 import tools.clients as mod
+from models import Client
 from tests.conftest import FakeMCP, make_ctx
+from utils.clients import clean_client_data
 
 RAW_CLIENT = {
     "macAddress": "11:22:33:44:55:66",
@@ -148,3 +152,67 @@ async def test_find_client_missing_mac_returns_error_string(tools):
             ctx, mac_address="de:ad:00:00:00:01"
         )
     assert "de:ad:00:00:00:01" in result
+
+
+# ---------------------------------------------------------------------------
+# clean_client_data
+# ---------------------------------------------------------------------------
+
+_RAW_WIRELESS_CLIENT = {
+    "macAddress": "f0:1a:a0:3d:00:af",
+    "clientName": "MyLaptop",
+    "ipv4": "10.0.0.1",
+    "ipv6": None,
+    "hostName": "laptop.local",
+    "clientConnectionType": "Wireless",
+    "status": "Connected",
+    "connectedDeviceSerial": "SN456",
+    "connectedTo": "AP-01",
+    "vlanId": "10",
+    "wlanName": "CorpWLAN",
+    "wirelessBand": "5GHz",
+    "wirelessChannel": "60",
+    "wirelessSecurity": "WPA3",
+    "keyManagement": "SAE",
+    "bssid": "aa:bb:cc:dd:ee:01",
+    "radioMacAddress": "aa:bb:cc:dd:ee:00",
+    "siteId": "site-1",
+    "siteName": "HQ",
+}
+
+_RAW_WIRED_CLIENT = {
+    "macAddress": "00:11:22:33:44:55",
+    "clientConnectionType": "Wired",
+    "status": "Connected",
+    "port": "GE0/0/1",
+    "siteId": "site-1",
+    "siteName": "HQ",
+}
+
+
+def test_clean_client_data_wireless_fields_mapped():
+    c = clean_client_data([_RAW_WIRELESS_CLIENT])[0]
+    assert isinstance(c, Client)
+    assert c.mac == "f0:1a:a0:3d:00:af"
+    assert c.connection_type == "Wireless"
+    assert c.wlan_name == "CorpWLAN"
+    assert c.wireless_band == "5GHz"
+    assert c.bssid == "aa:bb:cc:dd:ee:01"
+
+
+def test_clean_client_data_wireless_strips_port():
+    c = clean_client_data([_RAW_WIRELESS_CLIENT])[0]
+    assert c.port is None
+
+
+def test_clean_client_data_wired_keeps_port():
+    c = clean_client_data([_RAW_WIRED_CLIENT])[0]
+    assert c.port == "GE0/0/1"
+
+
+def test_clean_client_data_wired_strips_wireless_fields():
+    c = clean_client_data([_RAW_WIRED_CLIENT])[0]
+    assert c.wlan_name is None
+    assert c.bssid is None
+    assert c.wireless_band is None
+    assert c.radio_mac is None

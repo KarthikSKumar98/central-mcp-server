@@ -1,9 +1,11 @@
+from typing import Literal
+
 from fastmcp import Context
-from typing import List, Optional, Literal
-from models import Device
-from utils import clean_device_data, build_odata_filter, FilterField
 from pycentral.new_monitoring import MonitoringDevices
+from models import Device
 from tools import READ_ONLY
+from utils.common import FilterField, build_odata_filter, format_tool_error
+from utils.devices import clean_device_data
 
 # API field definitions — update allowed_values when Central adds/removes enum options
 DEVICE_FILTER_FIELDS: dict[str, FilterField] = {
@@ -22,23 +24,23 @@ def register(mcp):
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_devices(
         ctx: Context,
-        site_id: Optional[str] = None,
-        device_type: Optional[Literal["ACCESS_POINT", "SWITCH", "GATEWAY"]] = None,
-        device_name: Optional[str] = None,
-        serial_number: Optional[str] = None,
-        model: Optional[str] = None,
-        device_function: Optional[str] = None,
-        is_provisioned: Optional[bool] = None,
-        site_assigned: Optional[bool] = None,
-        sort: Optional[str] = None,
-    ) -> List[Device] | str:
-        """
-        Returns a filtered list of devices from Central using OData v4.0 filter syntax.
+        site_id: str | None = None,
+        device_type: Literal["ACCESS_POINT", "SWITCH", "GATEWAY"] | None = None,
+        device_name: str | None = None,
+        serial_number: str | None = None,
+        model: str | None = None,
+        device_function: str | None = None,
+        is_provisioned: bool | None = None,
+        site_assigned: bool | None = None,
+        sort: str | None = None,
+    ) -> list[Device] | str:
+        """Returns a filtered list of devices from Central using OData v4.0 filter syntax.
 
         Prefer this over any full-inventory fetch for targeted queries by site, type, model,
         or status. Call central_get_site_name_id_mapping first to obtain site_id values for filtering.
 
-        Parameters:
+        Parameters
+        ----------
         - site_id: Exact site ID or comma-separated list of IDs.
         - device_type: ACCESS_POINT, SWITCH, or GATEWAY. Comma-separated for multiple.
         - device_name: Device display name. Comma-separated for multiple.
@@ -51,6 +53,7 @@ def register(mcp):
         - sort: Comma-separated sort expressions (e.g., 'deviceName asc, model desc').
           Supported fields: siteId, model, siteName, serialNumber, macAddress, deviceType,
           ipv4, deviceFunction, deviceName.
+
         """
         raw_pairs = [
             ("site_id", site_id),
@@ -87,7 +90,7 @@ def register(mcp):
                 sort=sort,
             )
         except Exception as e:
-            return f"Error fetching devices: {e}"
+            return format_tool_error("fetching devices", e)
 
         if not devices:
             return "No devices found matching the specified criteria."
@@ -96,15 +99,16 @@ def register(mcp):
     @mcp.tool(annotations=READ_ONLY)
     async def central_find_device(
         ctx: Context,
-        serial_number: Optional[str] = None,
-        device_name: Optional[str] = None,
+        serial_number: str | None = None,
+        device_name: str | None = None,
     ) -> Device | str:
-        """
-        Find a single device by unique identifier. Returns the device if exactly one match is found, otherwise returns an error message.
+        """Find a single device by unique identifier. Returns the device if exactly one match is found, otherwise returns an error message.
 
-        Parameters:
+        Parameters
+        ----------
         - serial_number: Device serial number (preferred — most reliable unique identifier).
         - device_name: Device display name. Use only if serial number is unknown.
+
         """
         if not serial_number and not device_name:
             return "Please provide at least one unique identifier: serial_number or device_name."
@@ -123,7 +127,7 @@ def register(mcp):
                 central_conn=ctx.lifespan_context["conn"], filter_str=filter_str
             )
         except Exception as e:
-            return f"Error occurred while fetching device data: {e}"
+            return format_tool_error("fetching device data", e)
         if "items" not in device_resp:
             return f"Unexpected API error response: {device_resp}"
 

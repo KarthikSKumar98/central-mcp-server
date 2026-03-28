@@ -1,15 +1,16 @@
-from fastmcp import Context
-from typing import Literal, Optional
-from models import Event, EventFilters, PaginatedEvents
-from utils import (
-    clean_event_filters,
-    compute_time_window,
-    retry_central_command,
-)
-from tools import READ_ONLY
+from typing import Literal
 
-# API hard cap; limit param must not exceed this
-EVENT_LIMIT = 100
+from fastmcp import Context
+
+from constants import EVENT_LIMIT
+from models import Event, EventFilters, PaginatedEvents
+from tools import READ_ONLY
+from utils.common import (
+    compute_time_window,
+    format_rfc3339,
+    format_tool_error,
+)
+from utils.events import clean_event_filters
 
 CONTEXT_TYPE = Literal[
     "SITE",
@@ -28,8 +29,8 @@ TIME_RANGE = Literal[
 
 def _resolve_time_window(
     time_range: str,
-    start_time: Optional[str],
-    end_time: Optional[str],
+    start_time: str | None,
+    end_time: str | None,
 ) -> tuple[str, str]:
     """Return (start_at, end_at) as RFC 3339 strings.
 
@@ -39,8 +40,7 @@ def _resolve_time_window(
     if start_time and end_time:
         return start_time, end_time
     start_dt, end_dt = compute_time_window(time_range)
-    fmt = lambda dt: dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
-    return fmt(start_dt), fmt(end_dt)
+    return format_rfc3339(start_dt), format_rfc3339(end_dt)
 
 
 def register(mcp):
@@ -52,14 +52,13 @@ def register(mcp):
         context_identifier: str,
         site_id: str,
         time_range: TIME_RANGE = "last_1h",
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-        search: Optional[str] = None,
-        limit: int = 50,
-        cursor: Optional[int] = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        search: str | None = None,
+        limit: int = EVENT_LIMIT,
+        cursor: int | None = None,
     ) -> PaginatedEvents | str:
-        """
-        Retrieve events for a given context (site, device, or client) within a specified time range.
+        """Retrieve events for a given context (site, device, or client) within a specified time range.
 
         Use central_get_events_count first to understand what event types and volumes exist before
         fetching full event records.
@@ -67,7 +66,8 @@ def register(mcp):
         To page through results, pass the `next_cursor` value from the previous response as `cursor`
         in the next call. When `next_cursor` is None, there are no more pages.
 
-        Parameters:
+        Parameters
+        ----------
         - context_type: Type of context entity — what context_identifier refers to. Allowed values:
           SITE, ACCESS_POINT, SWITCH, GATEWAY, WIRELESS_CLIENT, WIRED_CLIENT, BRIDGE.
         - context_identifier: Identifier for the context — site ID if context_type is SITE, device
@@ -87,6 +87,7 @@ def register(mcp):
 
         WARNING: last_30d can match thousands of events. Use central_get_events_count first to
         assess volume, then page incrementally using cursor.
+
         """
         start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
 
@@ -105,14 +106,16 @@ def register(mcp):
             query_params["next"] = cursor
 
         try:
-            response = retry_central_command(
-                ctx.lifespan_context["conn"],
+            conn = ctx.lifespan_context["conn"]
+            response = conn.command(
                 api_method="GET",
                 api_path="network-troubleshooting/v1/events",
                 api_params=query_params,
             )
+            if response["code"] != 200:
+                return format_tool_error("fetching events", response["msg"])
         except Exception as e:
-            return f"Error fetching events: {e}"
+            return format_tool_error("fetching events", e)
 
         msg = response["msg"]
         raw_events = msg.get("events", [])  # key is "events", not "items"
@@ -129,16 +132,16 @@ def register(mcp):
         context_identifier: str,
         site_id: str,
         time_range: TIME_RANGE = "last_1h",
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-    ) -> EventFilters:
-        """
-        Return a breakdown of event counts for a context without fetching full event details.
+        start_time: str | None = None,
+        end_time: str | None = None,
+    ) -> EventFilters | str:
+        """Return a breakdown of event counts for a context without fetching full event details.
 
         Use this before central_get_events to understand what types and volumes of events exist,
         avoiding the overhead of retrieving all event records.
 
-        Parameters:
+        Parameters
+        ----------
         - context_type: Type of context entity. Allowed values: SITE, ACCESS_POINT, SWITCH,
           GATEWAY, WIRELESS_CLIENT, WIRED_CLIENT, BRIDGE.
         - context_identifier: Identifier for the context — site ID, device serial number, or
@@ -153,19 +156,25 @@ def register(mcp):
 
         Returns an EventFilters object: total event count plus breakdowns by event name, source
         type, and category.
+
         """
         start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
 
-        response = retry_central_command(
-            ctx.lifespan_context["conn"],
-            api_method="GET",
-            api_path="network-troubleshooting/v1/event-filters",
-            api_params={
-                "context-type": context_type,
-                "context-identifier": context_identifier,
-                "start-at": start_at,
-                "end-at": end_at,
-                "site-id": site_id,
-            },
-        )
+        try:
+            conn = ctx.lifespan_context["conn"]
+            response = conn.command(
+                api_method="GET",
+                api_path="network-troubleshooting/v1/event-filters",
+                api_params={
+                    "context-type": context_type,
+                    "context-identifier": context_identifier,
+                    "start-at": start_at,
+                    "end-at": end_at,
+                    "site-id": site_id,
+                },
+            )
+            if response["code"] != 200:
+                return format_tool_error("fetching event filters", response["msg"])
+        except Exception as e:
+            return format_tool_error("fetching event filters", e)
         return clean_event_filters(response["msg"])
