@@ -1,16 +1,12 @@
-from fastmcp import Context
-from typing import Literal, Optional
-from models import PaginatedAlerts
-from utils import (
-    retry_central_command,
-    build_odata_filter,
-    FilterField,
-    clean_alert_data,
-)
-from tools import READ_ONLY
+from typing import Literal
 
-# API hard cap; limit param must not exceed this
-ALERT_LIMIT = 100
+from fastmcp import Context, FastMCP
+
+from constants import ALERT_LIMIT
+from models import PaginatedAlerts
+from tools import READ_ONLY
+from utils.alerts import clean_alert_data
+from utils.common import FilterField, build_odata_filter, format_tool_error
 
 ALERT_FILTER_FIELDS: dict[str, FilterField] = {
     "status": FilterField("status"),
@@ -20,40 +16,29 @@ ALERT_FILTER_FIELDS: dict[str, FilterField] = {
 }
 
 
-def register(mcp):
+def register(mcp: FastMCP) -> None:
+    """Register alert tools with the MCP server."""
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_alerts(
         ctx: Context,
         site_id: str,
-        status: Optional[Literal["Active", "Cleared", "Deferred"]] = "Active",
-        device_type: Optional[
-            Literal["Access Point", "Gateway", "Switch", "Bridge"]
-        ] = None,
-        category: Optional[
-            Literal[
-                "Clients",
-                "System",
-                "LAN",
-                "WLAN",
-                "WAN",
-                "Cluster",
-                "Routing",
-                "Security",
-            ]
-        ] = None,
+        status: Literal["Active", "Cleared", "Deferred"] | None = "Active",
+        device_type: Literal["Access Point", "Gateway", "Switch", "Bridge"]
+        | None = None,
+        category: Literal[
+            "Clients", "System", "LAN", "WLAN", "WAN", "Cluster", "Routing", "Security"
+        ]
+        | None = None,
         sort: str = "severity desc",
-        limit: int = 50,
-        cursor: Optional[int] = None,
+        limit: int = ALERT_LIMIT,
+        cursor: int | None = None,
     ) -> PaginatedAlerts | str:
-        """
+        """Return a filtered list of alerts for a specific site which can be used this to drill into active issues by device type or category after identifying the target site.
+
         REQUIRES site_id — call central_get_sites(site_names=["<site name>"]) and extract
         site_id from the returned SiteData. Do NOT call this tool without a site_id; it will
         fail validation.
-
-        Returns a filtered list of alerts for a specific site. Use this to drill into active
-        issues by device type or category after identifying the target site.
-
         Results are sorted by severity descending by default (Critical first), making the most
         important alerts appear in the first page. To page through results, pass the `next_cursor`
         value from the previous response as `cursor` in the next call. When `next_cursor` is None,
@@ -61,7 +46,8 @@ def register(mcp):
 
         If no alerts match the criteria, returns a message indicating so.
 
-        Parameters:
+        Parameters
+        ----------
             - site_id: Site identifier. Obtain by calling central_get_sites(site_names=["<name>"]) and reading site_id from the result.
             - status: "Active" (default) for unresolved alerts, "Cleared" for resolved ones.
             - device_type: Narrow to a device class — "Access Point", "Gateway", "Switch", or "Bridge".
@@ -75,6 +61,7 @@ def register(mcp):
 
         Note: Each alert includes summary, name, category, severity, priority, status,
         deviceType, createdAt, updatedAt, updatedBy, and clearedReason.
+
         """
         raw_pairs = [
             ("status", status),
@@ -93,12 +80,14 @@ def register(mcp):
         if cursor is not None:
             query_params["next"] = cursor
 
-        response = retry_central_command(
-            ctx.lifespan_context["conn"],
+        conn = ctx.lifespan_context["conn"]
+        response = conn.command(
             api_method="GET",
             api_path="network-notifications/v1/alerts",
             api_params=query_params,
         )
+        if response["code"] != 200:
+            return format_tool_error("fetching alerts", response["msg"])
         msg = response["msg"]
         raw_items = msg.get("items", [])
         if not raw_items:

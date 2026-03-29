@@ -1,9 +1,12 @@
-from fastmcp import Context
-from typing import List, Optional, Literal
-from models import Client
-from utils import clean_client_data, build_odata_filter, FilterField
+from typing import Literal
+
+from fastmcp import Context, FastMCP
 from pycentral.new_monitoring.clients import Clients
+
+from models import Client
 from tools import READ_ONLY
+from utils.clients import clean_client_data
+from utils.common import FilterField, build_odata_filter, format_tool_error
 
 MISSING_CLIENT_RESPONSE = "Resource not found for the given input."
 # API field name mappings — Literal annotations in the function signature are the source of
@@ -17,29 +20,30 @@ CLIENT_FILTER_FIELDS: dict[str, FilterField] = {
 }
 
 
-def register(mcp):
+def register(mcp: FastMCP) -> None:
+    """Register client tools with the MCP server."""
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_clients(
         ctx: Context,
-        site_id: Optional[str] = None,
-        site_name: Optional[str] = None,
-        serial_number: Optional[str] = None,
-        connection_type: Optional[Literal["Wired", "Wireless"]] = None,
-        status: Optional[Literal["Connected", "Failed"]] = None,
-        wlan_name: Optional[str] = None,
-        vlan_id: Optional[str] = None,
-        tunnel_type: Optional[Literal["Port-based", "User-based", "Overlay"]] = None,
-        start_query_time: Optional[str] = None,
-        end_query_time: Optional[str] = None,
-    ) -> List[Client] | str:
-        """
-        Returns a filtered list of clients from Central using OData v4.0 filter syntax.
+        site_id: str | None = None,
+        site_name: str | None = None,
+        serial_number: str | None = None,
+        connection_type: Literal["Wired", "Wireless"] | None = None,
+        status: Literal["Connected", "Failed"] | None = None,
+        wlan_name: str | None = None,
+        vlan_id: str | None = None,
+        tunnel_type: Literal["Port-based", "User-based", "Overlay"] | None = None,
+        start_query_time: str | None = None,
+        end_query_time: str | None = None,
+    ) -> list[Client] | str:
+        """Return a filtered list of clients from Central using OData v4.0 filter syntax.
 
         Prefer this over any full-inventory fetch for targeted queries by site, status, or
         connection type. Call central_get_site_name_id_mapping first to obtain site_id values for filtering.
 
-        Parameters:
+        Parameters
+        ----------
             - site_id: Exact site ID.
             - site_name: Exact site name.
             - serial_number: Serial number of the device to which the client is connected.
@@ -54,6 +58,7 @@ def register(mcp):
         Note: Wireless-only fields (wlan_name, wireless_band, wireless_channel, wireless_security,
         key_management, bssid, radio_mac) are omitted for wired clients. The port field is omitted
         for wireless clients.
+
         """
         raw_pairs = [
             ("status", status),
@@ -76,7 +81,7 @@ def register(mcp):
                 filter_str=filter_str,
             )
         except Exception as e:
-            return f"Error occurred while fetching clients: {e}"
+            return format_tool_error("fetching clients", e)
 
         if not clients:
             return "No clients found matching the specified criteria."
@@ -87,15 +92,16 @@ def register(mcp):
         ctx: Context,
         mac_address: str,
     ) -> Client | str:
-        """
-        Find a single client by MAC address. Returns the client if found, otherwise returns an error message.
+        """Find a single client by MAC address. Returns the client if found, otherwise returns an error message.
 
-        Parameters:
+        Parameters
+        ----------
         - mac_address: MAC address of the client to find.
 
         Note: Wireless-only fields (wlan_name, wireless_band, wireless_channel, wireless_security,
         key_management, bssid, radio_mac) are omitted for wired clients. The port field is omitted
         for wireless clients.
+
         """
         try:
             result = Clients.get_client_details(
@@ -105,8 +111,7 @@ def register(mcp):
         except Exception as e:
             if MISSING_CLIENT_RESPONSE in str(e):
                 return f"No client found with MAC address '{mac_address}'."
-            else:
-                return f"Error occurred while fetching client details: {e}"
+            return format_tool_error("fetching client details", e)
 
         if not result:
             return f"No client found with MAC address '{mac_address}'."

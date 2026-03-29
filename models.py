@@ -1,7 +1,7 @@
-from typing import Dict, Any
-from pydantic import BaseModel, Field
-
 from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
 class SourceType(str, Enum):
@@ -14,28 +14,28 @@ class SourceType(str, Enum):
 
 
 class SiteMetrics(BaseModel):
-    """Standardized site metrics structure"""
+    """Standardized site metrics structure."""
 
-    health: Dict[str, Any] = Field(
+    health: dict[str, Any] = Field(
         default_factory=dict,
         description="Health score distribution: Poor/Fair/Good percentages plus a Summary score (0–100, weighted average where Good=1, Fair=0.5, Poor=0).",
     )
-    devices: Dict[str, Any] = Field(
+    devices: dict[str, Any] = Field(
         default_factory=dict,
         description="Device counts for the site. Contains 'Summary' (Poor/Fair/Good/Total) and optional 'Details' broken down by device type (Access Points, Switches, Gateways, Bridges).",
     )
-    clients: Dict[str, Any] = Field(
+    clients: dict[str, Any] = Field(
         default_factory=dict,
         description="Client counts for the site. Contains 'Summary' (Poor/Fair/Good/Total) and optional 'Details' broken down by medium (Wired, Wireless).",
     )
-    alerts: Dict[str, Any] | int = Field(
+    alerts: dict[str, Any] | int = Field(
         default_factory=dict,
         description="Alert counts for the site: Critical (int) and Total (int).",
     )
 
 
 class SiteData(BaseModel):
-    """Standardized site data structure"""
+    """Standardized site data structure."""
 
     site_id: str = Field(
         description="Unique identifier for the site in Central. Used to reference the site in other API calls."
@@ -51,7 +51,7 @@ class SiteData(BaseModel):
 
 
 class Device(BaseModel):
-    """Device inventory data structure (duplicates removed)"""
+    """Device inventory data structure (duplicates removed)."""
 
     # Primary identifiers
     serial_number: str = Field(
@@ -116,7 +116,7 @@ class Device(BaseModel):
 
 
 class Client(BaseModel):
-    """Client device data structure"""
+    """Client device data structure."""
 
     # Primary identifiers
     mac: str | None = Field(description="MAC address of the client.")
@@ -235,35 +235,6 @@ class Alert(BaseModel):
     category: str | None = Field(description="Alert category.")
     severity: str | None = Field(
         description="Severity level (e.g., CRITICAL, MAJOR, MINOR)."
-    )
-
-
-class ApplicationVisibility(BaseModel):
-    experience: dict | None = Field(description="Application experience metrics.")
-    dest_location: list[dict] | None = Field(
-        description="Destination location details for the application traffic."
-    )
-    risk: str | None = Field(description="Risk classification of the application.")
-    application_host_type: str | None = Field(
-        description="Host type (e.g., cloud, on-prem)."
-    )
-    name: str | None = Field(description="Application name.")
-    tx_bytes: int | None = Field(
-        description="Total bytes transmitted by the application."
-    )
-    rx_bytes: int | None = Field(description="Total bytes received by the application.")
-    last_used_time: str | None = Field(
-        description="Timestamp when the application was last used."
-    )
-    tls_version: str | None = Field(description="TLS version used by the application.")
-    certificate_expiry_date: str | None = Field(
-        description="Expiry date of the application's TLS certificate."
-    )
-    categories: list[str] | None = Field(
-        description="List of categories the application belongs to."
-    )
-    state: str | None = Field(
-        description="Current state of the application visibility entry."
     )
 
 

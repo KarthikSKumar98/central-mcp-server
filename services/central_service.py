@@ -1,4 +1,5 @@
 from pycentral import NewCentralBase
+
 from config import (
     CENTRAL_BASE_URL,
     CENTRAL_CLIENT_ID,
@@ -8,8 +9,8 @@ from config import (
 
 
 def get_central_connection() -> NewCentralBase:
-    """
-    Get a Central connection instance.
+    """Get a Central connection instance.
+
     This function can be used as a dependency in FastAPI routes.
     Validates that credentials are configured before creating connection.
     """
@@ -33,8 +34,8 @@ central_conn = None
 
 
 def get_conn():
-    """
-    Get or create the central connection singleton.
+    """Get or create the central connection singleton.
+
     This lazy initialization allows credentials to be set before connection is created.
     """
     global central_conn
@@ -44,13 +45,15 @@ def get_conn():
 
 
 def verify_connection(conn) -> None:
-    """
-    Verify credentials are valid by making a lightweight GET to the Central API.
+    """Verify credentials are valid by making a lightweight GET to the Central API.
+
     Raises RuntimeError with a clear message if the connection fails.
     """
     try:
         conn.command(
-            api_method="GET", api_path="network-monitoring/v1/sites-health", api_params={"limit": 1}
+            api_method="GET",
+            api_path="network-monitoring/v1/sites-health",
+            api_params={"limit": 1},
         )
     except Exception as exc:
         raise RuntimeError(
