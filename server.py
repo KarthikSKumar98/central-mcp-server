@@ -5,11 +5,10 @@ from pathlib import Path
 from fastmcp import FastMCP
 from fastmcp.experimental.transforms.code_mode import CodeMode
 
+import prompts
 from services.central_service import get_conn, verify_connection
 from tools import alerts, clients, devices, events, sites
 from utils.common import check_for_update
-
-from . import prompts
 
 _INSTRUCTIONS = (Path(__file__).parent / "INSTRUCTIONS.md").read_text()
 
