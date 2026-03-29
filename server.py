@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -6,6 +7,7 @@ from fastmcp.experimental.transforms.code_mode import CodeMode
 
 from services.central_service import get_conn, verify_connection
 from tools import alerts, clients, devices, events, sites
+from utils.common import check_for_update
 
 from . import prompts
 
@@ -23,6 +25,7 @@ async def lifespan(_server: FastMCP):
             f"Failed to connect to Central: {e}\n"
             "Ensure credentials in .env are correct and the server is reachable."
         ) from e
+    asyncio.create_task(check_for_update())
     try:
         yield {"conn": conn}
     finally:
