@@ -1,5 +1,48 @@
+import asyncio
+import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
+from urllib.error import URLError
+from urllib.request import urlopen
+
+logger = logging.getLogger(__name__)
+
+_PACKAGE_NAME = "central-mcp-server"
+
+
+async def check_for_update() -> None:
+    """Check PyPI for a newer version and warn to stderr if one exists.
+
+    Runs a non-blocking background check against PyPI. If a newer version is
+    available, prints a notice to stderr with upgrade instructions. Silently
+    skips if the package is not installed or the network is unreachable.
+    """
+    try:
+        current = pkg_version(_PACKAGE_NAME)
+
+        def _fetch() -> dict:
+            with urlopen(
+                f"https://pypi.org/pypi/{_PACKAGE_NAME}/json", timeout=5
+            ) as resp:
+                return json.loads(resp.read())
+
+        data = await asyncio.to_thread(_fetch)
+        latest = data["info"]["version"]
+        if latest != current:
+            logger.warning(
+                "[%s] Update available: %s → %s\n"
+                "Check the release notes at https://github.com/KarthikSKumar98/central-mcp-server/releases/\n"
+                "Run `uv cache clean %s` then restart to get the latest version.",
+                _PACKAGE_NAME,
+                current,
+                latest,
+                _PACKAGE_NAME,
+            )
+    except (PackageNotFoundError, URLError, KeyError, OSError):
+        pass
 
 
 @dataclass
