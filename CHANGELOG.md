@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.1] - 2026-03-30
+## [0.1.2] - 2026-03-30
 
 ### New Features
 - `central_get_devices` now supports filtering by device status (`ONLINE`/`OFFLINE`)
