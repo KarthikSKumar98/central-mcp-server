@@ -1,7 +1,16 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 
 from enum import Enum
+
+
+class ErrorResult(BaseModel):
+    """Structured error returned by tools instead of a raw string."""
+
+    error: str = Field(description="Short description of what went wrong.")
+    detail: Optional[str] = Field(
+        default=None, description="Additional context or the underlying exception message."
+    )
 
 
 class SourceType(str, Enum):

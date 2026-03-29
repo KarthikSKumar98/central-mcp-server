@@ -1,6 +1,6 @@
 from fastmcp import Context
 from typing import Literal, Optional
-from models import PaginatedAlerts
+from models import PaginatedAlerts, ErrorResult
 from utils import (
     retry_central_command,
     build_odata_filter,
@@ -45,7 +45,7 @@ def register(mcp):
         sort: str = "severity desc",
         limit: int = 50,
         cursor: Optional[int] = None,
-    ) -> PaginatedAlerts | str:
+    ) -> PaginatedAlerts | ErrorResult:
         """
         REQUIRES site_id — call central_get_sites(site_names=["<site name>"]) and extract
         site_id from the returned SiteData. Do NOT call this tool without a site_id; it will
@@ -102,7 +102,7 @@ def register(mcp):
         msg = response["msg"]
         raw_items = msg.get("items", [])
         if not raw_items:
-            return "No alerts found matching criteria"
+            return ErrorResult(error="No alerts found matching criteria.")
         return PaginatedAlerts(
             items=clean_alert_data(raw_items),
             total=msg.get("total", 0),

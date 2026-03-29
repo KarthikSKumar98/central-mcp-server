@@ -1,8 +1,13 @@
+import logging
+import random
+import time
 from dataclasses import dataclass
 from models import SiteData, SiteMetrics
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import List
+
+_logger = logging.getLogger(__name__)
 from models import (
     Alert,
     Client,
@@ -44,15 +49,27 @@ def build_odata_filter(pairs: list[tuple["FilterField", str]]) -> str | None:
 
         if "," in value:
             values_list = [v.strip() for v in value.split(",")]
-            values_str = ", ".join(f"'{v}'" for v in values_list)
+            values_str = ", ".join(f"'{v.replace(chr(39), chr(39) * 2)}'" for v in values_list)
             parts.append(f"{ff.api_field} in ({values_str})")
         else:
-            parts.append(f"{ff.api_field} eq '{value}'")
+            escaped = value.replace("'", "''")
+            parts.append(f"{ff.api_field} eq '{escaped}'")
 
     return " and ".join(parts)
 
 
 SITE_LIMIT = 100
+
+
+def calculate_health_score(health_obj: dict) -> int | None:
+    """Return weighted health score (0–100) from a Poor/Fair/Good distribution dict, or None."""
+    if all(k in health_obj for k in ["Poor", "Fair", "Good"]):
+        return round(
+            (health_obj["Poor"] * 0)
+            + (health_obj["Fair"] * 0.5)
+            + (health_obj["Good"] * 1)
+        )
+    return None
 
 
 def fetch_site_data_parallel(central_conn) -> tuple:
@@ -76,7 +93,14 @@ def fetch_site_data_parallel(central_conn) -> tuple:
             executor.submit(paginated_fetch, central_conn, endpoint, SITE_LIMIT)
             for endpoint in endpoints
         ]
-        results = [future.result() for future in futures]
+        results = []
+        for endpoint, future in zip(endpoints, futures):
+            exc = future.exception()
+            if exc is not None:
+                _logger.warning("Parallel fetch failed for %s: %s", endpoint, exc)
+                results.append([])
+            else:
+                results.append(future.result())
 
     return process_site_health_data(*results)
 
@@ -179,13 +203,50 @@ def paginated_fetch(
     return items
 
 
+def retry_pycentral_method(fn, *args, max_retries: int = 5, **kwargs):
+    """Retry a high-level pycentral library call with exponential backoff.
+
+    Use this when the pycentral method handles pagination internally and cannot
+    be replaced with retry_central_command (which operates at the raw HTTP level).
+    """
+    last_exc: Exception | None = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            _logger.warning(
+                "pycentral method %s failed attempt %d/%d: %s",
+                getattr(fn, "__name__", fn),
+                attempt,
+                max_retries,
+                exc,
+            )
+            last_exc = exc
+            if attempt < max_retries:
+                _backoff_delay(attempt)
+    raise last_exc
+
+
+_RETRY_BASE_DELAY = 1.0  # seconds; actual delay = base * 2^(attempt-1) + jitter
+_RETRY_MAX_DELAY = 30.0  # cap per sleep
+
+
+def _backoff_delay(attempt: int, retry_after: float | None = None) -> None:
+    """Sleep before a retry. Uses Retry-After if provided, else exponential backoff."""
+    if retry_after is not None:
+        delay = min(retry_after, _RETRY_MAX_DELAY)
+    else:
+        delay = min(_RETRY_BASE_DELAY * (2 ** (attempt - 1)) + random.random(), _RETRY_MAX_DELAY)
+    time.sleep(delay)
+
+
 def retry_central_command(
     central_conn, api_method, api_path, api_params=None, max_retries=5
 ):
-    """Call central_conn.command and retry immediately up to max_retries on transient errors.
+    """Call central_conn.command and retry with exponential backoff on transient errors.
 
-    Does not sleep between attempts. On persistent server errors (5xx) or rate-limit (429)
-    this raises APIRetryError so the caller can abort and avoid partial DB writes.
+    On persistent server errors (5xx) or rate-limit (429) retries up to max_retries
+    times with exponential backoff. Respects the Retry-After header on 429 responses.
     Client errors (4xx) are raised immediately.
     """
     api_params = api_params or {}
@@ -205,6 +266,8 @@ def retry_central_command(
                 exc,
             )
             last_response = {"code": 0, "msg": str(exc)}
+            if attempt < max_retries:
+                _backoff_delay(attempt)
             continue
 
         code = resp.get("code", 0)
@@ -223,6 +286,17 @@ def retry_central_command(
                 max_retries,
             )
             last_response = resp
+            if attempt < max_retries:
+                retry_after = None
+                if code == 429:
+                    headers = resp.get("headers") or {}
+                    ra = headers.get("Retry-After")
+                    if ra is not None:
+                        try:
+                            retry_after = float(ra)
+                        except (ValueError, TypeError):
+                            pass
+                _backoff_delay(attempt, retry_after)
             continue
 
         # client errors -> raise immediately
@@ -237,12 +311,9 @@ def retry_central_command(
 def transform_to_site_data(site_raw: dict) -> SiteData:
     """Transform raw Central API data to standardized SiteData model."""
     health_obj = groups_to_map(site_raw.get("health", {}))
-    if all(k in health_obj for k in ["Poor", "Fair", "Good"]):
-        health_obj["Summary"] = round(
-            (health_obj["Poor"] * 0)
-            + (health_obj["Fair"] * 0.5)
-            + (health_obj["Good"] * 1)
-        )
+    score = calculate_health_score(health_obj)
+    if score is not None:
+        health_obj["Summary"] = score
         health_obj.pop("Total", None)
 
     devices_obj = groups_to_map(site_raw.get("devices", {}))

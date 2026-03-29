@@ -1,6 +1,6 @@
 from fastmcp import Context
 from typing import Literal, Optional
-from models import Event, EventFilters, PaginatedEvents
+from models import Event, EventFilters, PaginatedEvents, ErrorResult
 from utils import (
     clean_event_filters,
     compute_time_window,
@@ -57,7 +57,7 @@ def register(mcp):
         search: Optional[str] = None,
         limit: int = 50,
         cursor: Optional[int] = None,
-    ) -> PaginatedEvents | str:
+    ) -> PaginatedEvents | ErrorResult:
         """
         Retrieve events for a given context (site, device, or client) within a specified time range.
 
@@ -112,7 +112,7 @@ def register(mcp):
                 api_params=query_params,
             )
         except Exception as e:
-            return f"Error fetching events: {e}"
+            return ErrorResult(error="Error fetching events", detail=str(e))
 
         msg = response["msg"]
         raw_events = msg.get("events", [])  # key is "events", not "items"

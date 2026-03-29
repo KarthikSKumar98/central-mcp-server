@@ -1,3 +1,4 @@
+import threading
 from pycentral import NewCentralBase
 from config import (
     CENTRAL_BASE_URL,
@@ -30,16 +31,20 @@ def get_central_connection() -> NewCentralBase:
 # Create a singleton instance for reuse
 # Note: This will be created when first imported, so credentials must be set before any tools are used
 central_conn = None
+_conn_lock = threading.Lock()
 
 
 def get_conn():
     """
     Get or create the central connection singleton.
     This lazy initialization allows credentials to be set before connection is created.
+    Thread-safe via double-checked locking.
     """
     global central_conn
     if central_conn is None:
-        central_conn = get_central_connection()
+        with _conn_lock:
+            if central_conn is None:
+                central_conn = get_central_connection()
     return central_conn
 
 

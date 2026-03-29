@@ -1,7 +1,7 @@
 from fastmcp import Context
 from typing import List, Optional, Literal
-from models import Client
-from utils import clean_client_data, build_odata_filter, FilterField
+from models import Client, ErrorResult
+from utils import clean_client_data, build_odata_filter, FilterField, retry_pycentral_method
 from pycentral.new_monitoring.clients import Clients
 from tools import READ_ONLY
 
@@ -32,7 +32,7 @@ def register(mcp):
         tunnel_type: Optional[Literal["Port-based", "User-based", "Overlay"]] = None,
         start_query_time: Optional[str] = None,
         end_query_time: Optional[str] = None,
-    ) -> List[Client] | str:
+    ) -> List[Client] | ErrorResult:
         """
         Returns a filtered list of clients from Central using OData v4.0 filter syntax.
 
@@ -66,7 +66,8 @@ def register(mcp):
         filter_str = build_odata_filter(pairs)
 
         try:
-            clients = Clients.get_all_clients(
+            clients = retry_pycentral_method(
+                Clients.get_all_clients,
                 central_conn=ctx.lifespan_context["conn"],
                 site_id=site_id,
                 site_name=site_name,
@@ -76,17 +77,17 @@ def register(mcp):
                 filter_str=filter_str,
             )
         except Exception as e:
-            return f"Error occurred while fetching clients: {e}"
+            return ErrorResult(error="Error occurred while fetching clients", detail=str(e))
 
         if not clients:
-            return "No clients found matching the specified criteria."
+            return ErrorResult(error="No clients found matching the specified criteria.")
         return clean_client_data(clients)
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_find_client(
         ctx: Context,
         mac_address: str,
-    ) -> Client | str:
+    ) -> Client | ErrorResult:
         """
         Find a single client by MAC address. Returns the client if found, otherwise returns an error message.
 
@@ -98,17 +99,18 @@ def register(mcp):
         for wireless clients.
         """
         try:
-            result = Clients.get_client_details(
+            result = retry_pycentral_method(
+                Clients.get_client_details,
                 central_conn=ctx.lifespan_context["conn"],
                 client_mac=mac_address,
             )
         except Exception as e:
             if MISSING_CLIENT_RESPONSE in str(e):
-                return f"No client found with MAC address '{mac_address}'."
+                return ErrorResult(error=f"No client found with MAC address '{mac_address}'.")
             else:
-                return f"Error occurred while fetching client details: {e}"
+                return ErrorResult(error="Error occurred while fetching client details", detail=str(e))
 
         if not result:
-            return f"No client found with MAC address '{mac_address}'."
+            return ErrorResult(error=f"No client found with MAC address '{mac_address}'.")
 
         return clean_client_data([result])[0]

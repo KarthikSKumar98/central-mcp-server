@@ -1,14 +1,14 @@
 from fastmcp import Context
 from typing import List, Optional, Literal
-from models import Device
-from utils import clean_device_data, build_odata_filter, FilterField
+from models import Device, ErrorResult
+from utils import clean_device_data, build_odata_filter, FilterField, retry_pycentral_method
 from pycentral.new_monitoring import MonitoringDevices
 from tools import READ_ONLY
 
 # API field definitions — update allowed_values when Central adds/removes enum options
 DEVICE_FILTER_FIELDS: dict[str, FilterField] = {
     "site_id": FilterField("siteId"),
-    "device_type": FilterField("deviceType", ["ACCESS_POINT", "SWITCH", "GATEWAY"]),
+    "device_type": FilterField("deviceType", ["Access Point", "Switch", "Gateway"]),
     "device_name": FilterField("deviceName"),
     "serial_number": FilterField("serialNumber"),
     "model": FilterField("model"),
@@ -23,7 +23,7 @@ def register(mcp):
     async def central_get_devices(
         ctx: Context,
         site_id: Optional[str] = None,
-        device_type: Optional[Literal["ACCESS_POINT", "SWITCH", "GATEWAY"]] = None,
+        device_type: Optional[Literal["Access Point", "Switch", "Gateway"]] = None,
         device_name: Optional[str] = None,
         serial_number: Optional[str] = None,
         model: Optional[str] = None,
@@ -31,7 +31,7 @@ def register(mcp):
         is_provisioned: Optional[bool] = None,
         site_assigned: Optional[bool] = None,
         sort: Optional[str] = None,
-    ) -> List[Device] | str:
+    ) -> List[Device] | ErrorResult:
         """
         Returns a filtered list of devices from Central using OData v4.0 filter syntax.
 
@@ -40,7 +40,7 @@ def register(mcp):
 
         Parameters:
         - site_id: Exact site ID or comma-separated list of IDs.
-        - device_type: ACCESS_POINT, SWITCH, or GATEWAY. Comma-separated for multiple.
+        - device_type: "Access Point", "Switch", or "Gateway". Comma-separated for multiple.
         - device_name: Device display name. Comma-separated for multiple.
         - serial_number: Device serial number. Comma-separated for multiple.
         - model: Device model (e.g., AP-735-RWF1). Comma-separated for multiple.
@@ -80,17 +80,18 @@ def register(mcp):
         )
 
         try:
-            devices = MonitoringDevices.get_all_device_inventory(
+            devices = retry_pycentral_method(
+                MonitoringDevices.get_all_device_inventory,
                 central_conn=ctx.lifespan_context["conn"],
                 filter_str=filter_str,
                 site_assigned=site_assigned,
                 sort=sort,
             )
         except Exception as e:
-            return f"Error fetching devices: {e}"
+            return ErrorResult(error="Error fetching devices", detail=str(e))
 
         if not devices:
-            return "No devices found matching the specified criteria."
+            return ErrorResult(error="No devices found matching the specified criteria.")
         return clean_device_data(devices)
 
     @mcp.tool(annotations=READ_ONLY)
@@ -98,7 +99,7 @@ def register(mcp):
         ctx: Context,
         serial_number: Optional[str] = None,
         device_name: Optional[str] = None,
-    ) -> Device | str:
+    ) -> Device | ErrorResult:
         """
         Find a single device by unique identifier. Returns the device if exactly one match is found, otherwise returns an error message.
 
@@ -107,10 +108,10 @@ def register(mcp):
         - device_name: Device display name. Use only if serial number is unknown.
         """
         if not serial_number and not device_name:
-            return "Please provide at least one unique identifier: serial_number or device_name."
+            return ErrorResult(error="Please provide at least one unique identifier: serial_number or device_name.")
 
         if serial_number and device_name:
-            return "Please provide only one unique identifier: either serial_number or device_name, not both."
+            return ErrorResult(error="Please provide only one unique identifier: either serial_number or device_name, not both.")
 
         pairs = [
             (DEVICE_FILTER_FIELDS[k], v)
@@ -119,16 +120,18 @@ def register(mcp):
         ]
         filter_str = build_odata_filter(pairs)
         try:
-            device_resp = MonitoringDevices.get_device_inventory(
-                central_conn=ctx.lifespan_context["conn"], filter_str=filter_str
+            device_resp = retry_pycentral_method(
+                MonitoringDevices.get_device_inventory,
+                central_conn=ctx.lifespan_context["conn"],
+                filter_str=filter_str,
             )
         except Exception as e:
-            return f"Error occurred while fetching device data: {e}"
+            return ErrorResult(error="Error occurred while fetching device data", detail=str(e))
         if "items" not in device_resp:
-            return f"Unexpected API error response: {device_resp}"
+            return ErrorResult(error="Unexpected API error response", detail=str(device_resp))
 
         if len(device_resp["items"]) == 0:
-            return "No device found matching the provided criteria."
+            return ErrorResult(error="No device found matching the provided criteria.")
         if len(device_resp["items"]) > 1:
-            return "Multiple devices found matching the criteria. Use serial_number for a unique match."
+            return ErrorResult(error="Multiple devices found matching the criteria. Use serial_number for a unique match.")
         return clean_device_data(device_resp["items"])[0]
