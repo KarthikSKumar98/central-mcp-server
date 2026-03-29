@@ -5,7 +5,9 @@ from fastmcp import FastMCP
 from fastmcp.experimental.transforms.code_mode import CodeMode
 
 from services.central_service import get_conn, verify_connection
-from tools import alerts, clients, devices, events, prompts, sites
+from tools import alerts, clients, devices, events, sites
+
+from . import prompts
 
 _INSTRUCTIONS = (Path(__file__).parent / "INSTRUCTIONS.md").read_text()
 
@@ -34,13 +36,15 @@ mcp = FastMCP(
     transforms=[CodeMode()],
 )
 
+# Register tools with the MCP server
 sites.register(mcp)
 devices.register(mcp)
 clients.register(mcp)
 alerts.register(mcp)
-prompts.register(mcp)
 events.register(mcp)
 
+# Register prompts with the MCP server
+prompts.register(mcp)
 
 def run():
     mcp.run()
