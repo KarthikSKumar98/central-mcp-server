@@ -33,7 +33,7 @@ RAW_SITE = {
     },
     "devices": {"count": 10},
     "clients": {"count": 50},
-    "alerts": {"total": 3},
+    "alerts": {"total": 3, "critical": 1},
 }
 
 
@@ -90,6 +90,7 @@ async def test_get_site_name_id_mapping_keys(tools):
     assert "total_devices" in entry
     assert "total_clients" in entry
     assert "total_alerts" in entry
+    assert "critical_alerts" in entry
 
 
 @pytest.mark.asyncio
@@ -122,3 +123,4 @@ async def test_get_site_name_id_mapping_counts(tools):
     assert entry["total_devices"] == 10
     assert entry["total_clients"] == 50
     assert entry["total_alerts"] == 3
+    assert entry["critical_alerts"] == 1
