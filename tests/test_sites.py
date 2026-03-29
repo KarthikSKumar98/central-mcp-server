@@ -31,8 +31,8 @@ RAW_SITE = {
             {"name": "Poor", "value": 0},
         ]
     },
-    "devices": {"total": 10},
-    "clients": {"total": 50},
+    "devices": {"count": 10},
+    "clients": {"count": 50},
     "alerts": {"total": 3},
 }
 
