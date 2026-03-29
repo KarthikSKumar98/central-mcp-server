@@ -5,7 +5,9 @@ from fastmcp import FastMCP
 from fastmcp.experimental.transforms.code_mode import CodeMode
 
 from services.central_service import get_conn, verify_connection
-from tools import alerts, clients, devices, events, prompts, sites
+from tools import alerts, clients, devices, events, sites
+
+from . import prompts
 
 _INSTRUCTIONS = (Path(__file__).parent / "INSTRUCTIONS.md").read_text()
 
@@ -24,7 +26,9 @@ async def lifespan(_server: FastMCP):
     try:
         yield {"conn": conn}
     finally:
-        pass  # NewCentralBase has no explicit close; placeholder for future cleanup
+        # Close any open connections or perform cleanup here if necessary
+        if conn is not None:
+            conn.close()
 
 
 mcp = FastMCP(
@@ -34,20 +38,25 @@ mcp = FastMCP(
     transforms=[CodeMode()],
 )
 
+# Register tools with the MCP server
 sites.register(mcp)
 devices.register(mcp)
 clients.register(mcp)
 alerts.register(mcp)
-prompts.register(mcp)
 events.register(mcp)
 
+# Register prompts with the MCP server
+prompts.register(mcp)
 
+
+# Entry point for the installed CLI command: `central-mcp-server` (see pyproject.toml)
 def run():
     mcp.run()
 
 
+# For local development, you can run this script directly with `python server.py` to start the MCP server.
 if __name__ == "__main__":
     mcp.run()
 
-    # For local development with auto-reload, use the following command instead of mcp.run():
+    # For local development with sse, use the following command:
     # mcp.run(transport="sse", host="127.0.0.1", port=8001)
