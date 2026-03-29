@@ -48,9 +48,11 @@ events.register(mcp)
 # Register prompts with the MCP server
 prompts.register(mcp)
 
+
 # Entry point for the installed CLI command: `central-mcp-server` (see pyproject.toml)
 def run():
     mcp.run()
+
 
 # For local development, you can run this script directly with `python server.py` to start the MCP server.
 if __name__ == "__main__":
