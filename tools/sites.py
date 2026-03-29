@@ -61,8 +61,8 @@ def register(mcp: FastMCP) -> None:
             mapping[site["siteName"]] = {
                 "site_id": site.get("id"),
                 "health": summary,
-                "total_devices": site.get("devices", {}).get("count", 0),
-                "total_clients": site.get("clients", {}).get("count", 0),
+                "total_devices": site.get("devices", {}).get("total", 0),
+                "total_clients": site.get("clients", {}).get("total", 0),
                 "total_alerts": site.get("alerts", {}).get("total", 0),
             }
         mapping = dict(
