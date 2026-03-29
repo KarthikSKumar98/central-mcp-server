@@ -36,7 +36,7 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_site_name_id_mapping(ctx: Context) -> dict:
-        """Return a lightweight mapping of all site names to their IDs and health scores.
+        """Return a lightweight mapping of all site names to their IDs, health score, devices, client & alert counts.
 
         The list is sorted by health score (lowest to highest — worst to best) to help quickly
         identify sites that may need attention. Sites with unknown/None health values are placed last.
@@ -51,6 +51,7 @@ def register(mcp: FastMCP) -> None:
         - health: Overall health score (0–100, weighted average: Good=100, Fair=50, Poor=0).
         - total_devices: Total number of devices at the site.
         - total_clients: Total number of clients at the site.
+        - critical_alerts: Number of critical alerts at the site.
         - total_alerts: Total number of alerts at the site.
         """
         sites = MonitoringSites.get_all_sites(central_conn=ctx.lifespan_context["conn"])
@@ -61,8 +62,9 @@ def register(mcp: FastMCP) -> None:
             mapping[site["siteName"]] = {
                 "site_id": site.get("id"),
                 "health": summary,
-                "total_devices": site.get("devices", {}).get("total", 0),
-                "total_clients": site.get("clients", {}).get("total", 0),
+                "total_devices": site.get("devices", {}).get("count", 0),
+                "total_clients": site.get("clients", {}).get("count", 0),
+                "critical_alerts": site.get("alerts", {}).get("critical", 0),
                 "total_alerts": site.get("alerts", {}).get("total", 0),
             }
         mapping = dict(

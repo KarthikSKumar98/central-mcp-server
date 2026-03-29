@@ -42,3 +42,23 @@ def clean_device_data(devices: list[dict]) -> list[Device]:
                 )
             )
     return cleaned_devices
+
+
+def process_device_status(devices: list[dict], device_status: str | None) -> list[dict]:
+    """Process a list of devices to filter by connectivity status to Central.
+
+    Args:
+        devices: List of Device objects
+        device_status: The status to filter by ("ONLINE" or "OFFLINE")
+
+    Returns:
+        List of devices filtered by the specified status
+    Returns:
+        Dictionary with counts of 'ONLINE' and 'OFFLINE' devices
+
+    """
+    if device_status == "ONLINE":
+        devices = [d for d in devices if d.get("status") == "ONLINE"]
+    elif device_status == "OFFLINE":
+        devices = [d for d in devices if d.get("status") == "OFFLINE"]
+    return devices

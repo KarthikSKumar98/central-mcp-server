@@ -6,7 +6,7 @@ from pycentral.new_monitoring import MonitoringDevices
 from models import Device
 from tools import READ_ONLY
 from utils.common import FilterField, build_odata_filter, format_tool_error
-from utils.devices import clean_device_data
+from utils.devices import clean_device_data, process_device_status
 
 # API field definitions — update allowed_values when Central adds/removes enum options
 DEVICE_FILTER_FIELDS: dict[str, FilterField] = {
@@ -29,6 +29,7 @@ def register(mcp: FastMCP) -> None:
         site_id: str | None = None,
         device_type: Literal["ACCESS_POINT", "SWITCH", "GATEWAY"] | None = None,
         device_name: str | None = None,
+        device_status: Literal["ONLINE", "OFFLINE"] | None = None,
         serial_number: str | None = None,
         model: str | None = None,
         device_function: str | None = None,
@@ -46,12 +47,13 @@ def register(mcp: FastMCP) -> None:
         - site_id: Exact site ID or comma-separated list of IDs.
         - device_type: ACCESS_POINT, SWITCH, or GATEWAY. Comma-separated for multiple.
         - device_name: Device display name. Comma-separated for multiple.
+        - device_status: Device connectivity to Central status. Supported statuses are "ONLINE" or "OFFLINE". Devices with unknown status will be excluded if this filter is applied.
         - serial_number: Device serial number. Comma-separated for multiple.
         - model: Device model (e.g., AP-735-RWF1). Comma-separated for multiple.
         - device_function: Device function classification. Comma-separated for multiple.
-        - is_provisioned: True returns only provisioned devices (sending Monitoring data to New Central).
+        - is_provisioned: True returns only provisioned devices (this device is fully managed by Central for monitoring & configuration. If false, some or all aspects of the device's monitoring & configuration is done via Classic Central.
           False returns only unprovisioned devices.
-        - site_assigned: True returns only devices assigned to a site. False returns only devices not assigned to a site.
+        - site_assigned: True returns only devices assigned to a site. False returns only devices not assigned to a site. Site assigned is required for devices to be monitored in Central. Otherwise they may be unmanaged or monitored in Classic Central.
         - sort: Comma-separated sort expressions (e.g., 'deviceName asc, model desc').
           Supported fields: siteId, model, siteName, serialNumber, macAddress, deviceType,
           ipv4, deviceFunction, deviceName.
@@ -96,6 +98,8 @@ def register(mcp: FastMCP) -> None:
 
         if not devices:
             return "No devices found matching the specified criteria."
+        if device_status:
+            devices = process_device_status(devices, device_status)
         return clean_device_data(devices)
 
     @mcp.tool(annotations=READ_ONLY)
