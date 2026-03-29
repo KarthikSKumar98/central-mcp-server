@@ -6,7 +6,7 @@ from pycentral.new_monitoring import MonitoringDevices
 from models import Device
 from tools import READ_ONLY
 from utils.common import FilterField, build_odata_filter, format_tool_error
-from utils.devices import clean_device_data
+from utils.devices import clean_device_data, process_device_status
 
 # API field definitions — update allowed_values when Central adds/removes enum options
 DEVICE_FILTER_FIELDS: dict[str, FilterField] = {
@@ -29,6 +29,7 @@ def register(mcp: FastMCP) -> None:
         site_id: str | None = None,
         device_type: Literal["ACCESS_POINT", "SWITCH", "GATEWAY"] | None = None,
         device_name: str | None = None,
+        device_status: Literal["ONLINE", "OFFLINE"] | None = None,
         serial_number: str | None = None,
         model: str | None = None,
         device_function: str | None = None,
@@ -96,6 +97,8 @@ def register(mcp: FastMCP) -> None:
 
         if not devices:
             return "No devices found matching the specified criteria."
+        if device_status:
+            devices = process_device_status(devices, device_status)
         return clean_device_data(devices)
 
     @mcp.tool(annotations=READ_ONLY)
