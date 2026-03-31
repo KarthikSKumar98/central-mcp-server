@@ -1,5 +1,8 @@
-import pytest
+import asyncio
 from unittest.mock import MagicMock
+
+import pytest
+
 from config import validate_credentials
 from services.central_service import get_conn
 
@@ -18,5 +21,5 @@ def live_ctx():
         pytest.skip("No credentials found in .env.local — skipping live tests")
     conn = get_conn()
     ctx = MagicMock()
-    ctx.lifespan_context = {"conn": conn}
+    ctx.lifespan_context = {"conn": conn, "api_semaphore": asyncio.Semaphore(2)}
     return ctx

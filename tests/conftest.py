@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import MagicMock
 
 
@@ -21,5 +22,8 @@ class FakeMCP:
 
 def make_ctx():
     ctx = MagicMock()
-    ctx.lifespan_context = {"conn": MagicMock()}
+    ctx.lifespan_context = {
+        "conn": MagicMock(),
+        "api_semaphore": asyncio.Semaphore(2),
+    }
     return ctx
