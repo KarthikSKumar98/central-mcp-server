@@ -9,6 +9,8 @@ from importlib.metadata import version as pkg_version
 from urllib.error import URLError
 from urllib.request import urlopen
 
+from fastmcp import Context
+
 logger = logging.getLogger(__name__)
 
 _PACKAGE_NAME = "central-mcp-server"
@@ -88,6 +90,12 @@ async def api_context(ctx: Context):
     """Acquire the API semaphore and yield the Central connection."""
     async with ctx.lifespan_context["api_semaphore"]:
         yield ctx.lifespan_context["conn"]
+
+
+def build_filters(fields_map: dict[str, "FilterField"], **kwargs) -> str | None:
+    """Build an OData filter string from keyword args, skipping None values."""
+    pairs = [(fields_map[k], v) for k, v in kwargs.items() if v is not None]
+    return build_odata_filter(pairs)
 
 
 def paginated_fetch(
