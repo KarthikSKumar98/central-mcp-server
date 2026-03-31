@@ -6,7 +6,7 @@ from pycentral.new_monitoring.clients import Clients
 from models import Client
 from tools import READ_ONLY
 from utils.clients import clean_client_data
-from utils.common import FilterField, build_odata_filter, format_tool_error
+from utils.common import FilterField, api_context, build_filters, format_tool_error
 
 MISSING_CLIENT_RESPONSE = "Resource not found for the given input."
 # API field name mappings — Literal annotations in the function signature are the source of
@@ -60,32 +60,32 @@ def register(mcp: FastMCP) -> None:
         for wireless clients.
 
         """
-        raw_pairs = [
-            ("status", status),
-            ("connection_type", connection_type),
-            ("wlan_name", wlan_name),
-            ("vlan_id", vlan_id),
-            ("tunnel_type", tunnel_type),
-        ]
-        pairs = [(CLIENT_FILTER_FIELDS[k], v) for k, v in raw_pairs if v is not None]
-        filter_str = build_odata_filter(pairs)
-
-        try:
-            clients = Clients.get_all_clients(
-                central_conn=ctx.lifespan_context["conn"],
-                site_id=site_id,
-                site_name=site_name,
-                serial_number=serial_number,
-                start_time=start_query_time,
-                end_time=end_query_time,
-                filter_str=filter_str,
+        async with api_context(ctx) as conn:
+            filter_str = build_filters(
+                CLIENT_FILTER_FIELDS,
+                status=status,
+                connection_type=connection_type,
+                wlan_name=wlan_name,
+                vlan_id=vlan_id,
+                tunnel_type=tunnel_type,
             )
-        except Exception as e:
-            return format_tool_error("fetching clients", e)
 
-        if not clients:
-            return "No clients found matching the specified criteria."
-        return clean_client_data(clients)
+            try:
+                clients = Clients.get_all_clients(
+                    central_conn=conn,
+                    site_id=site_id,
+                    site_name=site_name,
+                    serial_number=serial_number,
+                    start_time=start_query_time,
+                    end_time=end_query_time,
+                    filter_str=filter_str,
+                )
+            except Exception as e:
+                return format_tool_error("fetching clients", e)
+
+            if not clients:
+                return "No clients found matching the specified criteria."
+            return clean_client_data(clients)
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_find_client(
@@ -103,17 +103,18 @@ def register(mcp: FastMCP) -> None:
         for wireless clients.
 
         """
-        try:
-            result = Clients.get_client_details(
-                central_conn=ctx.lifespan_context["conn"],
-                client_mac=mac_address,
-            )
-        except Exception as e:
-            if MISSING_CLIENT_RESPONSE in str(e):
+        async with api_context(ctx) as conn:
+            try:
+                result = Clients.get_client_details(
+                    central_conn=conn,
+                    client_mac=mac_address,
+                )
+            except Exception as e:
+                if MISSING_CLIENT_RESPONSE in str(e):
+                    return f"No client found with MAC address '{mac_address}'."
+                return format_tool_error("fetching client details", e)
+
+            if not result:
                 return f"No client found with MAC address '{mac_address}'."
-            return format_tool_error("fetching client details", e)
 
-        if not result:
-            return f"No client found with MAC address '{mac_address}'."
-
-        return clean_client_data([result])[0]
+            return clean_client_data([result])[0]
