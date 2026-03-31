@@ -5,7 +5,7 @@ from pycentral.new_monitoring import MonitoringDevices
 
 from models import Device
 from tools import READ_ONLY
-from utils.common import FilterField, build_odata_filter, format_tool_error
+from utils.common import FilterField, api_context, build_filters, format_tool_error
 from utils.devices import clean_device_data, process_device_status
 
 # API field definitions — update allowed_values when Central adds/removes enum options
@@ -59,48 +59,41 @@ def register(mcp: FastMCP) -> None:
           ipv4, deviceFunction, deviceName.
 
         """
-        raw_pairs = [
-            ("site_id", site_id),
-            ("device_type", device_type),
-            ("device_name", device_name),
-            ("serial_number", serial_number),
-            ("model", model),
-            ("device_function", device_function),
-        ]
-        pairs = [(DEVICE_FILTER_FIELDS[k], v) for k, v in raw_pairs if v is not None]
+        async with api_context(ctx) as conn:
+            filter_pairs = dict(
+                site_id=site_id,
+                device_type=device_type,
+                device_name=device_name,
+                serial_number=serial_number,
+                model=model,
+                device_function=device_function,
+            )
+            if is_provisioned is not None:
+                filter_pairs["is_provisioned"] = "Yes" if is_provisioned else "No"
+            filter_str = build_filters(DEVICE_FILTER_FIELDS, **filter_pairs)
 
-        if is_provisioned is not None:
-            pairs.append(
-                (
-                    DEVICE_FILTER_FIELDS["is_provisioned"],
-                    "Yes" if is_provisioned else "No",
+            # normalize site_assigned: True -> "ASSIGNED", False -> "UNASSIGNED", None -> None
+            site_assigned = (
+                None
+                if site_assigned is None
+                else ("ASSIGNED" if site_assigned else "UNASSIGNED")
+            )
+
+            try:
+                devices = MonitoringDevices.get_all_device_inventory(
+                    central_conn=conn,
+                    filter_str=filter_str,
+                    site_assigned=site_assigned,
+                    sort=sort,
                 )
-            )
+            except Exception as e:
+                return format_tool_error("fetching devices", e)
 
-        filter_str = build_odata_filter(pairs)
-
-        # normalize site_assigned: True -> "ASSIGNED", False -> "UNASSIGNED", None -> None
-        site_assigned = (
-            None
-            if site_assigned is None
-            else ("ASSIGNED" if site_assigned else "UNASSIGNED")
-        )
-
-        try:
-            devices = MonitoringDevices.get_all_device_inventory(
-                central_conn=ctx.lifespan_context["conn"],
-                filter_str=filter_str,
-                site_assigned=site_assigned,
-                sort=sort,
-            )
-        except Exception as e:
-            return format_tool_error("fetching devices", e)
-
-        if not devices:
-            return "No devices found matching the specified criteria."
-        if device_status:
-            devices = process_device_status(devices, device_status)
-        return clean_device_data(devices)
+            if not devices:
+                return "No devices found matching the specified criteria."
+            if device_status:
+                devices = process_device_status(devices, device_status)
+            return clean_device_data(devices)
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_find_device(
@@ -122,23 +115,23 @@ def register(mcp: FastMCP) -> None:
         if serial_number and device_name:
             return "Please provide only one unique identifier: either serial_number or device_name, not both."
 
-        pairs = [
-            (DEVICE_FILTER_FIELDS[k], v)
-            for k, v in [("device_name", device_name), ("serial_number", serial_number)]
-            if v is not None
-        ]
-        filter_str = build_odata_filter(pairs)
-        try:
-            device_resp = MonitoringDevices.get_device_inventory(
-                central_conn=ctx.lifespan_context["conn"], filter_str=filter_str
+        async with api_context(ctx) as conn:
+            filter_str = build_filters(
+                DEVICE_FILTER_FIELDS,
+                device_name=device_name,
+                serial_number=serial_number,
             )
-        except Exception as e:
-            return format_tool_error("fetching device data", e)
-        if "items" not in device_resp:
-            return f"Unexpected API error response: {device_resp}"
+            try:
+                device_resp = MonitoringDevices.get_device_inventory(
+                    central_conn=conn, filter_str=filter_str
+                )
+            except Exception as e:
+                return format_tool_error("fetching device data", e)
+            if "items" not in device_resp:
+                return f"Unexpected API error response: {device_resp}"
 
-        if len(device_resp["items"]) == 0:
-            return "No device found matching the provided criteria."
-        if len(device_resp["items"]) > 1:
-            return "Multiple devices found matching the criteria. Use serial_number for a unique match."
-        return clean_device_data(device_resp["items"])[0]
+            if len(device_resp["items"]) == 0:
+                return "No device found matching the provided criteria."
+            if len(device_resp["items"]) > 1:
+                return "Multiple devices found matching the criteria. Use serial_number for a unique match."
+            return clean_device_data(device_resp["items"])[0]
