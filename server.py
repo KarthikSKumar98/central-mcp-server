@@ -26,7 +26,7 @@ async def lifespan(_server: FastMCP):
         ) from e
     asyncio.create_task(check_for_update())
     try:
-        yield {"conn": conn}
+        yield {"conn": conn, "api_semaphore": asyncio.Semaphore(2)}
     finally:
         # Close any open connections or perform cleanup here if necessary
         if conn is not None:

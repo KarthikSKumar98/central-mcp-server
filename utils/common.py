@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from importlib.metadata import PackageNotFoundError
@@ -80,6 +81,13 @@ def build_odata_filter(pairs: list[tuple["FilterField", str]]) -> str | None:
             parts.append(f"{ff.api_field} eq '{value}'")
 
     return " and ".join(parts)
+
+
+@asynccontextmanager
+async def api_context(ctx: Context):
+    """Acquire the API semaphore and yield the Central connection."""
+    async with ctx.lifespan_context["api_semaphore"]:
+        yield ctx.lifespan_context["conn"]
 
 
 def paginated_fetch(
