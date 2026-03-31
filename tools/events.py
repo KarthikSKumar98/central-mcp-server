@@ -6,6 +6,7 @@ from constants import EVENT_LIMIT
 from models import Event, EventFilters, PaginatedEvents
 from tools import READ_ONLY
 from utils.common import (
+    api_context,
     compute_time_window,
     format_rfc3339,
     format_tool_error,
@@ -90,41 +91,41 @@ def register(mcp: FastMCP) -> None:
         assess volume, then page incrementally using cursor.
 
         """
-        start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
+        async with api_context(ctx) as conn:
+            start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
 
-        query_params = {
-            "context-type": context_type,
-            "context-identifier": context_identifier,
-            "start-at": start_at,
-            "end-at": end_at,
-            "site-id": site_id,
-        }
-        if search:
-            query_params["search"] = search
+            query_params = {
+                "context-type": context_type,
+                "context-identifier": context_identifier,
+                "start-at": start_at,
+                "end-at": end_at,
+                "site-id": site_id,
+            }
+            if search:
+                query_params["search"] = search
 
-        query_params["limit"] = limit
-        if cursor is not None:
-            query_params["next"] = cursor
+            query_params["limit"] = limit
+            if cursor is not None:
+                query_params["next"] = cursor
 
-        try:
-            conn = ctx.lifespan_context["conn"]
-            response = conn.command(
-                api_method="GET",
-                api_path="network-troubleshooting/v1/events",
-                api_params=query_params,
+            try:
+                response = conn.command(
+                    api_method="GET",
+                    api_path="network-troubleshooting/v1/events",
+                    api_params=query_params,
+                )
+                if response["code"] != 200:
+                    return format_tool_error("fetching events", response["msg"])
+            except Exception as e:
+                return format_tool_error("fetching events", e)
+
+            msg = response["msg"]
+            raw_events = msg.get("events", [])  # key is "events", not "items"
+            return PaginatedEvents(
+                items=[Event(**e) for e in raw_events],
+                total=msg.get("total", 0),
+                next_cursor=msg.get("next"),
             )
-            if response["code"] != 200:
-                return format_tool_error("fetching events", response["msg"])
-        except Exception as e:
-            return format_tool_error("fetching events", e)
-
-        msg = response["msg"]
-        raw_events = msg.get("events", [])  # key is "events", not "items"
-        return PaginatedEvents(
-            items=[Event(**e) for e in raw_events],
-            total=msg.get("total", 0),
-            next_cursor=msg.get("next"),
-        )
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_events_count(
@@ -161,21 +162,21 @@ def register(mcp: FastMCP) -> None:
         """
         start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
 
-        try:
-            conn = ctx.lifespan_context["conn"]
-            response = conn.command(
-                api_method="GET",
-                api_path="network-troubleshooting/v1/event-filters",
-                api_params={
-                    "context-type": context_type,
-                    "context-identifier": context_identifier,
-                    "start-at": start_at,
-                    "end-at": end_at,
-                    "site-id": site_id,
-                },
-            )
-            if response["code"] != 200:
-                return format_tool_error("fetching event filters", response["msg"])
-        except Exception as e:
-            return format_tool_error("fetching event filters", e)
-        return clean_event_filters(response["msg"])
+        async with api_context(ctx) as conn:
+            try:
+                response = conn.command(
+                    api_method="GET",
+                    api_path="network-troubleshooting/v1/event-filters",
+                    api_params={
+                        "context-type": context_type,
+                        "context-identifier": context_identifier,
+                        "start-at": start_at,
+                        "end-at": end_at,
+                        "site-id": site_id,
+                    },
+                )
+                if response["code"] != 200:
+                    return format_tool_error("fetching event filters", response["msg"])
+            except Exception as e:
+                return format_tool_error("fetching event filters", e)
+            return clean_event_filters(response["msg"])
