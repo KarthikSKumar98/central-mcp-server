@@ -6,6 +6,7 @@ from fastmcp import FastMCP
 from fastmcp.experimental.transforms.code_mode import CodeMode
 
 import prompts
+from constants import API_CONCURRENCY_LIMIT
 from services.central_service import get_conn, verify_connection
 from tools import alerts, clients, devices, events, sites
 from utils.common import check_for_update
@@ -26,7 +27,7 @@ async def lifespan(_server: FastMCP):
         ) from e
     asyncio.create_task(check_for_update())
     try:
-        yield {"conn": conn, "api_semaphore": asyncio.Semaphore(2)}
+        yield {"conn": conn, "api_semaphore": asyncio.Semaphore(API_CONCURRENCY_LIMIT)}
     finally:
         # Close any open connections or perform cleanup here if necessary
         if conn is not None:

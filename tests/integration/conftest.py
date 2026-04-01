@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from constants import API_CONCURRENCY_LIMIT
 from config import validate_credentials
 from services.central_service import get_conn
 
@@ -21,5 +22,8 @@ def live_ctx():
         pytest.skip("No credentials found in .env.local — skipping live tests")
     conn = get_conn()
     ctx = MagicMock()
-    ctx.lifespan_context = {"conn": conn, "api_semaphore": asyncio.Semaphore(2)}
+    ctx.lifespan_context = {
+        "conn": conn,
+        "api_semaphore": asyncio.Semaphore(API_CONCURRENCY_LIMIT),
+    }
     return ctx
