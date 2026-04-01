@@ -6,6 +6,7 @@ from fastmcp import FastMCP
 from fastmcp.experimental.transforms.code_mode import CodeMode
 
 import prompts
+from config import DYNAMIC_TOOLS
 from constants import API_CONCURRENCY_LIMIT
 from services.central_service import get_conn, verify_connection
 from tools import alerts, clients, devices, events, sites
@@ -38,7 +39,7 @@ mcp = FastMCP(
     "Central MCP",
     lifespan=lifespan,
     instructions=_INSTRUCTIONS,
-    transforms=[CodeMode()],
+    transforms=[CodeMode() if DYNAMIC_TOOLS else None], # Enable code mode if dynamic tools are enabled, otherwise use default (all tools are loaded into MCP at startup)
 )
 
 # Register tools with the MCP server
