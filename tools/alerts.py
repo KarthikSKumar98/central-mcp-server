@@ -1,3 +1,4 @@
+import asyncio
 from typing import Literal
 
 from fastmcp import Context, FastMCP
@@ -79,7 +80,7 @@ def register(mcp: FastMCP) -> None:
             if cursor is not None:
                 query_params["next"] = cursor
 
-                response = await asyncio.to_thread(
+            response = await asyncio.to_thread(
                 conn.command,
                 api_method="GET",
                 api_path="network-notifications/v1/alerts",
