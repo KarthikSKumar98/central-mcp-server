@@ -6,7 +6,7 @@ from pycentral.new_monitoring import MonitoringSites
 from models import SiteData
 from tools import READ_ONLY
 from utils.common import api_context
-from utils.sites import compute_health_score, fetch_site_data_parallel, groups_to_map
+from utils.sites import compute_health_score, fetch_site_data, groups_to_map
 
 
 def register(mcp: FastMCP) -> None:
@@ -33,7 +33,7 @@ def register(mcp: FastMCP) -> None:
 
         """
         async with api_context(ctx) as conn:
-            sites_data = await asyncio.to_thread(fetch_site_data_parallel, conn)
+            sites_data = await asyncio.to_thread(fetch_site_data, conn)
             if site_names:
                 return [sites_data[name] for name in site_names if name in sites_data]
             return list(sites_data.values())
