@@ -96,6 +96,16 @@ See the [full setup guide](https://developer.arubanetworks.com/new-central/docs/
 
 Replace the placeholder values with your actual credentials in all examples below.
 
+#### Optional: Code Mode Transform (`DYNAMIC_TOOLS`)
+
+`DYNAMIC_TOOLS` is optional and only affects startup behavior:
+
+- Code Mode is enabled only when `DYNAMIC_TOOLS` is set to `true` (case-insensitive).
+- Code Mode is disabled when `DYNAMIC_TOOLS` is not set or set to any other value.
+- Variable name is strict: use `DYNAMIC_TOOLS` (plural). `DYNAMIC_TOOL` is ignored.
+
+When enabled, the server starts with `CodeMode()` and exposes Code Mode meta-tools to the client. When disabled, the server runs without the transform and exposes the normal registered tool catalog directly.
+
 #### Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
