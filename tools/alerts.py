@@ -79,7 +79,8 @@ def register(mcp: FastMCP) -> None:
             if cursor is not None:
                 query_params["next"] = cursor
 
-            response = conn.command(
+                response = await asyncio.to_thread(
+                conn.command,
                 api_method="GET",
                 api_path="network-notifications/v1/alerts",
                 api_params=query_params,

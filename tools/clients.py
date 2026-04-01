@@ -71,7 +71,8 @@ def register(mcp: FastMCP) -> None:
             )
 
             try:
-                clients = Clients.get_all_clients(
+                clients = await asyncio.to_thread(
+                    Clients.get_all_clients,
                     central_conn=conn,
                     site_id=site_id,
                     site_name=site_name,
@@ -105,7 +106,8 @@ def register(mcp: FastMCP) -> None:
         """
         async with api_context(ctx) as conn:
             try:
-                result = Clients.get_client_details(
+                result = await asyncio.to_thread(
+                    Clients.get_client_details,
                     central_conn=conn,
                     client_mac=mac_address,
                 )

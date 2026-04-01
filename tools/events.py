@@ -109,7 +109,8 @@ def register(mcp: FastMCP) -> None:
                 query_params["next"] = cursor
 
             try:
-                response = conn.command(
+                response = await asyncio.to_thread(
+                    conn.command,
                     api_method="GET",
                     api_path="network-troubleshooting/v1/events",
                     api_params=query_params,
@@ -161,10 +162,10 @@ def register(mcp: FastMCP) -> None:
 
         """
         start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
-
         async with api_context(ctx) as conn:
             try:
-                response = conn.command(
+                response = await asyncio.to_thread(
+                    conn.command,
                     api_method="GET",
                     api_path="network-troubleshooting/v1/event-filters",
                     api_params={

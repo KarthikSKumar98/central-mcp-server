@@ -80,7 +80,8 @@ def register(mcp: FastMCP) -> None:
             )
 
             try:
-                devices = MonitoringDevices.get_all_device_inventory(
+                devices = await asyncio.to_thread(
+                    MonitoringDevices.get_all_device_inventory,
                     central_conn=conn,
                     filter_str=filter_str,
                     site_assigned=site_assigned,
@@ -122,8 +123,10 @@ def register(mcp: FastMCP) -> None:
                 serial_number=serial_number,
             )
             try:
-                device_resp = MonitoringDevices.get_device_inventory(
-                    central_conn=conn, filter_str=filter_str
+                device_resp = await asyncio.to_thread(
+                    MonitoringDevices.get_device_inventory,
+                    central_conn=conn,
+                    filter_str=filter_str,
                 )
             except Exception as e:
                 return format_tool_error("fetching device data", e)
