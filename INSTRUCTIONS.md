@@ -21,6 +21,7 @@ When a user asks about "poor", "fair", or "good" sites:
 - After reviewing `central_get_site_name_id_mapping` results, call `central_get_sites` with a `site_names` filter targeting only the specific sites you need — those with notable health scores, high alert counts, or explicit user interest. `central_get_sites` returns detailed health metrics, device/client/alert summaries, and location metadata. Do NOT call `central_get_sites` without a filter unless the user explicitly requests full data for all sites.
 - For targeted device queries, use `central_get_devices` with filters by site, type, model, or status.
 - You can provide recommendations based on `central_get_devices` or `central_get_alerts` results, but ALWAYS base recommendations strictly on the API response data. Do NOT make assumptions not supported by the data.
+- For event investigations, start with `central_get_events_count` using `response_mode="compact"` to get ranked event name entries (with both `event_id` and `event_name`), source types, and categories. Use the top-ranked values to choose filters, then call `central_get_events` with `event_id`, `source_type`, and/or `category` to fetch detailed records. Use `response_mode="full"` on `central_get_events_count` only when exact per-item counts are needed.
 
 ## Resolving Issues
 
