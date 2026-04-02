@@ -1,9 +1,12 @@
+import asyncio
+
 from fastmcp import Context, FastMCP
 from pycentral.new_monitoring import MonitoringSites
 
 from models import SiteData
 from tools import READ_ONLY
-from utils.sites import compute_health_score, fetch_site_data_parallel, groups_to_map
+from utils.common import api_context
+from utils.sites import compute_health_score, fetch_site_data, groups_to_map
 
 
 def register(mcp: FastMCP) -> None:
@@ -29,10 +32,11 @@ def register(mcp: FastMCP) -> None:
         - site_names: One or more site name to filter by. Supports exact matches. If omitted, all sites are returned (use sparingly or when explicitly requested).
 
         """
-        sites_data = fetch_site_data_parallel(ctx.lifespan_context["conn"])
-        if site_names:
-            return [sites_data[name] for name in site_names if name in sites_data]
-        return list(sites_data.values())
+        async with api_context(ctx) as conn:
+            sites_data = await asyncio.to_thread(fetch_site_data, conn)
+            if site_names:
+                return [sites_data[name] for name in site_names if name in sites_data]
+            return list(sites_data.values())
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_site_name_id_mapping(ctx: Context) -> dict:
@@ -54,26 +58,31 @@ def register(mcp: FastMCP) -> None:
         - critical_alerts: Number of critical alerts at the site.
         - total_alerts: Total number of alerts at the site.
         """
-        sites = MonitoringSites.get_all_sites(central_conn=ctx.lifespan_context["conn"])
-        mapping = {}
-        for site in sites:
-            health_obj = groups_to_map(site.get("health", {}))
-            summary = compute_health_score(health_obj)
-            mapping[site["siteName"]] = {
-                "site_id": site.get("id"),
-                "health": summary,
-                "total_devices": site.get("devices", {}).get("count", 0),
-                "total_clients": site.get("clients", {}).get("count", 0),
-                "critical_alerts": site.get("alerts", {}).get("critical", 0),
-                "total_alerts": site.get("alerts", {}).get("total", 0),
-            }
-        mapping = dict(
-            sorted(
-                mapping.items(),
-                key=lambda item: (
-                    item[1]["health"] if item[1]["health"] is not None else float("inf")
-                ),
-                reverse=False,
+        async with api_context(ctx) as conn:
+            sites = await asyncio.to_thread(
+                MonitoringSites.get_all_sites, central_conn=conn
             )
-        )
-        return mapping
+            mapping = {}
+            for site in sites:
+                health_obj = groups_to_map(site.get("health", {}))
+                summary = compute_health_score(health_obj)
+                mapping[site["siteName"]] = {
+                    "site_id": site.get("id"),
+                    "health": summary,
+                    "total_devices": site.get("devices", {}).get("count", 0),
+                    "total_clients": site.get("clients", {}).get("count", 0),
+                    "critical_alerts": site.get("alerts", {}).get("critical", 0),
+                    "total_alerts": site.get("alerts", {}).get("total", 0),
+                }
+            mapping = dict(
+                sorted(
+                    mapping.items(),
+                    key=lambda item: (
+                        item[1]["health"]
+                        if item[1]["health"] is not None
+                        else float("inf")
+                    ),
+                    reverse=False,
+                )
+            )
+            return mapping

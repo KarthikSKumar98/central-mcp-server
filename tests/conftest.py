@@ -1,4 +1,7 @@
+import asyncio
 from unittest.mock import MagicMock
+
+from constants import API_CONCURRENCY_LIMIT
 
 
 class FakeMCP:
@@ -21,5 +24,8 @@ class FakeMCP:
 
 def make_ctx():
     ctx = MagicMock()
-    ctx.lifespan_context = {"conn": MagicMock()}
+    ctx.lifespan_context = {
+        "conn": MagicMock(),
+        "api_semaphore": asyncio.Semaphore(API_CONCURRENCY_LIMIT),
+    }
     return ctx

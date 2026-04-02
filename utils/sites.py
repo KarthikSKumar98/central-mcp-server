@@ -1,18 +1,16 @@
-from concurrent.futures import ThreadPoolExecutor
-
 from constants import SITE_LIMIT
 from models import SiteData, SiteMetrics
 from utils.common import paginated_fetch
 
 
-def fetch_site_data_parallel(central_conn) -> tuple:
-    """Fetch site health, device health, and client health data in parallel.
+def fetch_site_data(central_conn) -> dict[str, SiteData]:
+    """Fetch site health, device health, and client health data on one connection.
 
     Args:
         central_conn: Central API connection object
 
     Returns:
-        tuple: (site_health_data, device_health_data, client_health_data)
+        Dictionary of site names to normalized SiteData objects.
 
     """
     endpoints = [
@@ -21,12 +19,9 @@ def fetch_site_data_parallel(central_conn) -> tuple:
         "network-monitoring/v1/sites-client-health",
     ]
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [
-            executor.submit(paginated_fetch, central_conn, endpoint, SITE_LIMIT)
-            for endpoint in endpoints
-        ]
-        results = [future.result() for future in futures]
+    results = [
+        paginated_fetch(central_conn, endpoint, SITE_LIMIT) for endpoint in endpoints
+    ]
 
     return process_site_health_data(*results)
 
