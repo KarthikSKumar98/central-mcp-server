@@ -59,7 +59,9 @@ def register(mcp: FastMCP) -> None:
         - total_alerts: Total number of alerts at the site.
         """
         async with api_context(ctx) as conn:
-            sites = await asyncio.to_thread(MonitoringSites.get_all_sites, central_conn=conn)
+            sites = await asyncio.to_thread(
+                MonitoringSites.get_all_sites, central_conn=conn
+            )
             mapping = {}
             for site in sites:
                 health_obj = groups_to_map(site.get("health", {}))
