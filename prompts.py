@@ -12,7 +12,7 @@ Provide a full network health overview by following these steps:
 
 1. Call `central_get_site_name_id_mapping` to get all sites with health scores, device/client/alert counts.
 2. Identify sites with poor or fair health, or notably high alert counts.
-3. Call `central_get_sites` with only those site names(maximum 5) to get detailed metrics.
+3. Call `central_get_sites` with only the sites with lowest health or highest alerts(maximum 3) to get detailed metrics.
 4. Summarize per site: health score, device/client/alert totals, and any notable issues.
 5. End with an overall network health assessment and flag any sites requiring immediate attention.
         """.strip()
@@ -53,7 +53,7 @@ Investigate recent events for device with serial number "{serial_number}" over t
 
 1. Call `central_find_device` with serial_number="{serial_number}" to confirm the device exists and get its site_id and device_type.
 2. Map device_type to the matching context_type: ACCESS_POINT → ACCESS_POINT, SWITCH → SWITCH, GATEWAY → GATEWAY.
-3. Call `central_get_events_count` with context_type=<mapped type>, context_identifier="{serial_number}", site_id=<site_id>, time_range="{time_range}" to get a breakdown of event types and volumes.
+3. Call `central_get_events_count` with site_id=<site_id>, context_type=<mapped type>, context_identifier="{serial_number}", time_range="{time_range}" to get a breakdown of event types and volumes.
 4. If total > 0, call `central_get_events` with the same parameters to fetch full event details.
 5. Summarize: event timeline, dominant event types, any recurring or critical events, and recommended next steps.
         """.strip()
@@ -65,8 +65,8 @@ Investigate recent events for device with serial number "{serial_number}" over t
 Summarize events at site "{site_name}" over the {time_range} window:
 
 1. Call `central_get_site_name_id_mapping` to verify the site name and get its site_id.
-2. Call `central_get_events_count` with context_type="SITE", context_identifier=<site_id>, site_id=<site_id>, time_range="{time_range}" to get the event breakdown by type and category.
-3. If total > 0, call `central_get_events` with the same parameters to fetch full event details.
+2. Call `central_get_events_count` with site_id=<site_id>, time_range="{time_range}" to get the event breakdown by type and category.
+3. If total > 0, call `central_get_events` with site_id=<site_id> and time_range="{time_range}" to fetch full event details.
 4. Group events by category and name. Highlight any spikes, repeated errors, or critical events.
 5. Summarize: total event count, top event types, notable patterns, and any suggested follow-up actions.
         """.strip()
@@ -82,7 +82,7 @@ Investigate failed client connections at site "{site_name}":
 3. If no failed clients are found, report the site is clean.
 4. For each failed client (up to 5), call `central_find_device` with the connected device serial number to check device health.
 5. Call `central_get_alerts` with site_id=<site_id> and category="Clients" to check for site-level client alerts.
-6. Summarize: number of failed clients, connection types affected (wired vs wireless), common failure patterns, related device or site alerts, and likely root causes.
+6. Summarize: number of failed clients, connection types affected (wired vs wireless), common failure patterns, related device or site alerts, and likely root causes based on available Central data.
         """.strip()
 
     @mcp.prompt
@@ -108,7 +108,7 @@ Check the health of all {device_type} devices at site "{site_name}":
 2. Call `central_get_devices` with site_id=<site_id> and device_type="{device_type}" to list all matching devices.
 3. Call `central_get_alerts` with site_id=<site_id> and device_type matching the {device_type} display name to get relevant active alerts.
 4. For any device with associated alerts, call `central_get_events_count` with the device serial number and time_range="last_24h" to check recent event activity.
-5. Summarize: total device count, provisioned vs unprovisioned, active alert breakdown by severity, devices with high event activity, and recommended actions.
+5. Summarize: total device count, provisioned vs unprovisioned, active alert breakdown by severity, devices with high event activity.
         """.strip()
 
     @mcp.prompt
@@ -118,10 +118,10 @@ Check the health of all {device_type} devices at site "{site_name}":
 Review all active critical alerts across the network:
 
 1. Call `central_get_site_name_id_mapping` to get all sites with their site_ids and alert counts.
-2. For each site with total_alerts > 0, call `central_get_alerts` with the site_id and status="Active" to get all active alerts.
-3. Filter to Critical severity only. Group by site and category.
-4. Identify sites with the highest concentration of critical alerts.
-5. Summarize: total critical alert count across the network, top affected sites, most common alert names by category, and recommended immediate actions.
+2. For each site with critical_alerts > 0, call `central_get_alerts` with the site_id and status="Active" to get all active alerts.
+3. Identify sites with the highest concentration of critical alerts.
+4. Filter to Critical severity only. Group by site and category.
+5. Summarize: critical alert count across the network, top affected sites, most common alert names by category.
         """.strip()
 
     @mcp.prompt

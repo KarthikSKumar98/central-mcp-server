@@ -1,11 +1,16 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastmcp import FastMCP
 from fastmcp.experimental.transforms.code_mode import CodeMode
 
+import prompts
+from config import DYNAMIC_TOOLS
+from constants import API_CONCURRENCY_LIMIT
 from services.central_service import get_conn, verify_connection
-from tools import alerts, clients, devices, events, prompts, sites
+from tools import alerts, clients, devices, events, sites
+from utils.common import check_for_update
 
 _INSTRUCTIONS = (Path(__file__).parent / "INSTRUCTIONS.md").read_text()
 
@@ -21,33 +26,43 @@ async def lifespan(_server: FastMCP):
             f"Failed to connect to Central: {e}\n"
             "Ensure credentials in .env are correct and the server is reachable."
         ) from e
+    asyncio.create_task(check_for_update())
     try:
-        yield {"conn": conn}
+        yield {"conn": conn, "api_semaphore": asyncio.Semaphore(API_CONCURRENCY_LIMIT)}
     finally:
-        pass  # NewCentralBase has no explicit close; placeholder for future cleanup
+        # Close any open connections or perform cleanup here if necessary
+        if conn is not None:
+            conn.close()
 
 
 mcp = FastMCP(
     "Central MCP",
     lifespan=lifespan,
     instructions=_INSTRUCTIONS,
-    transforms=[CodeMode()],
+    transforms=[
+        CodeMode() if DYNAMIC_TOOLS else None
+    ],  # Enable code mode if dynamic tools are enabled, otherwise use default (all tools are loaded into MCP at startup)
 )
 
+# Register tools with the MCP server
 sites.register(mcp)
 devices.register(mcp)
 clients.register(mcp)
 alerts.register(mcp)
-prompts.register(mcp)
 events.register(mcp)
 
+# Register prompts with the MCP server
+prompts.register(mcp)
 
+
+# Entry point for the installed CLI command: `central-mcp-server` (see pyproject.toml)
 def run():
     mcp.run()
 
 
+# For local development, you can run this script directly with `python server.py` to start the MCP server.
 if __name__ == "__main__":
     mcp.run()
 
-    # For local development with auto-reload, use the following command instead of mcp.run():
+    # For local development with sse, use the following command:
     # mcp.run(transport="sse", host="127.0.0.1", port=8001)

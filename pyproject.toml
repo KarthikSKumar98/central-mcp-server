@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "central-mcp-server"
-version = "0.1.0"
+version = "0.1.2"
 description = "Unofficial MCP server for HPE Aruba Networking Central"
 readme = {file = "README.pypi.md", content-type = "text/markdown"}
 requires-python = ">=3.10"
@@ -39,8 +39,10 @@ include = [
     "INSTRUCTIONS.md",
     "server.py",
     "config.py",
+    "constants.py",
     "models.py",
-    "utils.py",
+    "prompts.py",
+    "utils/",
     "services/",
     "tools/",
 ]

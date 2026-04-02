@@ -96,6 +96,16 @@ See the [full setup guide](https://developer.arubanetworks.com/new-central/docs/
 
 Replace the placeholder values with your actual credentials in all examples below.
 
+#### Optional: Code Mode Transform (`DYNAMIC_TOOLS`)
+
+`DYNAMIC_TOOLS` is optional and only affects startup behavior:
+
+- Code Mode is enabled only when `DYNAMIC_TOOLS` is set to `true` (case-insensitive).
+- Code Mode is disabled when `DYNAMIC_TOOLS` is not set or set to any other value.
+- Variable name is strict: use `DYNAMIC_TOOLS` (plural). `DYNAMIC_TOOL` is ignored.
+
+When enabled, the server starts with `CodeMode()` and exposes Code Mode meta-tools to the client. When disabled, the server runs without the transform and exposes the normal registered tool catalog directly.
+
 #### Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
@@ -202,7 +212,18 @@ See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-cent
 | Tool | Description |
 |------|-------------|
 | `central_get_events` | Events for a site, device, or client within a time window |
-| `central_get_events_count` | Event count breakdown by type without fetching full event details |
+| `central_get_events_count` | Event count breakdown by type with `response_mode="full"` (counts) or `response_mode="compact"` (ranked event id/name pairs + lists) |
+
+### LLM Workflow for Events
+
+Use this sequence for faster, lower-token event investigations:
+
+1. For site-level queries, call events tools with `site_id` only.
+2. For device/client queries, pass `site_id` plus `context_type` and `context_identifier`.
+3. Call `central_get_events_count` with `response_mode="compact"` to get ranked `event_names` (each with `event_id` + `event_name`), `source_types`, and `categories`.
+4. Pick the top category/source/event name as your likely starting point.
+5. Call `central_get_events` with targeted filters (`category`, `source_type`, and/or `event_id`) to fetch detailed records.
+6. Use `central_get_events_count` with `response_mode="full"` only when exact per-item counts are required.
 
 ### Guided Prompts
 

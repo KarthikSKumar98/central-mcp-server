@@ -1,3 +1,4 @@
+import asyncio
 from typing import Literal
 
 from fastmcp import Context, FastMCP
@@ -6,7 +7,7 @@ from constants import ALERT_LIMIT
 from models import PaginatedAlerts
 from tools import READ_ONLY
 from utils.alerts import clean_alert_data
-from utils.common import FilterField, build_odata_filter, format_tool_error
+from utils.common import FilterField, api_context, build_filters, format_tool_error
 
 ALERT_FILTER_FIELDS: dict[str, FilterField] = {
     "status": FilterField("status"),
@@ -63,37 +64,36 @@ def register(mcp: FastMCP) -> None:
         deviceType, createdAt, updatedAt, updatedBy, and clearedReason.
 
         """
-        raw_pairs = [
-            ("status", status),
-            ("device_type", device_type),
-            ("category", category),
-            ("site_id", site_id),
-        ]
-        pairs = [(ALERT_FILTER_FIELDS[k], v) for k, v in raw_pairs if v is not None]
+        async with api_context(ctx) as conn:
+            filter_str = build_filters(
+                ALERT_FILTER_FIELDS,
+                status=status,
+                device_type=device_type,
+                category=category,
+                site_id=site_id,
+            )
+            query_params = {"sort": sort}
+            if filter_str:
+                query_params["filter"] = filter_str
 
-        query_params = {"sort": sort}
-        odata = build_odata_filter(pairs)
-        if odata:
-            query_params["filter"] = odata
+            query_params["limit"] = limit
+            if cursor is not None:
+                query_params["next"] = cursor
 
-        query_params["limit"] = limit
-        if cursor is not None:
-            query_params["next"] = cursor
-
-        conn = ctx.lifespan_context["conn"]
-        response = conn.command(
-            api_method="GET",
-            api_path="network-notifications/v1/alerts",
-            api_params=query_params,
-        )
-        if response["code"] != 200:
-            return format_tool_error("fetching alerts", response["msg"])
-        msg = response["msg"]
-        raw_items = msg.get("items", [])
-        if not raw_items:
-            return "No alerts found matching criteria"
-        return PaginatedAlerts(
-            items=clean_alert_data(raw_items),
-            total=msg.get("total", 0),
-            next_cursor=msg.get("next"),
-        )
+            response = await asyncio.to_thread(
+                conn.command,
+                api_method="GET",
+                api_path="network-notifications/v1/alerts",
+                api_params=query_params,
+            )
+            if response["code"] != 200:
+                return format_tool_error("fetching alerts", response["msg"])
+            msg = response["msg"]
+            raw_items = msg.get("items", [])
+            if not raw_items:
+                return "No alerts found matching criteria"
+            return PaginatedAlerts(
+                items=clean_alert_data(raw_items),
+                total=msg.get("total", 0),
+                next_cursor=msg.get("next"),
+            )

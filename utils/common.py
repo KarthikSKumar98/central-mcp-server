@@ -1,5 +1,51 @@
+import asyncio
+import json
+import logging
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
+from urllib.error import URLError
+from urllib.request import urlopen
+
+from fastmcp import Context
+
+logger = logging.getLogger(__name__)
+
+_PACKAGE_NAME = "central-mcp-server"
+
+
+async def check_for_update() -> None:
+    """Check PyPI for a newer version and warn to stderr if one exists.
+
+    Runs a non-blocking background check against PyPI. If a newer version is
+    available, prints a notice to stderr with upgrade instructions. Silently
+    skips if the package is not installed or the network is unreachable.
+    """
+    try:
+        current = pkg_version(_PACKAGE_NAME)
+
+        def _fetch() -> dict:
+            with urlopen(
+                f"https://pypi.org/pypi/{_PACKAGE_NAME}/json", timeout=5
+            ) as resp:
+                return json.loads(resp.read())
+
+        data = await asyncio.to_thread(_fetch)
+        latest = data["info"]["version"]
+        if latest != current:
+            logger.warning(
+                "[%s] Update available: %s → %s\n"
+                "Check the release notes at https://github.com/KarthikSKumar98/central-mcp-server/releases/\n"
+                "Run `uv cache clean %s` then restart to get the latest version.",
+                _PACKAGE_NAME,
+                current,
+                latest,
+                _PACKAGE_NAME,
+            )
+    except (PackageNotFoundError, URLError, KeyError, OSError):
+        pass
 
 
 @dataclass
@@ -37,6 +83,19 @@ def build_odata_filter(pairs: list[tuple["FilterField", str]]) -> str | None:
             parts.append(f"{ff.api_field} eq '{value}'")
 
     return " and ".join(parts)
+
+
+@asynccontextmanager
+async def api_context(ctx: Context):
+    """Acquire the API semaphore and yield the Central connection."""
+    async with ctx.lifespan_context["api_semaphore"]:
+        yield ctx.lifespan_context["conn"]
+
+
+def build_filters(fields_map: dict[str, "FilterField"], **kwargs) -> str | None:
+    """Build an OData filter string from keyword args, skipping None values."""
+    pairs = [(fields_map[k], v) for k, v in kwargs.items() if v is not None]
+    return build_odata_filter(pairs)
 
 
 def paginated_fetch(
