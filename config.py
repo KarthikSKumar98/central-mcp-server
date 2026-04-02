@@ -13,6 +13,7 @@ load_dotenv(os.path.join(user_config_dir("central-mcp-server"), ".env"), overrid
 CENTRAL_BASE_URL = os.getenv("CENTRAL_BASE_URL", "")
 CENTRAL_CLIENT_ID = os.getenv("CENTRAL_CLIENT_ID", "")
 CENTRAL_CLIENT_SECRET = os.getenv("CENTRAL_CLIENT_SECRET", "")
+DYNAMIC_TOOLS = os.getenv("DYNAMIC_TOOLS", "false").lower() == "true"
 
 
 def validate_credentials():
