@@ -45,7 +45,7 @@ Check connectivity for the client with MAC address "{mac_address}":
 
     @mcp.prompt
     def investigate_device_events(
-        serial_number: str, time_range: str = "last_24h"
+        serial_number: str, time_range: str = "last_6h"
     ) -> str:
         """Investigate recent events for a specific device to diagnose issues."""
         return f"""
@@ -59,7 +59,7 @@ Investigate recent events for device with serial number "{serial_number}" over t
         """.strip()
 
     @mcp.prompt
-    def site_event_summary(site_name: str, time_range: str = "last_24h") -> str:
+    def site_event_summary(site_name: str, time_range: str = "last_6h") -> str:
         """Summarize all events at a site to identify patterns and anomalies."""
         return f"""
 Summarize events at site "{site_name}" over the {time_range} window:
@@ -107,7 +107,7 @@ Check the health of all {device_type} devices at site "{site_name}":
 1. Call `central_get_site_name_id_mapping` to verify the site name and get its site_id.
 2. Call `central_get_devices` with site_id=<site_id> and device_type="{device_type}" to list all matching devices.
 3. Call `central_get_alerts` with site_id=<site_id> and device_type matching the {device_type} display name to get relevant active alerts.
-4. For any device with associated alerts, call `central_get_events_count` with the device serial number and time_range="last_24h" to check recent event activity.
+4. For any device with associated alerts, call `central_get_events_count` with the device serial number and time_range="last_6h" to check recent event activity.
 5. Summarize: total device count, provisioned vs unprovisioned, active alert breakdown by severity, devices with high event activity.
         """.strip()
 
