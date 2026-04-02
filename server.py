@@ -1,4 +1,3 @@
-import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,7 +9,6 @@ from config import DYNAMIC_TOOLS
 from constants import API_CONCURRENCY_LIMIT
 from services.central_service import get_conn, verify_connection
 from tools import alerts, clients, devices, events, sites
-from utils.common import check_for_update
 
 _INSTRUCTIONS = (Path(__file__).parent / "INSTRUCTIONS.md").read_text()
 
@@ -26,7 +24,6 @@ async def lifespan(_server: FastMCP):
             f"Failed to connect to Central: {e}\n"
             "Ensure credentials in .env are correct and the server is reachable."
         ) from e
-    asyncio.create_task(check_for_update())
     try:
         yield {"conn": conn, "api_semaphore": asyncio.Semaphore(API_CONCURRENCY_LIMIT)}
     finally:
