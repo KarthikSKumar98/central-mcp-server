@@ -1,6 +1,6 @@
 from models import (
-    CompactEventName,
     CompactEventFilters,
+    CompactEventName,
     EventCategoryCount,
     EventFilters,
     EventNameCount,
@@ -37,7 +37,8 @@ def clean_event_filters(msg: dict) -> EventFilters:
 def compact_event_filters(filters: EventFilters) -> CompactEventFilters:
     """Convert EventFilters into a compact, LLM-friendly ranked representation."""
     ranked_event_names = sorted(
-        filters.event_names, key=lambda item: (-item.count, item.event_name, item.event_id)
+        filters.event_names,
+        key=lambda item: (-item.count, item.event_name, item.event_id),
     )
     ranked_source_types = sorted(
         filters.source_types, key=lambda item: (-item.count, item.source_type)

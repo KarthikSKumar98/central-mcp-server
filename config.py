@@ -15,6 +15,7 @@ CENTRAL_CLIENT_ID = os.getenv("CENTRAL_CLIENT_ID", "")
 CENTRAL_CLIENT_SECRET = os.getenv("CENTRAL_CLIENT_SECRET", "")
 DYNAMIC_TOOLS = os.getenv("DYNAMIC_TOOLS", "false").lower() == "true"
 
+
 def validate_credentials():
     """Validate that all required credentials are set.
 

@@ -12,7 +12,11 @@ from utils.common import (
     build_filters,
     format_tool_error,
 )
-from utils.events import _resolve_time_window, clean_event_filters, compact_event_filters
+from utils.events import (
+    _resolve_time_window,
+    clean_event_filters,
+    compact_event_filters,
+)
 
 CONTEXT_TYPE = Literal[
     "SITE",
@@ -53,7 +57,9 @@ def _resolve_context_identifier(
     """Resolve and validate context identifier based on context type."""
     if context_type == "SITE":
         if context_identifier is not None:
-            raise ValueError("context_identifier must not be provided when context_type=SITE")
+            raise ValueError(
+                "context_identifier must not be provided when context_type=SITE"
+            )
         return site_id
 
     if not context_identifier:

@@ -293,34 +293,32 @@ class Event(BaseModel):
     )
     serial_number: str = Field(
         alias="serialNumber",
-        description="Serial number of the device that generated the event."
+        description="Serial number of the device that generated the event.",
     )
     time_at: str = Field(
         alias="timeAt",
-        description="Timestamp when the event occurred at the source (RFC 3339 with milliseconds)."
+        description="Timestamp when the event occurred at the source (RFC 3339 with milliseconds).",
     )
     event_name: str = Field(alias="eventName", description="Name of the event.")
     category: str = Field(description="Event category.")
     source_type: SourceType = Field(
-        alias="sourceType",
-        description="Type of source that generated the event."
+        alias="sourceType", description="Type of source that generated the event."
     )
     source_name: str = Field(
         alias="sourceName",
-        description="Name of the device or client that generated the event."
+        description="Name of the device or client that generated the event.",
     )
     description: str = Field(description="Detailed description of the event.")
     client_mac_address: str | None = Field(
         alias="clientMacAddress",
-        description="MAC address of the client involved in the event."
+        description="MAC address of the client involved in the event.",
     )
     device_mac_address: str | None = Field(
         alias="deviceMacAddress",
-        description="MAC address of the device that generated the event."
+        description="MAC address of the device that generated the event.",
     )
     stack_id: str | None = Field(
-        alias="stackId",
-        description="Stack identifier for stack-capable devices."
+        alias="stackId", description="Stack identifier for stack-capable devices."
     )
     bssid: str | None = Field(
         description="Basic Service Set Identifier for wireless events."

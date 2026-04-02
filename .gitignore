@@ -2,3 +2,8 @@
 *.pyc
 .vscode/
 .github/
+content/*
+docs/*
+*.mcp.json
+AGENTS.md
+CLAUDE.md
