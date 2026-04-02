@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2026-04-02
+
+### CI
+- Added `generate-release-pr.yml` workflow to automate release PR creation from `development`
+- Added `publish-release.yml` workflow to automate tag creation, GitHub release creation, package publish, and main-to-development sync after release merge
+
+### Maintenance
+- Added release helper scripts:
+  - `.github/scripts/generate_changelog.py`
+  - `.github/scripts/extract_changelog_entry.py`
+- Bumped package version to `0.1.3` in `pyproject.toml`
+
+---
+
 ## [0.1.2] - 2026-03-30
 
 ### New Features
