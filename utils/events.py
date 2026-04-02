@@ -1,6 +1,6 @@
 from models import (
-    CompactEventName,
     CompactEventFilters,
+    CompactEventName,
     EventCategoryCount,
     EventFilters,
     EventNameCount,
