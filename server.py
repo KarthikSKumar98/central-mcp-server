@@ -37,9 +37,9 @@ mcp = FastMCP(
     "Central MCP",
     lifespan=lifespan,
     instructions=_INSTRUCTIONS,
-    transforms=[
-        CodeMode() if DYNAMIC_TOOLS else None
-    ],  # Enable code mode if dynamic tools are enabled, otherwise use default (all tools are loaded into MCP at startup)
+    transforms=(
+        [CodeMode()] if DYNAMIC_TOOLS else []
+    ),  # Enable code mode only when dynamic tools are enabled.
 )
 
 # Register tools with the MCP server
