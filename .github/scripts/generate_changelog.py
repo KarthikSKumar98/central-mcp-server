@@ -41,7 +41,7 @@ def categorize_pr(title: str) -> tuple[str, str]:
     """Return (section, stripped_title) for a PR title."""
     for prefix, section in PREFIX_TO_SECTION.items():
         if title.lower().startswith(prefix):
-            stripped = title[len(prefix):].strip()
+            stripped = title[len(prefix) :].strip()
             # Capitalize first letter
             stripped = stripped[0].upper() + stripped[1:] if stripped else stripped
             return section, stripped
@@ -79,7 +79,7 @@ def load_existing_changelog(path: str) -> str:
             # Find the first version entry
             idx = content.find("\n## [")
             if idx != -1:
-                return content[idx + 1:]  # keep from "## [" onwards
+                return content[idx + 1 :]  # keep from "## [" onwards
             return ""
         return content
     except FileNotFoundError:
@@ -98,7 +98,10 @@ def main() -> None:
         prs = json.load(f)
 
     if not prs:
-        print("No PRs found since last release — skipping changelog generation.", file=sys.stderr)
+        print(
+            "No PRs found since last release — skipping changelog generation.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     new_entry = generate_entry(prs, args.version)

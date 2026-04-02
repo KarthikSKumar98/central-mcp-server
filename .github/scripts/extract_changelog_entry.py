@@ -39,7 +39,9 @@ def extract_entry(content: str, version: str) -> str:
 def main() -> None:
     """Parse arguments, extract changelog entry, and print to stdout."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", required=True, help="Version to extract (e.g. 0.2.0)")
+    parser.add_argument(
+        "--version", required=True, help="Version to extract (e.g. 0.2.0)"
+    )
     parser.add_argument("--file", required=True, help="Path to CHANGELOG.md")
     args = parser.parse_args()
 
