@@ -143,7 +143,7 @@ def tools():
     return fake._tools
 
 async def test_get_sites_returns_list(tools, mock_ctx):
-    with patch("tools.sites.fetch_site_data_parallel", return_value=[...]):
+    with patch("tools.sites.fetch_site_data", return_value=[...]):
         result = await tools["central_get_sites"](mock_ctx)
     assert isinstance(result, list)
 ```

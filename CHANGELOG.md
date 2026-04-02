@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2026-04-02
+
+### Features
+- Added async API concurrency control across tools using a shared lifecycle semaphore (`API_CONCURRENCY_LIMIT`) and `api_context()` wrapper
+- Added `DYNAMIC_TOOLS` config flag to make `CodeMode` optional at startup
+- Enhanced events workflows:
+  - `central_get_events` now supports site-first defaults (`site_id` required, `context_type="SITE"` default, optional `context_identifier` for non-site contexts)
+  - Added OData event filters (`event_id`, `category`, `source_type`) for targeted event retrieval
+  - Added `response_mode` to `central_get_events_count` with a compact ranked output for faster filter discovery
+  - Added compact event response models and helper transforms for LLM-friendly event triage
+
+### Refactoring
+- Standardized filter construction across tools with shared `build_filters()` helper
+- Migrated tools to async-safe execution with `asyncio.to_thread(...)` for blocking Central SDK calls
+- Updated event models to use normalized field names with aliases for cleaner schema handling
+
+### Tests
+- Expanded test coverage for events v2 input/response behavior and compact mode flows
+- Added tests for dynamic tool/code mode behavior and asyncio-aware setup changes
+- Added coverage for configuration updates including new dynamic tool settings
+
+### CI
+- Added `generate-release-pr.yml` to create release PR branches from `development`
+- Added `publish-release.yml` to automate release tagging, GitHub Release creation, build, TestPyPI publish, and PyPI publish
+
+### Documentation
+- Updated event investigation guidance in `INSTRUCTIONS.md` and prompt templates for site-first usage
+- Improved site/event tool docstrings and workflow notes in repository docs
+
+### Maintenance
+- Added release helper scripts:
+  - `.github/scripts/generate_changelog.py`
+  - `.github/scripts/extract_changelog_entry.py`
+- Updated Ruff settings and `.gitignore` for release automation support
+- Bumped package version to `0.1.3` in `pyproject.toml`
+
+---
+
 ## [0.1.2] - 2026-03-30
 
 ### New Features

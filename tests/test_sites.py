@@ -50,7 +50,7 @@ def tools():
 @pytest.mark.asyncio
 async def test_get_sites_no_filter_returns_all(tools):
     ctx = make_ctx()
-    with patch("tools.sites.fetch_site_data_parallel", return_value=FAKE_SITES_DICT):
+    with patch("tools.sites.fetch_site_data", return_value=FAKE_SITES_DICT):
         result = await tools["central_get_sites"](ctx)
     assert len(result) == 3
 
@@ -58,16 +58,16 @@ async def test_get_sites_no_filter_returns_all(tools):
 @pytest.mark.asyncio
 async def test_get_sites_with_filter(tools):
     ctx = make_ctx()
-    with patch("tools.sites.fetch_site_data_parallel", return_value=FAKE_SITES_DICT):
+    with patch("tools.sites.fetch_site_data", return_value=FAKE_SITES_DICT):
         result = await tools["central_get_sites"](ctx, site_names=["Alpha"])
     assert len(result) == 1
     assert result[0].name == "Alpha"
 
 
 @pytest.mark.asyncio
-async def test_get_sites_unknown_name_skipped(tools):
+async def test_get_sites_unknown_name_returns_error(tools):
     ctx = make_ctx()
-    with patch("tools.sites.fetch_site_data_parallel", return_value=FAKE_SITES_DICT):
+    with patch("tools.sites.fetch_site_data", return_value=FAKE_SITES_DICT):
         result = await tools["central_get_sites"](
             ctx, site_names=["Alpha", "NONEXISTENT"]
         )

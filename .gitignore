@@ -1,1 +1,9 @@
 .env*
+*.pyc
+.vscode/
+content/*
+docs/*
+*.mcp.json
+AGENTS.md
+CLAUDE.md
+.github/agents/*
