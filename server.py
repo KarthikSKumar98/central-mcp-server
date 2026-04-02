@@ -6,6 +6,8 @@ from fastmcp import FastMCP
 from fastmcp.experimental.transforms.code_mode import CodeMode
 
 import prompts
+from config import DYNAMIC_TOOLS
+from constants import API_CONCURRENCY_LIMIT
 from services.central_service import get_conn, verify_connection
 from tools import alerts, clients, devices, events, sites
 from utils.common import check_for_update
@@ -26,7 +28,7 @@ async def lifespan(_server: FastMCP):
         ) from e
     asyncio.create_task(check_for_update())
     try:
-        yield {"conn": conn}
+        yield {"conn": conn, "api_semaphore": asyncio.Semaphore(API_CONCURRENCY_LIMIT)}
     finally:
         # Close any open connections or perform cleanup here if necessary
         if conn is not None:
@@ -37,7 +39,9 @@ mcp = FastMCP(
     "Central MCP",
     lifespan=lifespan,
     instructions=_INSTRUCTIONS,
-    transforms=[CodeMode()],
+    transforms=[
+        CodeMode() if DYNAMIC_TOOLS else None
+    ],  # Enable code mode if dynamic tools are enabled, otherwise use default (all tools are loaded into MCP at startup)
 )
 
 # Register tools with the MCP server

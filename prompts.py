@@ -53,7 +53,7 @@ Investigate recent events for device with serial number "{serial_number}" over t
 
 1. Call `central_find_device` with serial_number="{serial_number}" to confirm the device exists and get its site_id and device_type.
 2. Map device_type to the matching context_type: ACCESS_POINT → ACCESS_POINT, SWITCH → SWITCH, GATEWAY → GATEWAY.
-3. Call `central_get_events_count` with context_type=<mapped type>, context_identifier="{serial_number}", site_id=<site_id>, time_range="{time_range}" to get a breakdown of event types and volumes.
+3. Call `central_get_events_count` with site_id=<site_id>, context_type=<mapped type>, context_identifier="{serial_number}", time_range="{time_range}" to get a breakdown of event types and volumes.
 4. If total > 0, call `central_get_events` with the same parameters to fetch full event details.
 5. Summarize: event timeline, dominant event types, any recurring or critical events, and recommended next steps.
         """.strip()
@@ -65,8 +65,8 @@ Investigate recent events for device with serial number "{serial_number}" over t
 Summarize events at site "{site_name}" over the {time_range} window:
 
 1. Call `central_get_site_name_id_mapping` to verify the site name and get its site_id.
-2. Call `central_get_events_count` with context_type="SITE", context_identifier=<site_id>, site_id=<site_id>, time_range="{time_range}" to get the event breakdown by type and category.
-3. If total > 0, call `central_get_events` with the same parameters to fetch full event details.
+2. Call `central_get_events_count` with site_id=<site_id>, time_range="{time_range}" to get the event breakdown by type and category.
+3. If total > 0, call `central_get_events` with site_id=<site_id> and time_range="{time_range}" to fetch full event details.
 4. Group events by category and name. Highlight any spikes, repeated errors, or critical events.
 5. Summarize: total event count, top event types, notable patterns, and any suggested follow-up actions.
         """.strip()
