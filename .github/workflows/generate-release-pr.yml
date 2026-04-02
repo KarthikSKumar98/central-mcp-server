@@ -1,8 +1,7 @@
 name: Generate Release PR
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,83 +16,66 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Ensure workflow is run from development
+        run: |
+          if [[ "${GITHUB_REF_NAME}" != "development" ]]; then
+            echo "This workflow must be run from the development branch."
+            echo "Current ref: ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+
       - name: Read version
         id: version
         run: |
           VERSION=$(grep '^version' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          if [[ -z "$VERSION" ]]; then
+            echo "Unable to read version from pyproject.toml"
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Check if tag already exists
-        id: check_tag
+      - name: Verify changelog contains current version
+        run: |
+          if ! grep -q "^## \\[${{ steps.version.outputs.version }}\\]" CHANGELOG.md; then
+            echo "CHANGELOG.md is missing entry for version ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Fail if release tag already exists
         run: |
           git fetch --tags
           if git tag | grep -q "^v${{ steps.version.outputs.version }}$"; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-            echo "Tag v${{ steps.version.outputs.version }} already exists — skipping release PR generation."
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Tag v${{ steps.version.outputs.version }} already exists."
+            exit 1
           fi
 
-      - name: Get last release date
-        if: steps.check_tag.outputs.skip == 'false'
-        id: last_release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          LAST=$(gh release list --limit 1 --json publishedAt --jq '.[0].publishedAt // "1970-01-01T00:00:00Z"')
-          echo "date=$LAST" >> $GITHUB_OUTPUT
-          echo "Last release date: $LAST"
-
-      - name: Fetch merged PRs since last release
-        if: steps.check_tag.outputs.skip == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr list \
-            --base development \
-            --state merged \
-            --json number,title,mergedAt \
-            --jq "[.[] | select(.mergedAt > \"${{ steps.last_release.outputs.date }}\")]" \
-            > merged_prs.json
-          echo "Merged PRs:"
-          cat merged_prs.json
-
-      - name: Generate CHANGELOG entry
-        if: steps.check_tag.outputs.skip == 'false'
-        run: |
-          python3 .github/scripts/generate_changelog.py \
-            --prs merged_prs.json \
-            --version "${{ steps.version.outputs.version }}" \
-            --output CHANGELOG.md
-
       - name: Create release branch and open PR
-        if: steps.check_tag.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH="release/v${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
-          git add CHANGELOG.md
-          git commit -m "chore: update CHANGELOG for v${{ steps.version.outputs.version }}"
-          git push origin "$BRANCH"
+          git fetch origin
+          git checkout development
+          git pull --ff-only origin development
 
-          # Build PR body showing the changelog entry for easy review
-          ENTRY=$(python3 .github/scripts/extract_changelog_entry.py \
-            --version "${{ steps.version.outputs.version }}" \
-            --file CHANGELOG.md)
+          if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+            echo "Branch $BRANCH already exists on origin."
+            exit 1
+          fi
+
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
 
           gh pr create \
             --title "chore: release v${{ steps.version.outputs.version }}" \
             --body "$(cat <<EOF
           Auto-generated release PR for **v${{ steps.version.outputs.version }}**.
 
-          Review the changelog entry below, edit if needed, then merge to trigger the publish workflow.
-
-          ---
-
-          $ENTRY
+          This PR was created manually from the latest **development** branch state.
+          Merge this PR into **main** to trigger the publish workflow:
+          GitHub Release -> TestPyPI -> approved PyPI.
           EOF
           )" \
             --base main \

@@ -25,12 +25,21 @@ jobs:
         id: version
         run: |
           VERSION=$(grep '^version' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          if [[ -z "$VERSION" ]]; then
+            echo "Unable to read version from pyproject.toml"
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Create and push git tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch --tags
+          if git tag | grep -q "^v${{ steps.version.outputs.version }}$"; then
+            echo "Tag v${{ steps.version.outputs.version }} already exists."
+            exit 1
+          fi
           git tag "v${{ steps.version.outputs.version }}"
           git push origin "v${{ steps.version.outputs.version }}"
 
@@ -53,6 +62,7 @@ jobs:
 
   build:
     needs: tag-and-release
+    if: needs.tag-and-release.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +77,7 @@ jobs:
 
   publish-test-pypi:
     needs: build
+    if: needs.build.result == 'success'
     runs-on: ubuntu-latest
     environment: test-pypi
     steps:
@@ -80,6 +91,7 @@ jobs:
 
   publish-pypi:
     needs: publish-test-pypi
+    if: needs.publish-test-pypi.result == 'success'
     runs-on: ubuntu-latest
     environment: pypi
     steps:
@@ -91,6 +103,7 @@ jobs:
 
   sync-development:
     needs: tag-and-release
+    if: needs.tag-and-release.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
