@@ -1,7 +1,6 @@
 .env*
 *.pyc
 .vscode/
-.github/
 content/*
 docs/*
 *.mcp.json

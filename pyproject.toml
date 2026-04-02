@@ -93,3 +93,4 @@ ignore = [
 "models.py"     = ["D102", "D103", "ANN001", "ANN201", "ANN202"]
 "config.py"     = ["D102", "D103", "ANN001", "ANN201", "ANN202"]
 "server.py"     = ["D103", "ANN001", "ANN201", "ANN202"]
+".github/scripts/*.py" = ["T201", "ANN", "D"]

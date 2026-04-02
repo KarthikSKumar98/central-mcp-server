@@ -1,0 +1,82 @@
+name: Generate Release PR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure workflow is run from development
+        run: |
+          if [[ "${GITHUB_REF_NAME}" != "development" ]]; then
+            echo "This workflow must be run from the development branch."
+            echo "Current ref: ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(grep '^version' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          if [[ -z "$VERSION" ]]; then
+            echo "Unable to read version from pyproject.toml"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Verify changelog contains current version
+        run: |
+          if ! grep -q "^## \\[${{ steps.version.outputs.version }}\\]" CHANGELOG.md; then
+            echo "CHANGELOG.md is missing entry for version ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Fail if release tag already exists
+        run: |
+          git fetch --tags
+          if git tag | grep -q "^v${{ steps.version.outputs.version }}$"; then
+            echo "Tag v${{ steps.version.outputs.version }} already exists."
+            exit 1
+          fi
+
+      - name: Create release branch and open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="release/v${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin
+          git checkout development
+          git pull --ff-only origin development
+
+          if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+            echo "Branch $BRANCH already exists on origin."
+            exit 1
+          fi
+
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "chore: release v${{ steps.version.outputs.version }}" \
+            --body "$(cat <<EOF
+          Auto-generated release PR for **v${{ steps.version.outputs.version }}**.
+
+          This PR was created manually from the latest **development** branch state.
+          Merge this PR into **main** to trigger the publish workflow:
+          GitHub Release -> TestPyPI -> approved PyPI.
+          EOF
+          )" \
+            --base main \
+            --head "$BRANCH"
