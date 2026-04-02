@@ -1,6 +1,6 @@
 import pytest
 from tests.conftest import FakeMCP
-from models import Event, EventFilters, PaginatedEvents
+from models import CompactEventFilters, Event, EventFilters, PaginatedEvents
 import tools.sites as sites_mod
 import tools.devices as devices_mod
 import tools.events as mod
@@ -49,8 +49,6 @@ async def first_device(devices_tools, live_ctx):
 async def test_get_events_site_context_last_1h(tools, live_ctx, first_site):
     result = await tools["central_get_events"](
         live_ctx,
-        context_type="SITE",
-        context_identifier=first_site["site_id"],
         site_id=first_site["site_id"],
         time_range="last_1h",
     )
@@ -62,8 +60,6 @@ async def test_get_events_site_context_last_1h(tools, live_ctx, first_site):
 async def test_get_events_site_context_last_24h(tools, live_ctx, first_site):
     result = await tools["central_get_events"](
         live_ctx,
-        context_type="SITE",
-        context_identifier=first_site["site_id"],
         site_id=first_site["site_id"],
         time_range="last_24h",
     )
@@ -73,8 +69,6 @@ async def test_get_events_site_context_last_24h(tools, live_ctx, first_site):
 async def test_get_events_site_context_last_7d(tools, live_ctx, first_site):
     result = await tools["central_get_events"](
         live_ctx,
-        context_type="SITE",
-        context_identifier=first_site["site_id"],
         site_id=first_site["site_id"],
         time_range="last_7d",
     )
@@ -104,8 +98,6 @@ async def test_get_events_device_context(tools, live_ctx, first_device, first_si
 async def test_get_events_explicit_time_range(tools, live_ctx, first_site):
     result = await tools["central_get_events"](
         live_ctx,
-        context_type="SITE",
-        context_identifier=first_site["site_id"],
         site_id=first_site["site_id"],
         start_time="2026-03-21T00:00:00.000Z",
         end_time="2026-03-21T23:59:59.999Z",
@@ -116,8 +108,6 @@ async def test_get_events_explicit_time_range(tools, live_ctx, first_site):
 async def test_get_events_with_search(tools, live_ctx, first_site):
     result = await tools["central_get_events"](
         live_ctx,
-        context_type="SITE",
-        context_identifier=first_site["site_id"],
         site_id=first_site["site_id"],
         time_range="last_24h",
         search="AP",
@@ -125,11 +115,32 @@ async def test_get_events_with_search(tools, live_ctx, first_site):
     assert isinstance(result, (PaginatedEvents, str))
 
 
+async def test_get_events_site_context_rejects_context_identifier(
+    tools, live_ctx, first_site
+):
+    result = await tools["central_get_events"](
+        live_ctx,
+        site_id=first_site["site_id"],
+        context_type="SITE",
+        context_identifier=first_site["site_id"],
+    )
+    assert isinstance(result, str)
+    assert "context_identifier must not be provided when context_type=SITE" in result
+
+
+async def test_get_events_non_site_requires_context_identifier(tools, live_ctx, first_site):
+    result = await tools["central_get_events"](
+        live_ctx,
+        site_id=first_site["site_id"],
+        context_type="ACCESS_POINT",
+    )
+    assert isinstance(result, str)
+    assert "context_identifier is required when context_type is" in result
+
+
 async def test_get_events_count_site_context(tools, live_ctx, first_site):
     result = await tools["central_get_events_count"](
         live_ctx,
-        context_type="SITE",
-        context_identifier=first_site["site_id"],
         site_id=first_site["site_id"],
         time_range="last_1h",
     )
@@ -137,11 +148,35 @@ async def test_get_events_count_site_context(tools, live_ctx, first_site):
     assert result.total >= 0
 
 
+async def test_get_events_count_compact_site_context(tools, live_ctx, first_site):
+    result = await tools["central_get_events_count"](
+        live_ctx,
+        site_id=first_site["site_id"],
+        time_range="last_24h",
+        response_mode="compact",
+    )
+    assert isinstance(result, CompactEventFilters)
+    assert result.total >= 0
+    assert isinstance(result.event_names, list)
+    assert isinstance(result.source_types, list)
+    assert isinstance(result.categories, list)
+
+
+async def test_get_events_count_invalid_response_mode_returns_error(
+    tools, live_ctx, first_site
+):
+    result = await tools["central_get_events_count"](
+        live_ctx,
+        site_id=first_site["site_id"],
+        response_mode="invalid",  # type: ignore[arg-type]
+    )
+    assert isinstance(result, str)
+    assert "response_mode must be one of: full, compact" in result
+
+
 async def test_get_events_count_last_24h(tools, live_ctx, first_site):
     result = await tools["central_get_events_count"](
         live_ctx,
-        context_type="SITE",
-        context_identifier=first_site["site_id"],
         site_id=first_site["site_id"],
         time_range="last_24h",
     )
@@ -152,14 +187,37 @@ async def test_get_events_count_last_24h(tools, live_ctx, first_site):
 async def test_get_events_count_explicit_times(tools, live_ctx, first_site):
     result = await tools["central_get_events_count"](
         live_ctx,
-        context_type="SITE",
-        context_identifier=first_site["site_id"],
         site_id=first_site["site_id"],
         start_time="2026-03-21T00:00:00.000Z",
         end_time="2026-03-21T23:59:59.999Z",
     )
     assert isinstance(result, EventFilters)
     assert result.total >= 0
+
+
+async def test_get_events_count_site_context_rejects_context_identifier(
+    tools, live_ctx, first_site
+):
+    result = await tools["central_get_events_count"](
+        live_ctx,
+        site_id=first_site["site_id"],
+        context_type="SITE",
+        context_identifier=first_site["site_id"],
+    )
+    assert isinstance(result, str)
+    assert "context_identifier must not be provided when context_type=SITE" in result
+
+
+async def test_get_events_count_non_site_requires_context_identifier(
+    tools, live_ctx, first_site
+):
+    result = await tools["central_get_events_count"](
+        live_ctx,
+        site_id=first_site["site_id"],
+        context_type="ACCESS_POINT",
+    )
+    assert isinstance(result, str)
+    assert "context_identifier is required when context_type is" in result
 
 
 async def test_get_events_count_device_context(
