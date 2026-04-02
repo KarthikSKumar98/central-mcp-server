@@ -18,6 +18,10 @@ def register(mcp: FastMCP) -> None:
     ) -> list[SiteData]:
         """Return detailed metrics for one or more sites.
 
+        `site_names` must be a list of exact site-name strings.
+        If you need multiple sites, pass them all in one call (batch) instead of
+        making separate calls per site.
+
         Prefer calling with a site_names filter targeting only the sites you care about.
         Do NOT call without a filter unless the user explicitly requests data for all sites —
         returning all sites is expensive and consumes significant context.
@@ -29,7 +33,11 @@ def register(mcp: FastMCP) -> None:
 
         Parameters
         ----------
-        - site_names: One or more site name to filter by. Supports exact matches. If omitted, all sites are returned (use sparingly or when explicitly requested).
+        - site_names: List of one or more exact site names.
+          For a single site, pass `["<site name>"]` (not a plain string).
+          For multiple sites, pass them together in one list:
+          `["<site A>", "<site B>", "<site C>"]`.
+          If omitted, all sites are returned (use sparingly or when explicitly requested).
 
         """
         async with api_context(ctx) as conn:
