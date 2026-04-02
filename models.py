@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SourceType(str, Enum):
@@ -267,31 +267,59 @@ class EventFilters(BaseModel):
     )
 
 
+class CompactEventName(BaseModel):
+    event_id: str = Field(description="Event type identifier for filtering.")
+    event_name: str = Field(description="Human-readable event name.")
+
+
+class CompactEventFilters(BaseModel):
+    total: int = Field(description="Total event count (sum of all categories).")
+    event_names: list[CompactEventName] = Field(
+        description="All event id/name pairs sorted by descending count."
+    )
+    source_types: list[str] = Field(
+        description="All source types sorted by descending count."
+    )
+    categories: list[str] = Field(
+        description="All categories sorted by descending count."
+    )
+
+
 class Event(BaseModel):
-    eventId: str = Field(description="The event type identifier.")
-    eventIdentifier: str = Field(description="Unique identifier for the event.")
-    serialNumber: str = Field(
+    model_config = ConfigDict(populate_by_name=True)
+    event_id: str = Field(alias="eventId", description="The event type identifier.")
+    event_identifier: str = Field(
+        alias="eventIdentifier", description="Unique identifier for the event."
+    )
+    serial_number: str = Field(
+        alias="serialNumber",
         description="Serial number of the device that generated the event."
     )
-    timeAt: str = Field(
+    time_at: str = Field(
+        alias="timeAt",
         description="Timestamp when the event occurred at the source (RFC 3339 with milliseconds)."
     )
-    eventName: str = Field(description="Name of the event.")
+    event_name: str = Field(alias="eventName", description="Name of the event.")
     category: str = Field(description="Event category.")
-    sourceType: SourceType = Field(
+    source_type: SourceType = Field(
+        alias="sourceType",
         description="Type of source that generated the event."
     )
-    sourceName: str = Field(
+    source_name: str = Field(
+        alias="sourceName",
         description="Name of the device or client that generated the event."
     )
     description: str = Field(description="Detailed description of the event.")
-    clientMacAddress: str | None = Field(
+    client_mac_address: str | None = Field(
+        alias="clientMacAddress",
         description="MAC address of the client involved in the event."
     )
-    deviceMacAddress: str | None = Field(
+    device_mac_address: str | None = Field(
+        alias="deviceMacAddress",
         description="MAC address of the device that generated the event."
     )
-    stackId: str | None = Field(
+    stack_id: str | None = Field(
+        alias="stackId",
         description="Stack identifier for stack-capable devices."
     )
     bssid: str | None = Field(
