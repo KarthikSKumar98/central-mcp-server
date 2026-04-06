@@ -23,6 +23,7 @@ Community MCP server for HPE Aruba Networking Central. This exposes your Central
 
 - *"Which sites have poor health scores right now?"*
 - *"Show me all failed wireless clients at HQ in the last 24 hours."*
+- *"Show me all online access points at the Chicago office."*
 - *"What events happened on switch SW-CORE-01 yesterday?"*
 
 See the [full overview guide](https://developer.arubanetworks.com/new-central/docs/central-mcp-overview) for a deeper look at capabilities, limitations, and how the server works.
@@ -179,6 +180,12 @@ See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-cent
 |------|-------------|
 | `central_get_devices` | Filtered list of devices — filter by type, site, model, serial number, and more |
 | `central_find_device` | Look up a single device by serial number or device name |
+
+#### AP Monitoring
+| Tool | Description |
+|------|-------------|
+| `central_get_aps` | Filtered list of access points — filter by site, serial number, status, model, firmware version, deployment, or cluster |
+| `central_get_ap_latest_stats` | Latest AP CPU, memory, and power stats for a given AP serial number |
 
 #### Clients
 | Tool | Description |
