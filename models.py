@@ -115,6 +115,116 @@ class Device(BaseModel):
     )
 
 
+class AccessPoint(BaseModel):
+    """Access point monitoring data structure."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    serial_number: str = Field(
+        alias="serialNumber",
+        description="Unique serial number of the access point.",
+    )
+    device_name: str | None = Field(
+        default=None,
+        alias="deviceName",
+        description="Display name of the access point.",
+    )
+    mac_address: str | None = Field(
+        default=None,
+        alias="macAddress",
+        description="MAC address of the access point.",
+    )
+    site_id: str | None = Field(
+        default=None,
+        alias="siteId",
+        description="ID of the site where the AP is located.",
+    )
+    site_name: str | None = Field(
+        default=None,
+        alias="siteName",
+        description="Name of the site where the AP is located.",
+    )
+    status: str | None = Field(
+        default=None,
+        description="Current AP status (for example ONLINE or OFFLINE)."
+    )
+    model: str | None = Field(default=None, description="AP model number.")
+    firmware_version: str | None = Field(
+        default=None,
+        alias="firmwareVersion",
+        description="Firmware version currently running on the AP.",
+    )
+    deployment: str | None = Field(
+        default=None,
+        description="Deployment mode of the AP."
+    )
+    cluster_id: str | None = Field(
+        default=None,
+        alias="clusterId",
+        description="Cluster identifier associated with the AP.",
+    )
+    cluster_name: str | None = Field(
+        default=None,
+        alias="clusterName",
+        description="Cluster name associated with the AP.",
+    )
+    part_number: str | None = Field(
+        default=None,
+        alias="partNumber",
+        description="Manufacturer part number of the AP.",
+    )
+    device_function: str | None = Field(
+        default=None,
+        alias="deviceFunction",
+        description="Device function classification of the AP.",
+    )
+    role: str | None = Field(
+        default=None,
+        description="Role assigned to the AP within the cluster or network."
+    )
+    ipv4: str | None = Field(default=None, description="IPv4 address of the AP.")
+    ipv6: str | None = Field(default=None, description="IPv6 address of the AP.")
+    uptime_in_millis: int | None = Field(
+        default=None,
+        alias="uptimeInMillis",
+        description="Device uptime in milliseconds.",
+    )
+    last_seen_at: str | None = Field(
+        default=None,
+        alias="lastSeenAt",
+        description="Timestamp when the AP was last seen in monitoring.",
+    )
+    building_id: str | None = Field(
+        default=None,
+        alias="buildingId",
+        description="Building identifier assigned to the AP (if available).",
+    )
+    floor_id: str | None = Field(
+        default=None,
+        alias="floorId",
+        description="Floor identifier assigned to the AP (if available).",
+    )
+    notes: str | None = Field(
+        default=None,
+        description="Operator notes associated with the AP."
+    )
+    cpu_utilization: int | float | None = Field(
+        default=None,
+        alias="cpuUtilization",
+        description="Latest CPU utilization value reported for the AP.",
+    )
+    memory_utilization: int | float | None = Field(
+        default=None,
+        alias="memoryUtilization",
+        description="Latest memory utilization value reported for the AP.",
+    )
+    power_consumption: int | float | None = Field(
+        default=None,
+        alias="powerConsumption",
+        description="Latest AP power consumption value.",
+    )
+
+
 class Client(BaseModel):
     """Client device data structure."""
 
