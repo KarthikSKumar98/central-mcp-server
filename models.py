@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -127,7 +127,7 @@ class AccessPoint(BaseModel):
     device_name: str | None = Field(
         default=None,
         alias="deviceName",
-        description="Display name of the access point.",
+        description="Name of the access point.",
     )
     mac_address: str | None = Field(
         default=None,
@@ -144,8 +144,8 @@ class AccessPoint(BaseModel):
         alias="siteName",
         description="Name of the site where the AP is located.",
     )
-    status: str | None = Field(
-        default=None, description="Current AP status (for example ONLINE or OFFLINE)."
+    status: Literal["ONLINE", "OFFLINE"] | None = Field(
+        default=None, description="Current AP status (ONLINE or OFFLINE)."
     )
     model: str | None = Field(default=None, description="AP model number.")
     firmware_version: str | None = Field(
@@ -159,7 +159,7 @@ class AccessPoint(BaseModel):
     cluster_id: str | None = Field(
         default=None,
         alias="clusterId",
-        description="Cluster identifier associated with the AP.",
+        description="Cluster associated with the AP.",
     )
     cluster_name: str | None = Field(
         default=None,
@@ -174,7 +174,7 @@ class AccessPoint(BaseModel):
     device_function: str | None = Field(
         default=None,
         alias="deviceFunction",
-        description="Device function classification of the AP.",
+        description="Device function classification of the AP. This is a user-defined role that determines the role of the AP in the network.",
     )
     role: str | None = Field(
         default=None,
