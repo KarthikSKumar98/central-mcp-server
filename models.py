@@ -222,6 +222,40 @@ class AccessPoint(BaseModel):
     )
 
 
+class WLAN(BaseModel):
+    """WLAN (wireless network) data structure."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str | None = Field(default=None, description="WLAN identifier.")
+    wlan_name: str | None = Field(
+        alias="wlanName",
+        default=None,
+        description="Name/SSID of the WLAN.",
+    )
+    primary_usage: str | None = Field(
+        alias="primaryUsage",
+        default=None,
+        description="Primary usage of the WLAN (e.g., employee, guest).",
+    )
+    security_level: str | None = Field(
+        alias="securityLevel",
+        default=None,
+        description="Security level (e.g., Open, Personal, Enterprise).",
+    )
+    security: str | None = Field(
+        default=None,
+        description="Security protocol (e.g., WPA2, WPA3).",
+    )
+    band: str | None = Field(
+        default=None,
+        description="Wireless band (e.g., 2.4GHz, 5GHz, 6GHz).",
+    )
+    status: str | None = Field(default=None, description="WLAN operational status.")
+    vlan: str | None = Field(default=None, description="VLAN assigned to this WLAN.")
+    type: str | None = Field(default=None, description="WLAN type.")
+
+
 class Client(BaseModel):
     """Client device data structure."""
 
