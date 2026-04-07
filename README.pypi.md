@@ -185,7 +185,7 @@ See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-cent
 | Tool | Description |
 |------|-------------|
 | `central_get_aps` | Filtered list of access points — filter by site, serial number, status, model, firmware version, deployment, or cluster |
-| `central_get_ap_latest_stats` | Latest AP CPU, memory, and power stats for a given AP serial number |
+| `central_get_ap_statistics` | AP CPU, memory, and power statistics for a given AP serial number within a selected time window |
 
 #### Clients
 | Tool | Description |
