@@ -4,9 +4,16 @@ from typing import Any, Literal
 from fastmcp import Context, FastMCP
 from pycentral.new_monitoring import MonitoringAPs
 
+from constants import TIME_RANGE
 from models import AccessPoint
 from tools import READ_ONLY
-from utils.common import FilterField, api_context, build_filters, format_tool_error
+from utils.common import (
+    FilterField,
+    api_context,
+    build_filters,
+    format_tool_error,
+)
+from utils.events import _resolve_time_window
 
 AP_FILTER_FIELDS: dict[str, FilterField] = {
     "site_id": FilterField("siteId"),
@@ -35,7 +42,7 @@ def register(mcp: FastMCP) -> None:
         status: Literal["ONLINE", "OFFLINE"] | None = None,
         model: str | None = None,
         firmware_version: str | None = None,
-        deployment: str | None = None,
+        deployment: Literal["Standalone", "Cluster", "Unspecified"] | None = None,
         cluster_id: str | None = None,
         cluster_name: str | None = None,
         sort: str | None = None,
@@ -54,7 +61,7 @@ def register(mcp: FastMCP) -> None:
         - status: AP status. Allowed values: ONLINE or OFFLINE.
         - model: AP model value. Supports comma-separated values.
         - firmware_version: AP firmware version. Supports comma-separated values.
-        - deployment: AP deployment type. Supports comma-separated values.
+        - deployment: AP deployment type. Allowed values: Standalone, Cluster, or Unspecified.
         - cluster_id: AP cluster ID. Supports comma-separated values.
         - cluster_name: AP cluster name. Supports comma-separated values.
         - sort: Comma-separated sort expressions, for example "deviceName asc".
