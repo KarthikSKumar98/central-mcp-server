@@ -93,27 +93,39 @@ def register(mcp: FastMCP) -> None:
                 return format_tool_error("parsing access point data", e)
 
     @mcp.tool(annotations=READ_ONLY)
-    async def central_get_ap_latest_stats(
+    async def central_get_ap_statistics(
         ctx: Context,
         serial_number: str,
-    ) -> dict[str, Any] | str:
-        """Return the latest AP stats (CPU, memory, power) for a given AP serial number.
+        time_range: TIME_RANGE = "last_1h",
+        start_time: str | None = None,
+        end_time: str | None = None,
+    ) -> list[dict[str, Any]] | str:
+        """Return AP statistics (CPU, memory, power) for a given AP serial number within a time window.
 
         Parameters
         ----------
         - serial_number: Serial number of the AP.
+        - time_range: Predefined time window. Allowed values: last_1h, last_6h, last_24h,
+          last_7d, last_30d, today, yesterday. Ignored if both start_time and end_time are provided.
+        - start_time: Start of the time window in RFC 3339 format (e.g. "2026-03-21T00:00:00.000Z").
+          Overrides time_range when combined with end_time.
+        - end_time: End of the time window in RFC 3339 format (e.g. "2026-03-21T23:59:59.999Z").
+          Overrides time_range when combined with start_time.
 
         """
+        start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
         async with api_context(ctx) as conn:
             try:
                 stats = await asyncio.to_thread(
-                    MonitoringAPs.get_latest_ap_stats,
+                    MonitoringAPs.get_ap_stats,
                     central_conn=conn,
                     serial_number=serial_number,
+                    start_time=start_at,
+                    end_time=end_at,
                 )
             except Exception as e:
-                return format_tool_error("fetching latest access point stats", e)
+                return format_tool_error("fetching access point statistics", e)
 
             if not stats:
-                return f"No AP stats found for serial number '{serial_number}'."
+                return f"No AP statistics found for serial number '{serial_number}'."
             return stats
