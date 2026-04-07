@@ -36,7 +36,7 @@ def tools():
 
 def test_registers_ap_tools(tools):
     assert "central_get_aps" in tools
-    assert "central_get_ap_latest_stats" in tools
+    assert "central_get_ap_statistics" in tools
 
 
 @pytest.mark.asyncio
@@ -122,35 +122,56 @@ async def test_get_aps_error_returns_formatted_error(tools):
 
 
 @pytest.mark.asyncio
-async def test_get_ap_latest_stats_success(tools):
+async def test_get_ap_statistics_success(tools):
     ctx = make_ctx()
     with patch(
-        "tools.ap_monitoring.MonitoringAPs.get_latest_ap_stats",
-        return_value=RAW_STATS,
+        "tools.ap_monitoring.MonitoringAPs.get_ap_stats",
+        return_value=[RAW_STATS],
     ) as mock_api:
-        result = await tools["central_get_ap_latest_stats"](ctx, serial_number="AP123456")
-    assert isinstance(result, dict)
-    assert result["cpuUtilization"] == 44
+        result = await tools["central_get_ap_statistics"](ctx, serial_number="AP123456")
+    assert isinstance(result, list)
+    assert result[0]["cpuUtilization"] == 44
     assert mock_api.call_args.kwargs["serial_number"] == "AP123456"
+    assert mock_api.call_args.kwargs["start_time"] is not None
+    assert mock_api.call_args.kwargs["end_time"] is not None
 
 
 @pytest.mark.asyncio
-async def test_get_ap_latest_stats_empty_returns_string(tools):
+async def test_get_ap_statistics_explicit_time_window(tools):
     ctx = make_ctx()
     with patch(
-        "tools.ap_monitoring.MonitoringAPs.get_latest_ap_stats",
-        return_value={},
+        "tools.ap_monitoring.MonitoringAPs.get_ap_stats",
+        return_value=[RAW_STATS],
+    ) as mock_api:
+        await tools["central_get_ap_statistics"](
+            ctx,
+            serial_number="AP123456",
+            start_time="2026-03-21T00:00:00.000Z",
+            end_time="2026-03-21T23:59:59.999Z",
+        )
+    assert (
+        mock_api.call_args.kwargs["start_time"] == "2026-03-21T00:00:00.000Z"
+    )
+    assert mock_api.call_args.kwargs["end_time"] == "2026-03-21T23:59:59.999Z"
+
+
+@pytest.mark.asyncio
+async def test_get_ap_statistics_empty_returns_string(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.ap_monitoring.MonitoringAPs.get_ap_stats",
+        return_value=[],
     ):
-        result = await tools["central_get_ap_latest_stats"](ctx, serial_number="AP123456")
-    assert result == "No AP stats found for serial number 'AP123456'."
+        result = await tools["central_get_ap_statistics"](ctx, serial_number="AP123456")
+    assert result == "No AP statistics found for serial number 'AP123456'."
 
 
 @pytest.mark.asyncio
-async def test_get_ap_latest_stats_error_returns_formatted_error(tools):
+async def test_get_ap_statistics_error_returns_formatted_error(tools):
     ctx = make_ctx()
     with patch(
-        "tools.ap_monitoring.MonitoringAPs.get_latest_ap_stats",
+        "tools.ap_monitoring.MonitoringAPs.get_ap_stats",
         side_effect=Exception("stats unavailable"),
     ):
-        result = await tools["central_get_ap_latest_stats"](ctx, serial_number="AP123456")
-    assert result == "Error fetching latest access point stats: stats unavailable"
+        result = await tools["central_get_ap_statistics"](ctx, serial_number="AP123456")
+    assert result == "Error fetching access point statistics: stats unavailable"

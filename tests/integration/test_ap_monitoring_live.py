@@ -46,10 +46,10 @@ async def test_get_aps_by_serial_number(tools, live_ctx):
     assert all(ap.serial_number == serial for ap in result)
 
 
-async def test_get_ap_latest_stats_for_known_ap(tools, live_ctx):
+async def test_get_ap_statistics_for_known_ap(tools, live_ctx):
     aps = await tools["central_get_aps"](live_ctx)
     if not aps:
         pytest.skip("No APs available")
     serial = aps[0].serial_number
-    result = await tools["central_get_ap_latest_stats"](live_ctx, serial_number=serial)
-    assert isinstance(result, (dict, str))
+    result = await tools["central_get_ap_statistics"](live_ctx, serial_number=serial)
+    assert isinstance(result, (list, str))
