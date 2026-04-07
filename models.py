@@ -145,8 +145,7 @@ class AccessPoint(BaseModel):
         description="Name of the site where the AP is located.",
     )
     status: str | None = Field(
-        default=None,
-        description="Current AP status (for example ONLINE or OFFLINE)."
+        default=None, description="Current AP status (for example ONLINE or OFFLINE)."
     )
     model: str | None = Field(default=None, description="AP model number.")
     firmware_version: str | None = Field(
@@ -155,8 +154,7 @@ class AccessPoint(BaseModel):
         description="Firmware version currently running on the AP.",
     )
     deployment: str | None = Field(
-        default=None,
-        description="Deployment mode of the AP."
+        default=None, description="Deployment mode of the AP."
     )
     cluster_id: str | None = Field(
         default=None,
@@ -180,7 +178,7 @@ class AccessPoint(BaseModel):
     )
     role: str | None = Field(
         default=None,
-        description="Role assigned to the AP within the cluster or network."
+        description="Role assigned to the AP within the cluster or network.",
     )
     ipv4: str | None = Field(default=None, description="IPv4 address of the AP.")
     ipv6: str | None = Field(default=None, description="IPv6 address of the AP.")
@@ -205,8 +203,7 @@ class AccessPoint(BaseModel):
         description="Floor identifier assigned to the AP (if available).",
     )
     notes: str | None = Field(
-        default=None,
-        description="Operator notes associated with the AP."
+        default=None, description="Operator notes associated with the AP."
     )
     cpu_utilization: int | float | None = Field(
         default=None,
