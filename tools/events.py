@@ -3,7 +3,7 @@ from typing import Literal
 
 from fastmcp import Context, FastMCP
 
-from constants import EVENT_LIMIT
+from constants import EVENT_LIMIT, TIME_RANGE
 from models import CompactEventFilters, Event, EventFilters, PaginatedEvents
 from tools import READ_ONLY
 from utils.common import (
@@ -28,9 +28,6 @@ CONTEXT_TYPE = Literal[
     "BRIDGE",
 ]
 
-TIME_RANGE = Literal[
-    "last_1h", "last_6h", "last_24h", "last_7d", "last_30d", "today", "yesterday"
-]
 RESPONSE_MODE = Literal["full", "compact"]
 
 EVENT_FILTERS: dict[str, FilterField] = {
