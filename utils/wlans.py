@@ -1,7 +1,7 @@
 from pycentral.new_monitoring import MonitoringAPs
 
 from constants import WLAN_LIMIT
-from models import WLAN
+from models import WLAN, WLANThroughputSample
 
 
 def get_all_wlans(central_conn, site_id=None, filter_str=None, sort=None):
@@ -32,13 +32,13 @@ def get_all_wlans(central_conn, site_id=None, filter_str=None, sort=None):
 
 def clean_wlan_data(wlans):
     """Convert raw WLAN API dicts to WLAN Pydantic models."""
-    return [WLAN(**w) for w in wlans if isinstance(w, dict)]
+    return [WLAN(**wlan) for wlan in wlans if isinstance(wlan, dict)]
 
 
 def clean_wlan_stats_data(raw_stats):
-    """Flatten throughput-trends API response into a list of named-field dicts.
+    """Flatten throughput-trends API response into standardized throughput models.
 
-    Converts the nested graph structure into a flat list of per-sample dicts,
+    Converts the nested graph structure into a flat list of per-sample models,
     pairing each key from ``graph.keys`` with its corresponding value in
     ``graph.samples[].data``. Samples where every value is ``None`` (returned
     for unknown WLANs) are dropped.
@@ -56,5 +56,11 @@ def clean_wlan_stats_data(raw_stats):
         values = dict(zip(keys, data))
         if all(v is None for v in values.values()):
             continue
-        result.append({"timestamp": sample.get("timestamp"), **values})
+        result.append(
+            WLANThroughputSample(
+                timestamp=sample.get("timestamp"),
+                tx=values.get("tx"),
+                rx=values.get("rx"),
+            )
+        )
     return result
