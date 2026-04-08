@@ -13,8 +13,9 @@ def register(mcp: FastMCP) -> None:
 Provide a full network health overview by following these steps:
 
 1. Call `central_get_site_name_id_mapping` to get all sites with health scores, device/client/alert counts.
-2. Identify sites with poor or fair health, or notably high alert counts.
-3. Call `central_get_sites` with site_names=["<site A>", "<site B>", "<site C>"] for only the highest-priority sites (maximum 3).
+2. Identify sites with poor or fair health (score < 80), or total_alerts > 5.
+3. If any such sites exist, call `central_get_sites` with site_names=["<site A>", "<site B>", "<site C>"] for only the highest-priority sites (maximum 3).
+   If all sites are healthy and alert-free, skip step 3 and summarize directly from step 1 data.
 4. Summarize per site: health score, device/client/alert totals, and any notable issues.
 5. End with an overall network health assessment strictly based on tool outputs. If remediation is needed, direct the user to resolve it in Central.
         """.strip()
@@ -29,7 +30,9 @@ Troubleshoot the site "{site_name}" by following these steps:
 2. Call `central_get_sites` with site_names=["{site_name}"] to get detailed site metrics.
 3. Call `central_get_alerts` with the site_id and status="Active" to get all active alerts. Prioritize by severity (Critical > High > Medium > Low).
 4. Call `central_get_devices` with the site_id to get all devices at the site.
-5. Summarize: site health, active alert breakdown by category and severity, and device status overview. Do not provide recommendations; direct remediation to Central.
+5. Call `central_get_events_count` with site_id=<site_id>, time_range="last_1h", response_mode="compact" to identify dominant event types.
+6. If total > 0, call `central_get_events` with site_id=<site_id>, time_range="last_1h", and the top event_id and category filters from step 5.
+7. Summarize: site health, active alert breakdown by category and severity, device status overview, and dominant event patterns from the last hour. Do not provide recommendations; direct remediation to Central.
         """.strip()
 
     @mcp.prompt
@@ -53,7 +56,7 @@ Check connectivity for the client with MAC address "{mac_address}":
         return f"""
 Investigate recent events for device with serial number "{serial_number}" over the {time_range} window:
 
-1. Call `central_find_device` with serial_number="{serial_number}" to confirm the device exists and get its site_id and device_type.
+1. Call `central_find_device` with serial_number="{serial_number}" to confirm the device exists and get its site_id and device_type. If not found, report the serial number could not be located and stop.
 2. Map device_type to the matching context_type: ACCESS_POINT → ACCESS_POINT, SWITCH → SWITCH, GATEWAY → GATEWAY.
 3. Call `central_get_events_count` with site_id=<site_id>, context_type=<mapped type>, context_identifier="{serial_number}", time_range="{time_range}", response_mode="compact" to discover top event_id/category/source_type values.
 4. If total > 0, call `central_get_events` with site_id=<site_id>, context_type=<mapped type>, context_identifier="{serial_number}", time_range="{time_range}", and at least one of the top filters from step 3 (event_id/category/source_type).
@@ -82,7 +85,7 @@ Investigate failed client connections at site "{site_name}":
 1. Call `central_get_site_name_id_mapping` to verify the site name and get its site_id.
 2. Call `central_get_clients` with site_id=<site_id> and status="Failed" to get all failed clients.
 3. If no failed clients are found, report the site is clean.
-4. For each failed client (up to 5), call `central_find_device` with the connected device serial number to check device health.
+4. Collect the unique connected_device_serial values from the failed clients (up to 5 unique serials). Call `central_find_device` once per unique serial to check device health — do not call it multiple times for the same serial.
 5. Call `central_get_alerts` with site_id=<site_id> and category="Clients" to check for site-level client alerts.
 6. Summarize: number of failed clients, connection types affected (wired vs wireless), common failure patterns, and related device/site alerts from available Central data. Do not infer root causes; direct remediation to Central.
         """.strip()
@@ -113,8 +116,8 @@ Check the health of all {device_type} devices at site "{site_name}":
 2. Normalize the requested type for `central_get_devices`: "Access Point" -> ACCESS_POINT, "Switch" -> SWITCH, "Gateway" -> GATEWAY.
 3. Call `central_get_devices` with site_id=<site_id> and normalized device_type to list all matching devices.
 4. Call `central_get_alerts` with site_id=<site_id> and device_type using display values ("Access Point", "Switch", "Gateway", "Bridge") to get relevant active alerts.
-5. For devices with associated alerts, call `central_get_events_count` with site_id=<site_id>, context_type=<normalized device type>, context_identifier=<serial_number>, time_range="last_1h", response_mode="compact".
-6. Optionally call `central_get_events` with the same context and top filters from count output for detailed evidence.
+5. For up to 3 devices that have associated alerts, call `central_get_events_count` with site_id=<site_id>, context_type=<normalized device type>, context_identifier=<serial_number>, time_range="last_1h", response_mode="compact".
+6. For each device from step 5 where total > 0, call `central_get_events` with the same context and the top event_id and category filters from the count output.
 7. Summarize: total device count, provisioned vs unprovisioned, active alert breakdown by severity, and devices with high event activity from tool output only. Do not provide remediation steps; direct remediation to Central.
         """.strip()
 
@@ -138,10 +141,21 @@ Identify top event drivers at site "{site_name}" for {time_range}:
 Review all active critical alerts across the network:
 
 1. Call `central_get_site_name_id_mapping` to get all sites with their site_ids and alert counts.
-2. For each site with critical_alerts > 0, call `central_get_alerts` with the site_id and status="Active" to get all active alerts.
-3. Identify sites with the highest concentration of critical alerts.
-4. Filter to Critical severity only. Group by site and category.
-5. Summarize: critical alert count across the network, top affected sites, most common alert names by category.
+2. Sort sites by critical_alerts descending. For the top 5 sites with critical_alerts > 0, call `central_get_alerts` with the site_id and status="Active". Skip sites with critical_alerts = 0.
+3. From the returned alerts, filter to Critical severity only. Group by site and category.
+4. Summarize: total critical alert count across the network, top affected sites, most common alert names by category.
+        """.strip()
+
+    @mcp.prompt
+    def wlan_health_check(wlan_name: str, time_range: str = "last_24h") -> str:
+        """Check the configuration and throughput health of a specific WLAN (SSID)."""
+        return f"""
+Check the health of WLAN "{wlan_name}" over {time_range}:
+
+1. Call `central_get_wlans` with wlan_name="{wlan_name}" to get WLAN configuration (band, security, VLAN, status).
+2. Call `central_get_wlan_stats` with wlan_name="{wlan_name}" and time_range="{time_range}" to get throughput trends. Interpret tx as transmitted throughput and rx as received throughput, both in bits per second.
+3. Summarize: WLAN configuration details, throughput trend (tx/rx over time, in bits per second), and whether throughput is stable or degrading.
+4. If throughput data is absent or all-null, note the WLAN may be unused or the name may be incorrect.
         """.strip()
 
     @mcp.prompt
