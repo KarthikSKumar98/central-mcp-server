@@ -249,6 +249,22 @@ class WLAN(BaseModel):
     vlan: str | None = Field(default=None, description="VLAN assigned to this WLAN.")
 
 
+class WLANThroughputSample(BaseModel):
+    """Standardized WLAN throughput time-series sample."""
+
+    timestamp: str = Field(
+        description="RFC 3339 timestamp for the throughput sample."
+    )
+    tx: int | float | None = Field(
+        default=None,
+        description="Transmitted (tx) throughput reported for the WLAN at this timestamp, in bits per second.",
+    )
+    rx: int | float | None = Field(
+        default=None,
+        description="Received (rx) throughput reported for the WLAN at this timestamp, in bits per second.",
+    )
+
+
 class Client(BaseModel):
     """Client device data structure."""
 
