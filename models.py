@@ -1,7 +1,14 @@
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SerializationInfo, model_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializationInfo,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
 
 class SourceType(str, Enum):
@@ -214,7 +221,6 @@ class AccessPoint(BaseModel):
     @classmethod
     def from_api(cls, raw_ap: dict[str, Any]) -> "AccessPoint":
         """Normalize raw Central AP payloads into a sparse MCP-friendly shape."""
-
         normalized = dict(raw_ap)
         status = normalized.get("status")
 
@@ -230,10 +236,11 @@ class AccessPoint(BaseModel):
 
     @model_serializer(mode="wrap")
     def serialize_sparse(
-        self, handler: Any, info: SerializationInfo
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
     ) -> dict[str, Any]:
         """Drop null fields during serialization to keep AP payloads compact."""
-
         data = handler(self)
         return {key: value for key, value in data.items() if value is not None}
 
@@ -243,9 +250,7 @@ class AccessPointStatistics(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    timestamp: str = Field(
-        description="RFC 3339 timestamp for the statistics sample."
-    )
+    timestamp: str = Field(description="RFC 3339 timestamp for the statistics sample.")
     cpu_utilization: int | float | None = Field(
         default=None,
         validation_alias="cpuUtilization",
