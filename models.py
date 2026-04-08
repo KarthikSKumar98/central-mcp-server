@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializationInfo, model_serializer
 
 
 class SourceType(str, Enum):
@@ -118,7 +118,7 @@ class Device(BaseModel):
 class AccessPoint(BaseModel):
     """Access point monitoring data structure."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
     serial_number: str = Field(
         alias="serialNumber",
@@ -159,12 +159,12 @@ class AccessPoint(BaseModel):
     cluster_id: str | None = Field(
         default=None,
         alias="clusterId",
-        description="Cluster associated with the AP.",
+        description="ID of cluster associated with the AP.",
     )
     cluster_name: str | None = Field(
         default=None,
         alias="clusterName",
-        description="Cluster name associated with the AP.",
+        description="Name of cluster associated with the AP.",
     )
     part_number: str | None = Field(
         default=None,
@@ -192,16 +192,6 @@ class AccessPoint(BaseModel):
         alias="lastSeenAt",
         description="Timestamp when the AP was last seen in monitoring.",
     )
-    building_id: str | None = Field(
-        default=None,
-        alias="buildingId",
-        description="Building identifier assigned to the AP (if available).",
-    )
-    floor_id: str | None = Field(
-        default=None,
-        alias="floorId",
-        description="Floor identifier assigned to the AP (if available).",
-    )
     notes: str | None = Field(
         default=None, description="Operator notes associated with the AP."
     )
@@ -219,6 +209,57 @@ class AccessPoint(BaseModel):
         default=None,
         alias="powerConsumption",
         description="Latest AP power consumption value.",
+    )
+
+    @classmethod
+    def from_api(cls, raw_ap: dict[str, Any]) -> "AccessPoint":
+        """Normalize raw Central AP payloads into a sparse MCP-friendly shape."""
+
+        normalized = dict(raw_ap)
+        status = normalized.get("status")
+
+        if status == "ONLINE":
+            normalized["lastSeenAt"] = None
+        elif status == "OFFLINE":
+            normalized["uptimeInMillis"] = None
+
+        normalized.pop("buildingId", None)
+        normalized.pop("floorId", None)
+
+        return cls(**normalized)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self, handler: Any, info: SerializationInfo
+    ) -> dict[str, Any]:
+        """Drop null fields during serialization to keep AP payloads compact."""
+
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class AccessPointStatistics(BaseModel):
+    """Time-series monitoring statistics for a single access point."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    timestamp: str = Field(
+        description="RFC 3339 timestamp for the statistics sample."
+    )
+    cpu_utilization: int | float | None = Field(
+        default=None,
+        validation_alias="cpuUtilization",
+        description="CPU utilization percentage reported for the AP at this sample time.",
+    )
+    memory_utilization: int | float | None = Field(
+        default=None,
+        validation_alias="memoryUtilization",
+        description="Memory utilization percentage reported for the AP at this sample time.",
+    )
+    power_consumption: int | float | None = Field(
+        default=None,
+        validation_alias="powerConsumption",
+        description="Power consumption reported for the AP at this sample time.",
     )
 
 
