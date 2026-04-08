@@ -1,5 +1,14 @@
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from models import SiteData
-from utils.sites import groups_to_map, process_site_health_data, transform_to_site_data
+from utils.sites import (
+    fetch_site_data,
+    groups_to_map,
+    process_site_health_data,
+    transform_to_site_data,
+)
 
 # ---------------------------------------------------------------------------
 # groups_to_map
@@ -130,6 +139,36 @@ _CLIENT_HEALTH = [
         ],
     }
 ]
+
+
+def test_fetch_site_data_applies_odata_site_filter_to_all_endpoints():
+    conn = MagicMock()
+    with patch(
+        "utils.sites.paginated_fetch",
+        side_effect=[_SITE_HEALTH, _DEVICE_HEALTH, _CLIENT_HEALTH],
+    ) as mock_fetch:
+        result = fetch_site_data(conn, site_names=["HQ", "Branch"])
+
+    assert "HQ" in result
+    assert mock_fetch.call_count == 3
+    expected_filter = "siteName in ('HQ', 'Branch')"
+    for call in mock_fetch.call_args_list:
+        assert call.kwargs["additional_params"] == {"filter": expected_filter}
+
+
+@pytest.mark.parametrize("site_names", [None, []])
+def test_fetch_site_data_without_site_names_sends_no_filter(site_names):
+    conn = MagicMock()
+    with patch(
+        "utils.sites.paginated_fetch",
+        side_effect=[_SITE_HEALTH, _DEVICE_HEALTH, _CLIENT_HEALTH],
+    ) as mock_fetch:
+        result = fetch_site_data(conn, site_names=site_names)
+
+    assert "HQ" in result
+    assert mock_fetch.call_count == 3
+    for call in mock_fetch.call_args_list:
+        assert call.kwargs["additional_params"] is None
 
 
 def test_process_site_health_data_returns_dict_keyed_by_sitename():

@@ -26,7 +26,7 @@ def register(mcp: FastMCP) -> None:
         Do NOT call without a filter unless the user explicitly requests data for all sites —
         returning all sites is expensive and consumes significant context.
 
-        Recommended workflow: Call central_get_site_name_id_mapping first to get a lightweight
+        Recommended workflow: Call central_get_summary first to get a lightweight
         overview of all sites (names, IDs, health scores). Use health scores and alert counts to
         decide which sites warrant further investigation, then call this tool with those specific
         site names.
@@ -37,17 +37,20 @@ def register(mcp: FastMCP) -> None:
           For a single site, pass `["<site name>"]` (not a plain string).
           For multiple sites, pass them together in one list:
           `["<site A>", "<site B>", "<site C>"]`.
+          This filter is applied server-side to all upstream site-health API calls.
           If omitted, all sites are returned (use sparingly or when explicitly requested).
 
         """
         async with api_context(ctx) as conn:
-            sites_data = await asyncio.to_thread(fetch_site_data, conn)
+            sites_data = await asyncio.to_thread(
+                fetch_site_data, conn, site_names=site_names
+            )
             if site_names:
                 return [sites_data[name] for name in site_names if name in sites_data]
             return list(sites_data.values())
 
     @mcp.tool(annotations=READ_ONLY)
-    async def central_get_site_name_id_mapping(ctx: Context) -> dict:
+    async def central_get_summary(ctx: Context) -> dict:
         """Return a lightweight mapping of all site names to their IDs, health score, devices, client & alert counts.
 
         The list is sorted by health score (lowest to highest — worst to best) to help quickly

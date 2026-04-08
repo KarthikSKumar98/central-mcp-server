@@ -129,20 +129,45 @@ async def test_get_wlans_site_id_passed_to_api(tools):
 
 
 @pytest.mark.asyncio
-async def test_get_wlans_wlan_name_filter_client_side(tools):
+async def test_get_wlans_wlan_name_uses_direct_api_call(tools):
     ctx = make_ctx()
-    with patch("tools.wlans.get_all_wlans", return_value=[RAW_WLAN, RAW_WLAN_2]):
+    ctx.lifespan_context["conn"].command.return_value = {"code": 200, "msg": RAW_WLAN}
+    with (
+        patch("tools.wlans.get_all_wlans") as mock_get_all,
+        patch("tools.wlans.asyncio.to_thread", side_effect=lambda fn, **kw: fn(**kw)),
+    ):
         result = await tools["central_get_wlans"](ctx, wlan_name="Corp-WiFi")
     assert len(result) == 1
     assert result[0].wlan_name == "Corp-WiFi"
+    mock_get_all.assert_not_called()
+    call_kwargs = ctx.lifespan_context["conn"].command.call_args.kwargs
+    assert call_kwargs["api_method"] == "GET"
+    assert call_kwargs["api_path"] == "network-monitoring/v1/wlans/Corp-WiFi"
+    assert call_kwargs["api_params"] is None
 
 
 @pytest.mark.asyncio
 async def test_get_wlans_wlan_name_no_match(tools):
     ctx = make_ctx()
-    with patch("tools.wlans.get_all_wlans", return_value=[RAW_WLAN, RAW_WLAN_2]):
+    ctx.lifespan_context["conn"].command.return_value = {"code": 200, "msg": None}
+    with patch("tools.wlans.asyncio.to_thread", side_effect=lambda fn, **kw: fn(**kw)):
         result = await tools["central_get_wlans"](ctx, wlan_name="Unknown-SSID")
     assert result == "No WLANs found matching the specified criteria."
+
+
+@pytest.mark.asyncio
+async def test_get_wlans_wlan_name_passes_site_id_to_direct_api(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = {"code": 200, "msg": RAW_WLAN}
+    with patch("tools.wlans.asyncio.to_thread", side_effect=lambda fn, **kw: fn(**kw)):
+        result = await tools["central_get_wlans"](
+            ctx, wlan_name="Corp-WiFi", site_id="site-abc"
+        )
+    assert len(result) == 1
+    assert (
+        ctx.lifespan_context["conn"].command.call_args.kwargs["api_params"]
+        == {"site_id": "site-abc"}
+    )
 
 
 @pytest.mark.asyncio
@@ -167,6 +192,18 @@ async def test_get_wlans_sort_passed_to_api(tools):
     with patch("tools.wlans.get_all_wlans", return_value=[]) as mock_fn:
         await tools["central_get_wlans"](ctx, sort="wlanName asc")
     assert mock_fn.call_args.kwargs["sort"] == "wlanName asc"
+
+
+@pytest.mark.asyncio
+async def test_get_wlans_wlan_name_non_200_returns_formatted_error(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = {
+        "code": 404,
+        "msg": "not found",
+    }
+    with patch("tools.wlans.asyncio.to_thread", side_effect=lambda fn, **kw: fn(**kw)):
+        result = await tools["central_get_wlans"](ctx, wlan_name="Bad-WLAN")
+    assert result == "Error fetching WLANs: API returned 404: not found"
 
 
 # --- central_get_wlan_stats ---

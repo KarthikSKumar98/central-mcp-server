@@ -3,11 +3,17 @@ from models import SiteData, SiteMetrics
 from utils.common import paginated_fetch
 
 
-def fetch_site_data(central_conn) -> dict[str, SiteData]:
+def fetch_site_data(
+    central_conn, site_names: list[str] | None = None
+) -> dict[str, SiteData]:
     """Fetch site health, device health, and client health data on one connection.
+
+    When site_names are provided, filtering is pushed upstream via OData so
+    all three endpoint calls request only the targeted sites.
 
     Args:
         central_conn: Central API connection object
+        site_names: Optional list of exact site names to filter server-side.
 
     Returns:
         Dictionary of site names to normalized SiteData objects.
@@ -18,12 +24,34 @@ def fetch_site_data(central_conn) -> dict[str, SiteData]:
         "network-monitoring/v1/sites-device-health",
         "network-monitoring/v1/sites-client-health",
     ]
+    site_filter = _build_site_name_filter(site_names)
+    additional_params = {"filter": site_filter} if site_filter else None
 
     results = [
-        paginated_fetch(central_conn, endpoint, SITE_LIMIT) for endpoint in endpoints
+        paginated_fetch(
+            central_conn,
+            endpoint,
+            SITE_LIMIT,
+            additional_params=additional_params,
+        )
+        for endpoint in endpoints
     ]
 
     return process_site_health_data(*results)
+
+
+def _build_site_name_filter(site_names: list[str] | None) -> str | None:
+    """Return an OData siteName filter, or None when no valid names are provided."""
+    if not site_names:
+        return None
+
+    normalized = [name.strip() for name in site_names if name and name.strip()]
+    if not normalized:
+        return None
+
+    escaped_names = [name.replace("'", "''") for name in normalized]
+    values = ", ".join(f"'{name}'" for name in escaped_names)
+    return f"siteName in ({values})"
 
 
 def process_site_health_data(site_health, device_health, client_health):
