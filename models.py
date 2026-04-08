@@ -1,7 +1,15 @@
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SerializationInfo, model_serializer
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializationInfo,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
 
 class SourceType(str, Enum):
@@ -232,6 +240,8 @@ class WLAN(BaseModel):
         description="Security protocol (e.g., WPA2, WPA3).",
     )
     band: str | None = Field(
+    timestamp: str = Field(description="RFC 3339 timestamp for the statistics sample.")
+    cpu_utilization: int | float | None = Field(
         default=None,
         description="Wireless band (e.g., 2.4GHz, 5GHz, 6GHz).",
     )
