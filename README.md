@@ -191,16 +191,17 @@ See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-cent
 graph TD
     MCP["Central MCP Server"] --> Sites["Sites"]
     MCP --> Devices["Devices"]
-    MCP --> APMon["AP Monitoring"]
     MCP --> Clients["Clients"]
     MCP --> Alerts["Alerts"]
     MCP --> Events["Events"]
+    MCP --> APMon["AP Monitoring"]
+    MCP--> WLAN["WLAN"]
 
     classDef mcp fill:#05cc93,color:#001b14,stroke:#000000,stroke-width:2px;
     classDef tool fill:#0070f8,color:#ffffff,stroke:#000000,stroke-width:1.5px;
 
     class MCP mcp;
-    class Sites,Devices,APMon,Clients,Alerts,Events tool;
+    class Sites,Devices,APMon,Clients,Alerts,Events,WLAN tool;
 
     linkStyle default stroke:#ffffff,stroke-width:2px;
 ```
