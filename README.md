@@ -190,7 +190,7 @@ See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-cent
 | Tool | Description |
 |------|-------------|
 | `central_get_sites` | Detailed health metrics for one or more sites (device/client/alert counts, health score) |
-| `central_get_site_name_id_mapping` | Lightweight mapping of all site names to IDs and health scores |
+| `central_get_summary` | Lightweight mapping of all site names to IDs and health scores |
 
 #### Devices
 | Tool | Description |
