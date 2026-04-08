@@ -7,7 +7,7 @@ from models import WLAN
 from tools import READ_ONLY
 from utils.common import api_context, format_tool_error
 from utils.events import _resolve_time_window
-from utils.wlans import clean_wlan_data, get_all_wlans
+from utils.wlans import clean_wlan_data, clean_wlan_stats_data, get_all_wlans
 
 
 def register(mcp: FastMCP) -> None:
@@ -100,7 +100,7 @@ def register(mcp: FastMCP) -> None:
                 Exception(f"API returned {response['code']}: {response['msg']}"),
             )
 
-        stats = response["msg"]
-        if not stats:
+        samples = clean_wlan_stats_data(response["msg"])
+        if not samples:
             return f"No throughput data found for WLAN '{wlan_name}'."
-        return stats
+        return samples

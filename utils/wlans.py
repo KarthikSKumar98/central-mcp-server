@@ -33,3 +33,28 @@ def get_all_wlans(central_conn, site_id=None, filter_str=None, sort=None):
 def clean_wlan_data(wlans):
     """Convert raw WLAN API dicts to WLAN Pydantic models."""
     return [WLAN(**w) for w in wlans if isinstance(w, dict)]
+
+
+def clean_wlan_stats_data(raw_stats):
+    """Flatten throughput-trends API response into a list of named-field dicts.
+
+    Converts the nested graph structure into a flat list of per-sample dicts,
+    pairing each key from ``graph.keys`` with its corresponding value in
+    ``graph.samples[].data``. Samples where every value is ``None`` (returned
+    for unknown WLANs) are dropped.
+
+    Returns an empty list when the response contains no valid data.
+    """
+    if not isinstance(raw_stats, dict):
+        return []
+    graph = raw_stats.get("graph", {})
+    keys = graph.get("keys", [])
+    samples = graph.get("samples", [])
+    result = []
+    for sample in samples:
+        data = sample.get("data", [])
+        values = dict(zip(keys, data))
+        if all(v is None for v in values.values()):
+            continue
+        result.append({"timestamp": sample.get("timestamp"), **values})
+    return result
