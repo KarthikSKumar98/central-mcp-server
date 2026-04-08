@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class SourceType(str, Enum):
@@ -227,20 +227,14 @@ class WLAN(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    id: str | None = Field(default=None, description="WLAN identifier.")
     wlan_name: str | None = Field(
-        alias="wlanName",
         default=None,
+        validation_alias=AliasChoices("wlan_name", "wlanName"),
         description="Name/SSID of the WLAN.",
     )
-    primary_usage: str | None = Field(
-        alias="primaryUsage",
-        default=None,
-        description="Primary usage of the WLAN (e.g., employee, guest).",
-    )
     security_level: str | None = Field(
-        alias="securityLevel",
         default=None,
+        validation_alias=AliasChoices("security_level", "securityLevel"),
         description="Security level (e.g., Open, Personal, Enterprise).",
     )
     security: str | None = Field(
@@ -253,7 +247,6 @@ class WLAN(BaseModel):
     )
     status: str | None = Field(default=None, description="WLAN operational status.")
     vlan: str | None = Field(default=None, description="VLAN assigned to this WLAN.")
-    type: str | None = Field(default=None, description="WLAN type.")
 
 
 class Client(BaseModel):
