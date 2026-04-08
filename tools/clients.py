@@ -41,7 +41,7 @@ def register(mcp: FastMCP) -> None:
         """Return a filtered list of clients from Central using OData v4.0 filter syntax.
 
         Prefer this over any full-inventory fetch for targeted queries by site, status, or
-        connection type. Call central_get_site_name_id_mapping first to obtain site_id values for filtering.
+        connection type. Call central_get_summary first to obtain site_id values for filtering.
 
         Parameters
         ----------

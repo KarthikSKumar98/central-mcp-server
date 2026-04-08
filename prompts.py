@@ -12,7 +12,7 @@ def register(mcp: FastMCP) -> None:
         return """
 Provide a full network health overview by following these steps:
 
-1. Call `central_get_site_name_id_mapping` to get all sites with health scores, device/client/alert counts.
+1. Call `central_get_summary` to get all sites with health scores, device/client/alert counts.
 2. Identify sites with poor or fair health, or notably high alert counts.
 3. Call `central_get_sites` with site_names=["<site A>", "<site B>", "<site C>"] for only the highest-priority sites (maximum 3).
 4. Summarize per site: health score, device/client/alert totals, and any notable issues.
@@ -25,7 +25,7 @@ Provide a full network health overview by following these steps:
         return f"""
 Troubleshoot the site "{site_name}" by following these steps:
 
-1. Call `central_get_site_name_id_mapping` to verify the site name and get its site_id and current health score.
+1. Call `central_get_summary` to verify the site name and get its site_id and current health score.
 2. Call `central_get_sites` with site_names=["{site_name}"] to get detailed site metrics.
 3. Call `central_get_alerts` with the site_id and status="Active" to get all active alerts. Prioritize by severity (Critical > High > Medium > Low).
 4. Call `central_get_devices` with the site_id to get all devices at the site.
@@ -66,7 +66,7 @@ Investigate recent events for device with serial number "{serial_number}" over t
         return f"""
 Summarize events at site "{site_name}" over the {time_range} window:
 
-1. Call `central_get_site_name_id_mapping` to verify the site name and get its site_id.
+1. Call `central_get_summary` to verify the site name and get its site_id.
 2. Call `central_get_events_count` with site_id=<site_id>, time_range="{time_range}", response_mode="compact" to get ranked event_id/category/source_type values.
 3. If total > 0, call `central_get_events` with site_id=<site_id>, time_range="{time_range}", and one or more top filters from step 2 to fetch focused event details.
 4. Group events by category and name. Highlight any spikes, repeated errors, or critical events.
@@ -79,7 +79,7 @@ Summarize events at site "{site_name}" over the {time_range} window:
         return f"""
 Investigate failed client connections at site "{site_name}":
 
-1. Call `central_get_site_name_id_mapping` to verify the site name and get its site_id.
+1. Call `central_get_summary` to verify the site name and get its site_id.
 2. Call `central_get_clients` with site_id=<site_id> and status="Failed" to get all failed clients.
 3. If no failed clients are found, report the site is clean.
 4. For each failed client (up to 5), call `central_find_device` with the connected device serial number to check device health.
@@ -93,7 +93,7 @@ Investigate failed client connections at site "{site_name}":
         return f"""
 Provide a client connectivity overview for site "{site_name}":
 
-1. Call `central_get_site_name_id_mapping` to verify the site name and get its site_id.
+1. Call `central_get_summary` to verify the site name and get its site_id.
 2. Call `central_get_clients` with site_id=<site_id> to get all clients at the site.
 3. Break down clients by: connection type (Wired vs Wireless), status (Connected vs Failed), and VLAN.
 4. For wireless clients, note WLAN distribution and any clients on unusual bands or security types.
@@ -109,7 +109,7 @@ Provide a client connectivity overview for site "{site_name}":
         return f"""
 Check the health of all {device_type} devices at site "{site_name}":
 
-1. Call `central_get_site_name_id_mapping` to verify the site name and get its site_id.
+1. Call `central_get_summary` to verify the site name and get its site_id.
 2. Normalize the requested type for `central_get_devices`: "Access Point" -> ACCESS_POINT, "Switch" -> SWITCH, "Gateway" -> GATEWAY.
 3. Call `central_get_devices` with site_id=<site_id> and normalized device_type to list all matching devices.
 4. Call `central_get_alerts` with site_id=<site_id> and device_type using display values ("Access Point", "Switch", "Gateway", "Bridge") to get relevant active alerts.
@@ -124,7 +124,7 @@ Check the health of all {device_type} devices at site "{site_name}":
         return f"""
 Identify top event drivers at site "{site_name}" for {time_range}:
 
-1. Call `central_get_site_name_id_mapping` and resolve site_id for "{site_name}".
+1. Call `central_get_summary` and resolve site_id for "{site_name}".
 2. Call `central_get_events_count` with site_id=<site_id>, time_range="{time_range}", response_mode="compact".
 3. Select top 3 event_id values and top 2 categories from the compact response.
 4. Call `central_get_events` with site_id=<site_id>, time_range="{time_range}", event_id="<id1,id2,id3>", category="<cat1,cat2>".
@@ -137,7 +137,7 @@ Identify top event drivers at site "{site_name}" for {time_range}:
         return """
 Review all active critical alerts across the network:
 
-1. Call `central_get_site_name_id_mapping` to get all sites with their site_ids and alert counts.
+1. Call `central_get_summary` to get all sites with their site_ids and alert counts.
 2. For each site with critical_alerts > 0, call `central_get_alerts` with the site_id and status="Active" to get all active alerts.
 3. Identify sites with the highest concentration of critical alerts.
 4. Filter to Critical severity only. Group by site and category.
@@ -151,7 +151,7 @@ Review all active critical alerts across the network:
         return f"""
 Compare health across sites: {sites_str}
 
-1. Call `central_get_site_name_id_mapping` to verify all site names and get their site_ids and health scores.
+1. Call `central_get_summary` to verify all site names and get their site_ids and health scores.
 2. Call `central_get_sites` with site_names={list(site_names)} to get detailed metrics for each site.
 3. For each site, call `central_get_alerts` with the site_id and status="Active" to get active alert counts by severity.
 4. Present a side-by-side comparison table: site name, health score, device count, client count, alert breakdown (Critical/High/Medium/Low).

@@ -31,7 +31,7 @@ def devices_tools():
 
 @pytest.fixture(scope="module")
 async def first_site(sites_tools, live_ctx):
-    mapping = await sites_tools["central_get_site_name_id_mapping"](live_ctx)
+    mapping = await sites_tools["central_get_summary"](live_ctx)
     if not mapping:
         pytest.skip("No sites available")
     name, data = next(iter(mapping.items()))
