@@ -4,7 +4,6 @@
 ![PyPI - License](https://img.shields.io/pypi/l/central-mcp-server)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-
 Community MCP server for HPE Aruba Networking Central. This exposes your Central data as tools that AI assistants can query directly.
 
 ---
@@ -105,7 +104,7 @@ Replace the placeholder values with your actual credentials in all examples belo
 - Code Mode is disabled when `DYNAMIC_TOOLS` is not set or set to any other value.
 - Variable name is strict: use `DYNAMIC_TOOLS` (plural). `DYNAMIC_TOOL` is ignored.
 
-When enabled, the server starts with `CodeMode()` and exposes Code Mode meta-tools to the client. When disabled, the server runs without the transform and exposes the normal registered tool catalog directly.
+When enabled, the server starts with `CodeMode()` and exposes Code Mode meta-tools to the client. When disabled, the server runs without the transform and exposes the normal registered tool catalog directly. Recommended to use `CodeMode()` when you have multiple MCP servers running to preserve your context window.
 
 #### Claude Desktop
 
@@ -226,6 +225,12 @@ graph TD
 | `central_get_aps` | Filtered list of access points — filter by site, serial number, status, model, firmware version, deployment, or cluster |
 | `central_get_ap_statistics` | AP CPU, memory, and power statistics for a given AP serial number within a selected time window |
 
+#### WLAN
+| Tool | Description |
+|------|-------------|
+| `central_get_wlans` | Configured WLANs (SSIDs) with optional filtering by WLAN name, site, and sort fields |
+| `central_get_wlan_stats` | Throughput trend samples (tx/rx bps) for a specific WLAN over a selected time window |
+
 #### Clients
 | Tool | Description |
 |------|-------------|
@@ -256,7 +261,7 @@ Use this sequence for faster, lower-token event investigations:
 
 ### Guided Prompts
 
-The server includes 10 built-in prompts to help AI assistants run common workflows:
+The server includes 12 built-in prompts to help AI assistants run common workflows:
 
 | Prompt | Description |
 |--------|-------------|
@@ -268,7 +273,9 @@ The server includes 10 built-in prompts to help AI assistants run common workflo
 | `failed_clients_investigation` | Find and diagnose all failed clients at a site |
 | `site_client_overview` | Overview of client connectivity at a site |
 | `device_type_health` | Health check for all devices of a specific type at a site |
+| `top_event_drivers` | Identify dominant event drivers at a site and pull supporting evidence |
 | `critical_alerts_review` | Review all active critical alerts across the network |
+| `wlan_health_check` | Assess WLAN health using client failures and related events over a time window |
 | `compare_site_health` | Compare health metrics side-by-side across multiple sites |
 
 ---
