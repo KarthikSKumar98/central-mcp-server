@@ -3,7 +3,7 @@ import asyncio
 from fastmcp import Context, FastMCP
 
 from constants import TIME_RANGE
-from models import WLAN
+from models import WLAN, WLANThroughputSample
 from tools import READ_ONLY
 from utils.common import api_context, format_tool_error
 from utils.events import _resolve_time_window
@@ -59,12 +59,15 @@ def register(mcp: FastMCP) -> None:
         time_range: TIME_RANGE = "last_1h",
         start_time: str | None = None,
         end_time: str | None = None,
-    ) -> list[dict] | str:
+    ) -> list[WLANThroughputSample] | str:
         """Return throughput trend data for a specific WLAN over a time window.
 
-        Returns a time-series of throughput metrics for the named WLAN. Use
-        time_range for common windows, or provide both start_time and end_time
-        for a custom range (they override time_range when both are set).
+        Returns a time-series of standardized throughput samples for the named
+        WLAN. Each sample includes timestamp plus tx and rx throughput values in
+        bits per second, where tx is transmitted data and rx is received data.
+        Use time_range for common windows, or provide both start_time and
+        end_time for a custom range (they override time_range when both are
+        set).
 
         Parameters
         ----------
@@ -99,7 +102,6 @@ def register(mcp: FastMCP) -> None:
                 "fetching WLAN statistics",
                 Exception(f"API returned {response['code']}: {response['msg']}"),
             )
-
         samples = clean_wlan_stats_data(response["msg"])
         if not samples:
             return f"No throughput data found for WLAN '{wlan_name}'."
