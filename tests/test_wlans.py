@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -30,8 +30,22 @@ RAW_WLAN_2 = {
     "type": "standard",
 }
 
-RAW_STATS = [
-    {"timestamp": "2026-04-07T10:00:00.000Z", "rxThroughput": 100, "txThroughput": 200}
+RAW_STATS = {
+    "graph": {
+        "keys": ["tx", "rx"],
+        "samples": [
+            {"data": [100, 200], "timestamp": "2026-04-07T10:00:00Z"},
+            {"data": [150, 250], "timestamp": "2026-04-07T10:05:00Z"},
+        ],
+    },
+    "id": "wlans/Corp-WiFi",
+    "metric": "wlan_throughput",
+    "type": "network-monitoring/access-point-monitoring",
+}
+
+CLEANED_STATS = [
+    {"timestamp": "2026-04-07T10:00:00Z", "tx": 100, "rx": 200},
+    {"timestamp": "2026-04-07T10:05:00Z", "tx": 150, "rx": 250},
 ]
 
 
@@ -119,12 +133,10 @@ async def test_get_wlans_sort_passed_to_api(tools):
 @pytest.mark.asyncio
 async def test_get_wlan_stats_success(tools):
     ctx = make_ctx()
-    mock_response = MagicMock()
-    mock_response.__getitem__ = lambda self, key: {"code": 200, "msg": RAW_STATS}[key]
     ctx.lifespan_context["conn"].command.return_value = {"code": 200, "msg": RAW_STATS}
     with patch("tools.wlans.asyncio.to_thread", side_effect=lambda fn, **kw: fn(**kw)):
         result = await tools["central_get_wlan_stats"](ctx, wlan_name="Corp-WiFi")
-    assert result == RAW_STATS
+    assert result == CLEANED_STATS
 
 
 @pytest.mark.asyncio
@@ -168,12 +180,33 @@ async def test_get_wlan_stats_non_200_returns_error(tools):
 
 
 @pytest.mark.asyncio
-async def test_get_wlan_stats_empty_returns_string(tools):
+async def test_get_wlan_stats_empty_msg_returns_string(tools):
     ctx = make_ctx()
-    ctx.lifespan_context["conn"].command.return_value = {"code": 200, "msg": []}
+    ctx.lifespan_context["conn"].command.return_value = {"code": 200, "msg": None}
     with patch("tools.wlans.asyncio.to_thread", side_effect=lambda fn, **kw: fn(**kw)):
         result = await tools["central_get_wlan_stats"](ctx, wlan_name="Corp-WiFi")
     assert result == "No throughput data found for WLAN 'Corp-WiFi'."
+
+
+@pytest.mark.asyncio
+async def test_get_wlan_stats_all_null_samples_returns_string(tools):
+    ctx = make_ctx()
+    null_stats = {
+        "graph": {
+            "keys": ["tx", "rx"],
+            "samples": [
+                {"data": [None, None], "timestamp": "2026-04-07T10:00:00Z"},
+                {"data": [None, None], "timestamp": "2026-04-07T10:05:00Z"},
+            ],
+        },
+        "id": "wlans/__nonexistent__",
+        "metric": "wlan_throughput",
+        "type": "network-monitoring/access-point-monitoring",
+    }
+    ctx.lifespan_context["conn"].command.return_value = {"code": 200, "msg": null_stats}
+    with patch("tools.wlans.asyncio.to_thread", side_effect=lambda fn, **kw: fn(**kw)):
+        result = await tools["central_get_wlan_stats"](ctx, wlan_name="__nonexistent__")
+    assert result == "No throughput data found for WLAN '__nonexistent__'."
 
 
 @pytest.mark.asyncio
