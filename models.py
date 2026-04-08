@@ -246,6 +246,9 @@ class AccessPoint(BaseModel):
 
 class AccessPointStatistics(BaseModel):
     """Time-series monitoring statistics for a single access point."""
+    
+    model_config = ConfigDict(populate_by_name=True)
+    
     timestamp: str = Field(description="RFC 3339 timestamp for the statistics sample.")
     cpu_utilization: int | float | None = Field(
         default=None,
