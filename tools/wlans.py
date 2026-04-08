@@ -28,7 +28,7 @@ def register(mcp: FastMCP) -> None:
 
         Parameters
         ----------
-        - wlan_name: Exact WLAN name (SSID) to filter by. Applied client-side.
+        - wlan_name: Exact WLAN name (SSID) to look up directly.
         - site_id: Site ID to scope results to a specific site. Max 128 characters.
         - sort: Comma-separated sort expressions. Supported fields: wlanName, band,
           status, securityLevel, security, vlan, primaryUsage.
@@ -36,17 +36,32 @@ def register(mcp: FastMCP) -> None:
         """
         async with api_context(ctx) as conn:
             try:
-                wlans = await asyncio.to_thread(
-                    get_all_wlans,
-                    central_conn=conn,
-                    site_id=site_id,
-                    sort=sort,
-                )
+                if wlan_name:
+                    api_params = {"site_id": site_id} if site_id else None
+                    response = await asyncio.to_thread(
+                        conn.command,
+                        api_method="GET",
+                        api_path=f"network-monitoring/v1/wlans/{wlan_name}",
+                        api_params=api_params,
+                    )
+                    if response["code"] != 200:
+                        return format_tool_error(
+                            "fetching WLANs",
+                            Exception(
+                                f"API returned {response['code']}: {response['msg']}"
+                            ),
+                        )
+                    payload = response.get("msg")
+                    wlans = [payload] if isinstance(payload, dict) else payload or []
+                else:
+                    wlans = await asyncio.to_thread(
+                        get_all_wlans,
+                        central_conn=conn,
+                        site_id=site_id,
+                        sort=sort,
+                    )
             except Exception as e:
                 return format_tool_error("fetching WLANs", e)
-
-        if wlan_name:
-            wlans = [w for w in wlans if w.get("wlanName") == wlan_name]
 
         if not wlans:
             return "No WLANs found matching the specified criteria."
