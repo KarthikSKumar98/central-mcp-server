@@ -12,15 +12,16 @@ def register(mcp: FastMCP) -> None:
         return """
 Provide a full network health overview by following these steps:
 
-1. Call `central_get_summary` to get all sites with health scores, device/client/alert counts.
-2. Identify sites with poor or fair health, or notably high alert counts.
-3. Call `central_get_sites` with site_names=["<site A>", "<site B>", "<site C>"] for only the highest-priority sites (maximum 3).
-1. Call `central_get_site_name_id_mapping` to get all sites with health scores, device/client/alert counts.
-2. Identify sites with poor or fair health (score < 80), or total_alerts > 5.
-3. If any such sites exist, call `central_get_sites` with site_names=["<site A>", "<site B>", "<site C>"] for only the highest-priority sites (maximum 3).
-   If all sites are healthy and alert-free, skip step 3 and summarize directly from step 1 data.
-4. Summarize per site: health score, device/client/alert totals, and any notable issues.
-5. End with an overall network health assessment strictly based on tool outputs. If remediation is needed, direct the user to resolve it in Central.
+1. Call `central_get_summary` to get all sites with health scores and device/client/alert counts.
+2. Prioritize up to 3 sites for deeper review where any of these are true: health < 80, critical_alerts > 0, or total_alerts > 5.
+3. If prioritized sites exist, call `central_get_sites` once with site_names=["<site A>", "<site B>", "<site C>"] (maximum 3 names).
+4. For each prioritized site, call `central_get_alerts` with site_id=<site_id>, status="Active", limit=20 to capture current high-impact issues.
+5. If no prioritized sites exist, skip steps 3-4 and summarize directly from `central_get_summary`.
+6. Summarize with these sections:
+   - Network snapshot: total sites, healthy/fair/poor counts, total clients/devices, total alerts.
+   - Priority sites: health score, critical/total alerts, and key signals from detailed data.
+   - Overall assessment based strictly on tool output.
+   Do not infer remediation steps; direct corrective actions to Central.
         """.strip()
 
     @mcp.prompt
@@ -40,15 +41,41 @@ Troubleshoot the site "{site_name}" by following these steps:
 
     @mcp.prompt
     def client_connectivity_check(mac_address: str) -> str:
-        """Investigate a client's connectivity status and the health of their site and connected device."""
+        """Investigate one client's connectivity using client, site, device, and event evidence."""
         return f"""
-Check connectivity for the client with MAC address "{mac_address}":
+Check connectivity for the client with MAC address "{mac_address}" using evidence-first steps:
 
-1. Call `central_find_client` with mac_address="{mac_address}" to get the client's current status and connected device serial number.
-2. If found, note the site_id from the response.
-3. Call `central_get_alerts` with the site_id and status="Active" to check for site-level issues that may affect the client.
-4. Call `central_find_device` with the serial_number of the connected device to check device health.
-5. Summarize: client status, connection details (type, VLAN, WLAN if wireless), and related site/device alerts based only on tool output. Do not infer root cause; direct remediation to Central.
+1. Call `central_find_client` with mac_address="{mac_address}".
+   If the response says the client is not found, report that clearly and stop.
+2. From the client response, capture: status, connection_type, site_id, connected_device_serial, vlan_id, last_seen_at, and wireless fields (wlan_name, wireless_band, wireless_channel) when present.
+3. If client status is "Failed" or "Disconnected", treat it as a disconnect state.
+   If last_seen_at is present, use it as the disconnect anchor and create an investigation window around it:
+   - start_time = last_seen_at minus 2 hours (RFC 3339)
+   - end_time = last_seen_at plus 30 minutes (RFC 3339)
+   If last_seen_at is missing, use time_range="last_24h" as fallback for disconnect-state analysis.
+4. If site_id is present, call `central_get_alerts` with site_id=<site_id>, status="Active", category="Clients", limit=20.
+   If client status is "Failed" or "Disconnected", also call `central_get_alerts` with site_id=<site_id>, status="Cleared", category="Clients", sort="updatedAt desc", limit=50, then prioritize alerts whose createdAt/updatedAt timestamps are closest to (or just before) last_seen_at.
+   If site_id is missing, skip this step and explicitly state that site-scoped alerts could not be queried.
+5. If connected_device_serial is present, call `central_find_device` with serial_number=<connected_device_serial>.
+   If connected_device_serial is missing, skip this step and state that connected-device health could not be verified.
+6. If site_id is present, map connection_type to events context_type:
+   - Wireless -> WIRELESS_CLIENT
+   - Wired -> WIRED_CLIENT
+   If client status is "Failed" or "Disconnected", call `central_get_events_count` with site_id=<site_id>, context_type=<mapped type>, context_identifier="{mac_address}", response_mode="compact", and:
+   - start_time/end_time from step 3 when last_seen_at is available, or
+   - time_range="last_24h" fallback when it is not.
+   If total > 0, call `central_get_events` with the same context and same time bounds, plus top event_id/category filters from the count output (limit=20).
+   If client status is "Connected", call `central_get_events_count` with site_id=<site_id>, context_type=<mapped type>, context_identifier="{mac_address}", time_range="last_24h", response_mode="compact" and summarize that 24-hour event-count output.
+   If connection_type is missing or unmapped, skip event calls and state why.
+7. Summarize with these sections:
+   - Client snapshot: status, connection type, VLAN/WLAN details, connected device serial/name.
+   - Disconnect anchor: last_seen_at and the investigation window used (or why unavailable).
+   - Site signals: active/cleared client-category alerts near the disconnect window (or why unavailable).
+   - Device signals: connected device status/site/firmware (or why unavailable).
+   - Recent client events:
+     - Failed/Disconnected clients: top event drivers around disconnect window.
+     - Connected clients: last 24-hour event counts from `central_get_events_count`.
+   Use only tool output. Do not infer root cause or provide remediation steps; direct remediation to Central.
         """.strip()
 
     @mcp.prompt
