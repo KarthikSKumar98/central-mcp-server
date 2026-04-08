@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 import tools.ap_monitoring as mod
-from models import WLAN, AccessPoint
+from models import WLAN, AccessPoint, AccessPointStatistics
 from tests.conftest import FakeMCP, make_ctx
 
 RAW_AP = {
@@ -17,6 +17,10 @@ RAW_AP = {
     "deployment": "Standalone",
     "clusterId": "cluster-1",
     "clusterName": "hq-cluster",
+    "uptimeInMillis": 12345,
+    "lastSeenAt": "2026-03-21T10:00:00.000Z",
+    "buildingId": "bldg-1",
+    "floorId": "floor-2",
 }
 
 RAW_STATS = {
@@ -48,9 +52,61 @@ async def test_get_aps_no_filters(tools):
     assert isinstance(result, list)
     assert isinstance(result[0], AccessPoint)
     assert result[0].serial_number == "AP123456"
+    serialized = result[0].model_dump()
+    assert serialized["serialNumber"] == "AP123456"
+    assert serialized["status"] == "ONLINE"
+    assert serialized["uptimeInMillis"] == 12345
+    assert "lastSeenAt" not in serialized
+    assert "buildingId" not in serialized
+    assert "floorId" not in serialized
     call_kwargs = mock_api.call_args.kwargs
     assert call_kwargs["filter_str"] is None
     assert call_kwargs["sort"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_aps_offline_payload_excludes_uptime(tools):
+    ctx = make_ctx()
+    raw_offline_ap = {
+        **RAW_AP,
+        "status": "OFFLINE",
+        "uptimeInMillis": 99999,
+        "lastSeenAt": "2026-03-22T10:00:00.000Z",
+    }
+    with patch(
+        "tools.ap_monitoring.MonitoringAPs.get_all_aps",
+        return_value=[raw_offline_ap],
+    ):
+        result = await tools["central_get_aps"](ctx, status="OFFLINE")
+
+    serialized = result[0].model_dump()
+    assert serialized["status"] == "OFFLINE"
+    assert serialized["lastSeenAt"] == "2026-03-22T10:00:00.000Z"
+    assert "uptimeInMillis" not in serialized
+
+
+@pytest.mark.asyncio
+async def test_get_aps_null_optional_fields_are_excluded(tools):
+    ctx = make_ctx()
+    raw_sparse_ap = {
+        "serialNumber": "AP999999",
+        "status": "ONLINE",
+        "deviceName": None,
+        "macAddress": None,
+        "firmwareVersion": None,
+        "uptimeInMillis": 321,
+    }
+    with patch(
+        "tools.ap_monitoring.MonitoringAPs.get_all_aps",
+        return_value=[raw_sparse_ap],
+    ):
+        result = await tools["central_get_aps"](ctx)
+
+    assert result[0].model_dump() == {
+        "serialNumber": "AP999999",
+        "status": "ONLINE",
+        "uptimeInMillis": 321,
+    }
 
 
 @pytest.mark.asyncio
@@ -131,10 +187,47 @@ async def test_get_ap_statistics_success(tools):
     ) as mock_api:
         result = await tools["central_get_ap_statistics"](ctx, serial_number="AP123456")
     assert isinstance(result, list)
-    assert result[0]["cpuUtilization"] == 44
+    assert isinstance(result[0], AccessPointStatistics)
+    assert result[0].cpu_utilization == 44
+    serialized = result[0].model_dump()
+    assert serialized["cpu_utilization"] == 44
+    assert "cpuUtilization" not in serialized
     assert mock_api.call_args.kwargs["serial_number"] == "AP123456"
     assert mock_api.call_args.kwargs["start_time"] is not None
     assert mock_api.call_args.kwargs["end_time"] is not None
+
+
+def test_access_point_statistics_uses_snake_case_for_output():
+    stat = AccessPointStatistics(
+        timestamp="2026-03-21T10:00:00.000Z",
+        cpuUtilization=44,
+        memoryUtilization=61,
+        powerConsumption=12,
+    )
+
+    assert stat.model_dump() == {
+        "timestamp": "2026-03-21T10:00:00.000Z",
+        "cpu_utilization": 44,
+        "memory_utilization": 61,
+        "power_consumption": 12,
+    }
+    assert stat.model_dump(by_alias=True) == {
+        "timestamp": "2026-03-21T10:00:00.000Z",
+        "cpu_utilization": 44,
+        "memory_utilization": 61,
+        "power_consumption": 12,
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_ap_statistics_parse_error_returns_formatted_error(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.ap_monitoring.MonitoringAPs.get_ap_stats",
+        return_value=[{"cpuUtilization": 44}],
+    ):
+        result = await tools["central_get_ap_statistics"](ctx, serial_number="AP123456")
+    assert result.startswith("Error parsing access point statistics:")
 
 
 @pytest.mark.asyncio

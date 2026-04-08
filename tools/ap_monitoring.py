@@ -5,7 +5,7 @@ from fastmcp import Context, FastMCP
 from pycentral.new_monitoring import MonitoringAPs
 
 from constants import TIME_RANGE
-from models import WLAN, AccessPoint
+from models import WLAN, AccessPoint, AccessPointStatistics
 from tools import READ_ONLY
 from utils.common import (
     FilterField,
@@ -96,7 +96,7 @@ def register(mcp: FastMCP) -> None:
             if not aps:
                 return "No access points found matching the specified criteria."
             try:
-                return [AccessPoint(**ap) for ap in aps]
+                return [AccessPoint.from_api(ap) for ap in aps]
             except Exception as e:
                 return format_tool_error("parsing access point data", e)
 
@@ -107,7 +107,7 @@ def register(mcp: FastMCP) -> None:
         time_range: TIME_RANGE = "last_1h",
         start_time: str | None = None,
         end_time: str | None = None,
-    ) -> list[dict[str, Any]] | str:
+    ) -> list[AccessPointStatistics] | str:
         """Return AP statistics (CPU, memory, power) for a given AP serial number within a time window.
 
         Parameters

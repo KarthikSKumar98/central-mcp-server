@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SerializationInfo, model_serializer
 
 
 class SourceType(str, Enum):
@@ -118,7 +118,7 @@ class Device(BaseModel):
 class AccessPoint(BaseModel):
     """Access point monitoring data structure."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
     serial_number: str = Field(
         alias="serialNumber",
@@ -159,12 +159,12 @@ class AccessPoint(BaseModel):
     cluster_id: str | None = Field(
         default=None,
         alias="clusterId",
-        description="Cluster associated with the AP.",
+        description="ID of cluster associated with the AP.",
     )
     cluster_name: str | None = Field(
         default=None,
         alias="clusterName",
-        description="Cluster name associated with the AP.",
+        description="Name of cluster associated with the AP.",
     )
     part_number: str | None = Field(
         default=None,
@@ -191,16 +191,6 @@ class AccessPoint(BaseModel):
         default=None,
         alias="lastSeenAt",
         description="Timestamp when the AP was last seen in monitoring.",
-    )
-    building_id: str | None = Field(
-        default=None,
-        alias="buildingId",
-        description="Building identifier assigned to the AP (if available).",
-    )
-    floor_id: str | None = Field(
-        default=None,
-        alias="floorId",
-        description="Floor identifier assigned to the AP (if available).",
     )
     notes: str | None = Field(
         default=None, description="Operator notes associated with the AP."
