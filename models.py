@@ -218,6 +218,7 @@ class AccessPoint(BaseModel):
         alias="powerConsumption",
         description="Latest AP power consumption value.",
     )
+
     @classmethod
     def from_api(cls, raw_ap: dict[str, Any]) -> "AccessPoint":
         """Normalize raw Central AP payloads into a sparse MCP-friendly shape."""
@@ -244,11 +245,12 @@ class AccessPoint(BaseModel):
         data = handler(self)
         return {key: value for key, value in data.items() if value is not None}
 
+
 class AccessPointStatistics(BaseModel):
     """Time-series monitoring statistics for a single access point."""
-    
+
     model_config = ConfigDict(populate_by_name=True)
-    
+
     timestamp: str = Field(description="RFC 3339 timestamp for the statistics sample.")
     cpu_utilization: int | float | None = Field(
         default=None,
@@ -265,7 +267,8 @@ class AccessPointStatistics(BaseModel):
         validation_alias="powerConsumption",
         description="Power consumption reported for the AP at this sample time.",
     )
-    
+
+
 class WLAN(BaseModel):
     """WLAN (wireless network) data structure."""
 
@@ -296,9 +299,7 @@ class WLAN(BaseModel):
 class WLANThroughputSample(BaseModel):
     """Standardized WLAN throughput time-series sample."""
 
-    timestamp: str = Field(
-        description="RFC 3339 timestamp for the throughput sample."
-    )
+    timestamp: str = Field(description="RFC 3339 timestamp for the throughput sample.")
     tx: int | float | None = Field(
         default=None,
         description="Transmitted (tx) throughput reported for the WLAN at this timestamp, in bits per second.",
