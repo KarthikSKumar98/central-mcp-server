@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 import tools.wlans as mod
-from models import WLAN
+from models import WLAN, WLANThroughputSample
 from tests.conftest import FakeMCP, make_ctx
 
 RAW_WLAN = {
@@ -61,6 +61,37 @@ def test_registers_wlan_tools(tools):
     assert "central_get_wlan_stats" in tools
 
 
+def test_wlan_model_accepts_api_camelcase_and_serializes_snake_case():
+    wlan = WLAN(**RAW_WLAN)
+    assert wlan.wlan_name == "Corp-WiFi"
+    assert wlan.primary_usage == "employee"
+    assert wlan.security_level == "Enterprise"
+    assert wlan.model_dump() == {
+        "id": "wlan-1",
+        "wlan_name": "Corp-WiFi",
+        "primary_usage": "employee",
+        "security_level": "Enterprise",
+        "security": "WPA3",
+        "band": "5GHz",
+        "status": "enabled",
+        "vlan": "10",
+        "type": "standard",
+    }
+
+
+def test_wlan_throughput_sample_model_serializes_expected_shape():
+    sample = WLANThroughputSample(
+        timestamp="2026-04-07T10:00:00Z",
+        tx=100,
+        rx=200,
+    )
+    assert sample.model_dump() == {
+        "timestamp": "2026-04-07T10:00:00Z",
+        "tx": 100,
+        "rx": 200,
+    }
+
+
 # --- central_get_wlans ---
 
 
@@ -72,6 +103,17 @@ async def test_get_wlans_no_filters(tools):
     assert isinstance(result, list)
     assert len(result) == 2
     assert isinstance(result[0], WLAN)
+    assert result[0].model_dump() == {
+        "id": "wlan-1",
+        "wlan_name": "Corp-WiFi",
+        "primary_usage": "employee",
+        "security_level": "Enterprise",
+        "security": "WPA3",
+        "band": "5GHz",
+        "status": "enabled",
+        "vlan": "10",
+        "type": "standard",
+    }
     call_kwargs = mock_fn.call_args.kwargs
     assert call_kwargs["site_id"] is None
     assert call_kwargs["sort"] is None
@@ -136,7 +178,8 @@ async def test_get_wlan_stats_success(tools):
     ctx.lifespan_context["conn"].command.return_value = {"code": 200, "msg": RAW_STATS}
     with patch("tools.wlans.asyncio.to_thread", side_effect=lambda fn, **kw: fn(**kw)):
         result = await tools["central_get_wlan_stats"](ctx, wlan_name="Corp-WiFi")
-    assert result == CLEANED_STATS
+    assert all(isinstance(sample, WLANThroughputSample) for sample in result)
+    assert [sample.model_dump() for sample in result] == CLEANED_STATS
 
 
 @pytest.mark.asyncio
