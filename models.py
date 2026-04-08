@@ -218,8 +218,51 @@ class AccessPoint(BaseModel):
         alias="powerConsumption",
         description="Latest AP power consumption value.",
     )
+    @classmethod
+    def from_api(cls, raw_ap: dict[str, Any]) -> "AccessPoint":
+        """Normalize raw Central AP payloads into a sparse MCP-friendly shape."""
+        normalized = dict(raw_ap)
+        status = normalized.get("status")
 
+        if status == "ONLINE":
+            normalized["lastSeenAt"] = None
+        elif status == "OFFLINE":
+            normalized["uptimeInMillis"] = None
 
+        normalized.pop("buildingId", None)
+        normalized.pop("floorId", None)
+
+        return cls(**normalized)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields during serialization to keep AP payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+class AccessPointStatistics(BaseModel):
+    """Time-series monitoring statistics for a single access point."""
+    timestamp: str = Field(description="RFC 3339 timestamp for the statistics sample.")
+    cpu_utilization: int | float | None = Field(
+        default=None,
+        validation_alias="cpuUtilization",
+        description="CPU utilization percentage reported for the AP at this sample time.",
+    )
+    memory_utilization: int | float | None = Field(
+        default=None,
+        validation_alias="memoryUtilization",
+        description="Memory utilization percentage reported for the AP at this sample time.",
+    )
+    power_consumption: int | float | None = Field(
+        default=None,
+        validation_alias="powerConsumption",
+        description="Power consumption reported for the AP at this sample time.",
+    )
+    
 class WLAN(BaseModel):
     """WLAN (wireless network) data structure."""
 
@@ -240,8 +283,6 @@ class WLAN(BaseModel):
         description="Security protocol (e.g., WPA2, WPA3).",
     )
     band: str | None = Field(
-    timestamp: str = Field(description="RFC 3339 timestamp for the statistics sample.")
-    cpu_utilization: int | float | None = Field(
         default=None,
         description="Wireless band (e.g., 2.4GHz, 5GHz, 6GHz).",
     )
