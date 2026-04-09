@@ -60,7 +60,7 @@ def events_tools():
 
 @pytest.fixture(scope="module")
 async def live_seed_data(sites_tools, devices_tools, clients_tools, live_ctx):
-    mapping = await sites_tools["central_get_site_name_id_mapping"](live_ctx)
+    mapping = await sites_tools["central_get_summary"](live_ctx)
     if not mapping:
         pytest.skip("No sites available")
 
@@ -107,11 +107,11 @@ async def test_prompt_network_health_overview_live(
 ):
     assert "network_health_overview" in prompt_registry
     prompt_text = prompt_registry["network_health_overview"]()
-    assert "central_get_site_name_id_mapping" in prompt_text
+    assert "central_get_summary" in prompt_text
 
     t0 = time.perf_counter()
     try:
-        mapping = await sites_tools["central_get_site_name_id_mapping"](live_ctx)
+        mapping = await sites_tools["central_get_summary"](live_ctx)
         site_names = list(mapping.keys())[:3]
         await sites_tools["central_get_sites"](live_ctx, site_names=site_names)
     except Exception as exc:
@@ -389,7 +389,7 @@ async def test_prompt_critical_alerts_review_live(
     assert "critical_alerts" in prompt_text
 
     t0 = time.perf_counter()
-    mapping = await sites_tools["central_get_site_name_id_mapping"](live_ctx)
+    mapping = await sites_tools["central_get_summary"](live_ctx)
     critical_sites = [
         data["site_id"] for _, data in mapping.items() if data.get("critical_alerts", 0) > 0
     ][:3]
@@ -419,7 +419,7 @@ async def test_prompt_compare_site_health_live(
 
     t0 = time.perf_counter()
     try:
-        mapping = await sites_tools["central_get_site_name_id_mapping"](live_ctx)
+        mapping = await sites_tools["central_get_summary"](live_ctx)
         await sites_tools["central_get_sites"](live_ctx, site_names=site_names)
         for name in site_names:
             site_id = mapping[name]["site_id"]

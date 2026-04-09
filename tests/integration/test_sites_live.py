@@ -14,7 +14,7 @@ def tools():
 
 
 async def test_get_site_name_id_mapping_returns_dict(tools, live_ctx):
-    result = await tools["central_get_site_name_id_mapping"](live_ctx)
+    result = await tools["central_get_summary"](live_ctx)
     assert isinstance(result, dict)
     assert len(result) >= 1
     first = next(iter(result.values()))
@@ -32,7 +32,7 @@ async def test_get_sites_no_filter(tools, live_ctx):
 
 
 async def test_get_sites_with_valid_name(tools, live_ctx):
-    mapping = await tools["central_get_site_name_id_mapping"](live_ctx)
+    mapping = await tools["central_get_summary"](live_ctx)
     if not mapping:
         pytest.skip("No sites available")
     first_name = next(iter(mapping))

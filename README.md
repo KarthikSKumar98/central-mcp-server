@@ -184,13 +184,35 @@ Once connected, you can ask your AI assistant questions like:
 
 See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-central/docs/central-mcp-in-action)) for real query examples across all supported clients.
 
+### Tool Categories
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background': '#0b0f1a'}}}%%
+graph TD
+    MCP["Central MCP Server"] --> Sites["Sites"]
+    MCP --> Devices["Devices"]
+    MCP --> Clients["Clients"]
+    MCP --> Alerts["Alerts"]
+    MCP --> Events["Events"]
+    MCP --> APMon["AP Monitoring"]
+    MCP--> WLAN["WLAN"]
+
+    classDef mcp fill:#05cc93,color:#001b14,stroke:#000000,stroke-width:2px;
+    classDef tool fill:#0070f8,color:#ffffff,stroke:#000000,stroke-width:1.5px;
+
+    class MCP mcp;
+    class Sites,Devices,APMon,Clients,Alerts,Events,WLAN tool;
+
+    linkStyle default stroke:#ffffff,stroke-width:2px;
+```
+
 ### Tools
 
 #### Sites
 | Tool | Description |
 |------|-------------|
 | `central_get_sites` | Detailed health metrics for one or more sites (device/client/alert counts, health score) |
-| `central_get_site_name_id_mapping` | Lightweight mapping of all site names to IDs and health scores |
+| `central_get_summary` | Lightweight mapping of all site names to IDs and health scores |
 
 #### Devices
 | Tool | Description |

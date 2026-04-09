@@ -36,7 +36,7 @@ async def test_get_wlans_with_site_id_filter(tools, live_ctx):
     sites_mod.register(fake)
     site_tools = fake._tools
 
-    mapping = await site_tools["central_get_site_name_id_mapping"](live_ctx)
+    mapping = await site_tools["central_get_summary"](live_ctx)
     if not mapping:
         pytest.skip("No sites available")
 

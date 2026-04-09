@@ -24,7 +24,7 @@ def register(mcp: FastMCP) -> None:
 
         Fetches all pages automatically. Use site_id to scope results to a specific
         site; use wlan_name to match a single SSID by exact name.
-        Call central_get_site_name_id_mapping first to resolve site IDs.
+        Call central_get_summary first to resolve site IDs, if site-specific filtering is needed.
 
         Parameters
         ----------

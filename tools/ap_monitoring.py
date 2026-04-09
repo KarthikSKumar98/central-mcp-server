@@ -51,7 +51,7 @@ def register(mcp: FastMCP) -> None:
         """Return a filtered list of APs from Central using typed filter parameters.
 
         Prefer this over broad inventory fetches when the request targets specific APs.
-        Call central_get_site_name_id_mapping first if you need to resolve site IDs.
+        Call central_get_summary first if you need to resolve site IDs.
 
         Parameters
         ----------
