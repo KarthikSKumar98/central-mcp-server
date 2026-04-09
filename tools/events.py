@@ -146,7 +146,9 @@ def register(mcp: FastMCP) -> None:
 
         async with api_context(ctx) as conn:
             try:
-                start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
+                start_at, end_at = _resolve_time_window(
+                    time_range, start_time, end_time
+                )
                 filter_str = build_filters(
                     EVENT_FILTERS,
                     event_id=event_id,
@@ -251,7 +253,9 @@ def register(mcp: FastMCP) -> None:
             )
         async with api_context(ctx) as conn:
             try:
-                start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
+                start_at, end_at = _resolve_time_window(
+                    time_range, start_time, end_time
+                )
                 response = await asyncio.to_thread(
                     conn.command,
                     api_method="GET",

@@ -71,9 +71,7 @@ def register(mcp: FastMCP) -> None:
                     device_function=device_function,
                 )
                 if is_provisioned is not None:
-                    filter_pairs["is_provisioned"] = (
-                        "Yes" if is_provisioned else "No"
-                    )
+                    filter_pairs["is_provisioned"] = "Yes" if is_provisioned else "No"
                 filter_str = build_filters(DEVICE_FILTER_FIELDS, **filter_pairs)
 
                 # normalize site_assigned: True -> "ASSIGNED", False -> "UNASSIGNED", None -> None
