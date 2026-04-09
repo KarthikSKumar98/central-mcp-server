@@ -136,7 +136,10 @@ def register(mcp: FastMCP) -> None:
 
             if not stats:
                 return f"No AP statistics found for serial number '{serial_number}'."
-            return stats
+            try:
+                return [AccessPointStatistics(**stat) for stat in stats]
+            except Exception as e:
+                return format_tool_error("parsing access point statistics", e)
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_ap_wlans(
