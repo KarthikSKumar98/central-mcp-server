@@ -14,6 +14,25 @@ def tools():
     return fake._tools
 
 
+@pytest.fixture(scope="module")
+async def ap_with_wlans(tools, live_ctx):
+    """Return the serial number of an online AP that has at least one WLAN.
+
+    Iterates online APs until one with WLANs is found.
+    Skips if no online APs are available or none have WLANs.
+    """
+    aps = await tools["central_get_aps"](live_ctx, status="ONLINE")
+    if isinstance(aps, str) or not aps:
+        pytest.skip("No online APs available")
+    for ap in aps:
+        result = await tools["central_get_ap_wlans"](
+            live_ctx, serial_number=ap.serial_number
+        )
+        if isinstance(result, list) and result:
+            return ap.serial_number
+    pytest.skip("No online AP with WLANs found")
+
+
 async def test_get_aps_no_filter(tools, live_ctx):
     result = await tools["central_get_aps"](live_ctx)
     assert isinstance(result, list)
@@ -58,28 +77,23 @@ async def test_get_ap_statistics_for_known_ap(tools, live_ctx):
     assert isinstance(result, (list, str))
 
 
-async def test_get_ap_wlans_for_online_ap(tools, live_ctx):
-    aps = await tools["central_get_aps"](live_ctx, status="ONLINE")
-    if isinstance(aps, str) or not aps:
-        pytest.skip("No online APs available")
-    serial = aps[0].serial_number
-    result = await tools["central_get_ap_wlans"](live_ctx, serial_number=serial)
-    assert isinstance(result, (list, str))
-    if isinstance(result, list):
-        assert all(isinstance(w, WLAN) for w in result)
+async def test_get_ap_wlans_for_ap_with_wlans(tools, live_ctx, ap_with_wlans):
+    result = await tools["central_get_ap_wlans"](live_ctx, serial_number=ap_with_wlans)
+    if isinstance(result, str) or not result:
+        pytest.skip("No WLANs currently available for AP")
+    assert isinstance(result, list)
+    assert all(isinstance(w, WLAN) for w in result)
 
 
-async def test_get_ap_wlans_wlan_name_filter(tools, live_ctx):
-    aps = await tools["central_get_aps"](live_ctx, status="ONLINE")
-    if isinstance(aps, str) or not aps:
-        pytest.skip("No online APs available")
-    serial = aps[0].serial_number
-    all_wlans = await tools["central_get_ap_wlans"](live_ctx, serial_number=serial)
+async def test_get_ap_wlans_wlan_name_filter(tools, live_ctx, ap_with_wlans):
+    all_wlans = await tools["central_get_ap_wlans"](
+        live_ctx, serial_number=ap_with_wlans
+    )
     if isinstance(all_wlans, str) or not all_wlans:
-        pytest.skip("No WLANs on AP")
+        pytest.skip("No WLANs currently available for AP")
     target_name = all_wlans[0].wlan_name
     result = await tools["central_get_ap_wlans"](
-        live_ctx, serial_number=serial, wlan_name=target_name
+        live_ctx, serial_number=ap_with_wlans, wlan_name=target_name
     )
     assert isinstance(result, list)
     assert all(w.wlan_name == target_name for w in result)

@@ -150,7 +150,13 @@ def groups_to_map(obj):
 
     groups = obj.get("groups")
     if not isinstance(groups, list):
-        return obj
+        flat_dict = {}
+        for key, value in obj.items():
+            normalized_key = _to_snake_case_key(key)
+            if normalized_key is None:
+                continue
+            flat_dict[normalized_key] = value
+        return flat_dict
 
     flat = _groups_list_to_dict(groups)
 
@@ -196,11 +202,17 @@ def _safe_float(value):
 
 
 def compute_health_score(health_obj: dict) -> int | None:
-    """Compute weighted health score from Poor/Fair/Good counts. Returns None if keys are absent."""
-    if all(k in health_obj for k in ["poor", "fair", "good"]):
-        return round(
-            (health_obj["poor"] * 0)
-            + (health_obj["fair"] * 0.5)
-            + (health_obj["good"] * 1)
-        )
-    return None
+    """Compute a weighted health score from Central Poor/Fair/Good counts.
+
+    Central may omit zero-value health buckets, so treat missing Poor/Fair/Good
+    keys as zero when at least one bucket is present. If none of the expected
+    health buckets exist, return None to signal that no health distribution was
+    provided.
+    """
+    weights = {"poor": 0, "fair": 0.5, "good": 1}
+    if not any(key in health_obj for key in weights):
+        return None
+
+    return round(
+        sum(health_obj.get(key, 0) * weight for key, weight in weights.items())
+    )

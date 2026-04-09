@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4.1] - 2026-04-10
+
+### Bug Fixes
+- Fixed site health scoring so `central_get_summary` and `central_get_sites` no longer return `null` health for valid Central payloads that omit zero-value groups or use flat `Poor`/`Fair`/`Good` keys
+
+### Tests
+- Added regression coverage for site health normalization and scoring across both summary and detailed site tool paths
+- Updated live AP monitoring and client integration tests to better match current Central behavior and avoid brittle failures when live data is absent
+
+### Release
+- Bumped package version to `0.1.4.1` in `pyproject.toml` and `uv.lock`
+
+---
+
 ## [0.1.4] - 2026-04-09
 
 ### New Tools
