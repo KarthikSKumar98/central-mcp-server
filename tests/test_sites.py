@@ -50,16 +50,20 @@ def tools():
 @pytest.mark.asyncio
 async def test_get_sites_no_filter_returns_all(tools):
     ctx = make_ctx()
-    with patch("tools.sites.fetch_site_data", return_value=FAKE_SITES_DICT):
+    with patch("tools.sites.fetch_site_data", return_value=FAKE_SITES_DICT) as mock_fetch:
         result = await tools["central_get_sites"](ctx)
+    mock_fetch.assert_called_once_with(ctx.lifespan_context["conn"], site_names=None)
     assert len(result) == 3
 
 
 @pytest.mark.asyncio
 async def test_get_sites_with_filter(tools):
     ctx = make_ctx()
-    with patch("tools.sites.fetch_site_data", return_value=FAKE_SITES_DICT):
+    with patch("tools.sites.fetch_site_data", return_value=FAKE_SITES_DICT) as mock_fetch:
         result = await tools["central_get_sites"](ctx, site_names=["Alpha"])
+    mock_fetch.assert_called_once_with(
+        ctx.lifespan_context["conn"], site_names=["Alpha"]
+    )
     assert len(result) == 1
     assert result[0].name == "Alpha"
 
@@ -67,22 +71,33 @@ async def test_get_sites_with_filter(tools):
 @pytest.mark.asyncio
 async def test_get_sites_unknown_name_returns_error(tools):
     ctx = make_ctx()
-    with patch("tools.sites.fetch_site_data", return_value=FAKE_SITES_DICT):
+    with patch("tools.sites.fetch_site_data", return_value=FAKE_SITES_DICT) as mock_fetch:
         result = await tools["central_get_sites"](
             ctx, site_names=["Alpha", "NONEXISTENT"]
         )
+    mock_fetch.assert_called_once_with(
+        ctx.lifespan_context["conn"], site_names=["Alpha", "NONEXISTENT"]
+    )
     assert len(result) == 1
     assert result[0].name == "Alpha"
 
 
-# --- get_site_name_id_mapping ---
+@pytest.mark.asyncio
+async def test_get_sites_failure_returns_formatted_error(tools):
+    ctx = make_ctx()
+    with patch("tools.sites.fetch_site_data", side_effect=Exception("boom")):
+        result = await tools["central_get_sites"](ctx)
+    assert result == "Error fetching sites: boom"
+
+
+# --- get_summary ---
 
 
 @pytest.mark.asyncio
-async def test_get_site_name_id_mapping_keys(tools):
+async def test_get_summary_keys(tools):
     ctx = make_ctx()
     with patch("tools.sites.MonitoringSites.get_all_sites", return_value=[RAW_SITE]):
-        result = await tools["central_get_site_name_id_mapping"](ctx)
+        result = await tools["central_get_summary"](ctx)
     assert "HQ" in result
     entry = result["HQ"]
     assert "site_id" in entry
@@ -94,33 +109,44 @@ async def test_get_site_name_id_mapping_keys(tools):
 
 
 @pytest.mark.asyncio
-async def test_get_site_name_id_mapping_health_calculation(tools):
+async def test_get_summary_health_calculation(tools):
     ctx = make_ctx()
     with patch("tools.sites.MonitoringSites.get_all_sites", return_value=[RAW_SITE]):
-        result = await tools["central_get_site_name_id_mapping"](ctx)
+        result = await tools["central_get_summary"](ctx)
     # Good=8, Fair=2, Poor=0 → round(8*1 + 2*0.5 + 0*0) = round(9) = 9
     assert result["HQ"]["health"] == 9
 
 
 @pytest.mark.asyncio
-async def test_get_site_name_id_mapping_missing_health_groups(tools):
+async def test_get_summary_missing_health_groups(tools):
     ctx = make_ctx()
     site_no_health = {**RAW_SITE, "health": {}}
     with patch(
         "tools.sites.MonitoringSites.get_all_sites", return_value=[site_no_health]
     ):
-        result = await tools["central_get_site_name_id_mapping"](ctx)
+        result = await tools["central_get_summary"](ctx)
     assert result["HQ"]["health"] is None
 
 
 @pytest.mark.asyncio
-async def test_get_site_name_id_mapping_counts(tools):
+async def test_get_summary_counts(tools):
     ctx = make_ctx()
     with patch("tools.sites.MonitoringSites.get_all_sites", return_value=[RAW_SITE]):
-        result = await tools["central_get_site_name_id_mapping"](ctx)
+        result = await tools["central_get_summary"](ctx)
     entry = result["HQ"]
     assert entry["site_id"] == "site-42"
     assert entry["total_devices"] == 10
     assert entry["total_clients"] == 50
     assert entry["total_alerts"] == 3
     assert entry["critical_alerts"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_summary_failure_returns_formatted_error(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.sites.MonitoringSites.get_all_sites",
+        side_effect=Exception("Central unavailable"),
+    ):
+        result = await tools["central_get_summary"](ctx)
+    assert result == "Error fetching site summary: Central unavailable"

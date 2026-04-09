@@ -1,7 +1,15 @@
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializationInfo,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
 
 class SourceType(str, Enum):
@@ -112,6 +120,193 @@ class Device(BaseModel):
     # Additional metadata
     stack_id: str | None = Field(
         description="Stack identifier for stack-capable devices."
+    )
+
+
+class AccessPoint(BaseModel):
+    """Access point monitoring data structure."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    serial_number: str = Field(
+        validation_alias="serialNumber",
+        description="Unique serial number of the access point.",
+    )
+    device_name: str | None = Field(
+        default=None,
+        validation_alias="deviceName",
+        description="Name of the access point.",
+    )
+    mac_address: str | None = Field(
+        default=None,
+        validation_alias="macAddress",
+        description="MAC address of the access point.",
+    )
+    site_id: str | None = Field(
+        default=None,
+        validation_alias="siteId",
+        description="ID of the site where the AP is located.",
+    )
+    site_name: str | None = Field(
+        default=None,
+        validation_alias="siteName",
+        description="Name of the site where the AP is located.",
+    )
+    status: Literal["ONLINE", "OFFLINE"] | None = Field(
+        default=None, description="Current AP status (ONLINE or OFFLINE)."
+    )
+    model: str | None = Field(default=None, description="AP model number.")
+    firmware_version: str | None = Field(
+        default=None,
+        validation_alias="firmwareVersion",
+        description="Firmware version currently running on the AP.",
+    )
+    deployment: str | None = Field(
+        default=None, description="Deployment mode of the AP."
+    )
+    cluster_id: str | None = Field(
+        default=None,
+        validation_alias="clusterId",
+        description="ID of cluster associated with the AP.",
+    )
+    cluster_name: str | None = Field(
+        default=None,
+        validation_alias="clusterName",
+        description="Name of cluster associated with the AP.",
+    )
+    part_number: str | None = Field(
+        default=None,
+        validation_alias="partNumber",
+        description="Manufacturer part number of the AP.",
+    )
+    device_function: str | None = Field(
+        default=None,
+        validation_alias="deviceFunction",
+        description="Device function classification of the AP. This is a user-defined role that determines the role of the AP in the network.",
+    )
+    role: str | None = Field(
+        default=None,
+        description="Role assigned to the AP within the cluster or network.",
+    )
+    ipv4: str | None = Field(default=None, description="IPv4 address of the AP.")
+    ipv6: str | None = Field(default=None, description="IPv6 address of the AP.")
+    uptime_in_millis: int | None = Field(
+        default=None,
+        validation_alias="uptimeInMillis",
+        description="Device uptime in milliseconds.",
+    )
+    last_seen_at: str | None = Field(
+        default=None,
+        validation_alias="lastSeenAt",
+        description="Timestamp when the AP was last seen in monitoring.",
+    )
+    notes: str | None = Field(
+        default=None, description="Operator notes associated with the AP."
+    )
+    cpu_utilization: int | float | None = Field(
+        default=None,
+        validation_alias="cpuUtilization",
+        description="Latest CPU utilization value reported for the AP.",
+    )
+    memory_utilization: int | float | None = Field(
+        default=None,
+        validation_alias="memoryUtilization",
+        description="Latest memory utilization value reported for the AP.",
+    )
+    power_consumption: int | float | None = Field(
+        default=None,
+        validation_alias="powerConsumption",
+        description="Latest AP power consumption value.",
+    )
+
+    @classmethod
+    def from_api(cls, raw_ap: dict[str, Any]) -> "AccessPoint":
+        """Normalize raw Central AP payloads into a sparse MCP-friendly shape."""
+        normalized = dict(raw_ap)
+        status = normalized.get("status")
+
+        if status == "ONLINE":
+            normalized["lastSeenAt"] = None
+        elif status == "OFFLINE":
+            normalized["uptimeInMillis"] = None
+
+        normalized.pop("buildingId", None)
+        normalized.pop("floorId", None)
+
+        return cls(**normalized)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields during serialization to keep AP payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class AccessPointStatistics(BaseModel):
+    """Time-series monitoring statistics for a single access point."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    timestamp: str = Field(description="RFC 3339 timestamp for the statistics sample.")
+    cpu_utilization: int | float | None = Field(
+        default=None,
+        validation_alias="cpuUtilization",
+        description="CPU utilization percentage reported for the AP at this sample time.",
+    )
+    memory_utilization: int | float | None = Field(
+        default=None,
+        validation_alias="memoryUtilization",
+        description="Memory utilization percentage reported for the AP at this sample time.",
+    )
+    power_consumption: int | float | None = Field(
+        default=None,
+        validation_alias="powerConsumption",
+        description="Power consumption reported for the AP at this sample time.",
+    )
+
+
+class WLAN(BaseModel):
+    """WLAN (wireless network) data structure."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    wlan_name: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("wlan_name", "wlanName"),
+        description="Name/SSID of the WLAN.",
+    )
+    security_level: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("security_level", "securityLevel"),
+        description="Security level (e.g., Open, Personal, Enterprise).",
+    )
+    security: str | None = Field(
+        default=None,
+        description="Security protocol (e.g., WPA2, WPA3).",
+    )
+    band: str | None = Field(
+        default=None,
+        description="Wireless band (e.g., 2.4GHz, 5GHz, 6GHz).",
+    )
+    status: str | None = Field(default=None, description="WLAN operational status.")
+    vlan: str | None = Field(default=None, description="VLAN assigned to this WLAN.")
+
+
+class WLANThroughputSample(BaseModel):
+    """Standardized WLAN throughput time-series sample."""
+
+    timestamp: str = Field(description="RFC 3339 timestamp for the throughput sample.")
+    tx: int | float | None = Field(
+        default=None,
+        description="Transmitted (tx) throughput reported for the WLAN at this timestamp, in bits per second.",
+    )
+    rx: int | float | None = Field(
+        default=None,
+        description="Received (rx) throughput reported for the WLAN at this timestamp, in bits per second.",
     )
 
 

@@ -78,10 +78,10 @@ async def test_get_devices_device_type_multiple(tools):
 
 
 @pytest.mark.asyncio
-async def test_get_devices_invalid_device_type_raises(tools):
+async def test_get_devices_invalid_device_type_returns_formatted_error(tools):
     ctx = make_ctx()
-    with pytest.raises(ValueError):
-        await tools["central_get_devices"](ctx, device_type="INVALID")
+    result = await tools["central_get_devices"](ctx, device_type="INVALID")
+    assert result.startswith("Error fetching devices:")
 
 
 @pytest.mark.asyncio
@@ -184,6 +184,17 @@ async def test_find_device_multiple_results(tools):
     ):
         result = await tools["central_find_device"](ctx, device_name="switch-01")
     assert "Multiple devices found" in result
+
+
+@pytest.mark.asyncio
+async def test_find_device_unexpected_response_returns_formatted_error(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.devices.MonitoringDevices.get_device_inventory",
+        return_value={"unexpected": []},
+    ):
+        result = await tools["central_find_device"](ctx, serial_number="SN123")
+    assert result == "Error fetching device data: Unexpected API response: missing 'items'"
 
 
 # ---------------------------------------------------------------------------
