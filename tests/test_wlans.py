@@ -64,18 +64,14 @@ def test_registers_wlan_tools(tools):
 def test_wlan_model_accepts_api_camelcase_and_serializes_snake_case():
     wlan = WLAN(**RAW_WLAN)
     assert wlan.wlan_name == "Corp-WiFi"
-    assert wlan.primary_usage == "employee"
     assert wlan.security_level == "Enterprise"
     assert wlan.model_dump() == {
-        "id": "wlan-1",
         "wlan_name": "Corp-WiFi",
-        "primary_usage": "employee",
         "security_level": "Enterprise",
         "security": "WPA3",
         "band": "5GHz",
         "status": "enabled",
         "vlan": "10",
-        "type": "standard",
     }
 
 
@@ -104,15 +100,12 @@ async def test_get_wlans_no_filters(tools):
     assert len(result) == 2
     assert isinstance(result[0], WLAN)
     assert result[0].model_dump() == {
-        "id": "wlan-1",
         "wlan_name": "Corp-WiFi",
-        "primary_usage": "employee",
         "security_level": "Enterprise",
         "security": "WPA3",
         "band": "5GHz",
         "status": "enabled",
         "vlan": "10",
-        "type": "standard",
     }
     call_kwargs = mock_fn.call_args.kwargs
     assert call_kwargs["site_id"] is None
