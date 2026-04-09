@@ -196,7 +196,7 @@ async def test_get_wlans_wlan_name_non_200_returns_formatted_error(tools):
     }
     with patch("tools.wlans.asyncio.to_thread", side_effect=lambda fn, **kw: fn(**kw)):
         result = await tools["central_get_wlans"](ctx, wlan_name="Bad-WLAN")
-    assert result == "Error fetching WLANs: API returned 404: not found"
+    assert result == "No WLANs found matching the specified criteria."
 
 
 # --- central_get_wlan_stats ---

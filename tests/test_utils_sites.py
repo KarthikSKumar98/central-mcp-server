@@ -18,15 +18,15 @@ from utils.sites import (
 def test_groups_to_map_flat_groups():
     obj = {"groups": [{"name": "Good", "value": 8}, {"name": "Poor", "value": 2}]}
     result = groups_to_map(obj)
-    assert result["Good"] == 8
-    assert result["Poor"] == 2
-    assert result["Total"] == 10
+    assert result["good"] == 8
+    assert result["poor"] == 2
+    assert result["total"] == 10
 
 
 def test_groups_to_map_nested_under_key():
     obj = {"health": {"groups": [{"name": "Good", "value": 5}]}}
     result = groups_to_map(obj)
-    assert result["Good"] == 5
+    assert result["good"] == 5
 
 
 def test_groups_to_map_empty_dict():
@@ -42,9 +42,9 @@ def test_groups_to_map_list_of_typed_objects():
         }
     ]
     result = groups_to_map(obj)
-    assert "Access Points" in result
-    assert result["Access Points"]["Good"] == 3
-    assert result["Access Points"]["Poor"] == 1
+    assert "access_points" in result
+    assert result["access_points"]["good"] == 3
+    assert result["access_points"]["poor"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +84,7 @@ def test_transform_to_site_data_site_id():
 def test_transform_to_site_data_health_summary():
     result = transform_to_site_data(_RAW_SITE)
     # Good=8, Fair=2, Poor=0 → round(8*1 + 2*0.5 + 0*0) = 9
-    assert result.metrics.health["Summary"] == 9
+    assert result.metrics.health["summary"] == 9
 
 
 def test_transform_to_site_data_location_parsed():
@@ -180,12 +180,12 @@ def test_process_site_health_data_returns_dict_keyed_by_sitename():
 
 def test_process_site_health_data_merges_device_details():
     result = process_site_health_data(_SITE_HEALTH, _DEVICE_HEALTH, [])
-    assert result["HQ"].metrics.devices["Details"]["Access Points"]["Good"] == 3
+    assert result["HQ"].metrics.devices["details"]["access_points"]["good"] == 3
 
 
 def test_process_site_health_data_merges_client_details():
     result = process_site_health_data(_SITE_HEALTH, [], _CLIENT_HEALTH)
-    assert result["HQ"].metrics.clients["Details"]["Wireless"]["Good"] == 10
+    assert result["HQ"].metrics.clients["details"]["wireless"]["good"] == 10
 
 
 def test_process_site_health_data_unknown_site_in_device_health_skipped():

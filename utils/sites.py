@@ -1,3 +1,5 @@
+import re
+
 from constants import SITE_LIMIT
 from models import SiteData, SiteMetrics
 from utils.common import paginated_fetch
@@ -72,13 +74,13 @@ def process_site_health_data(site_health, device_health, client_health):
 
     for site in device_health:
         if site["siteName"] in processed_sites:
-            processed_sites[site["siteName"]].metrics.devices["Details"] = (
+            processed_sites[site["siteName"]].metrics.devices["details"] = (
                 groups_to_map(site["deviceTypes"])
             )
 
     for site in client_health:
         if site["siteName"] in processed_sites:
-            processed_sites[site["siteName"]].metrics.clients["Details"] = (
+            processed_sites[site["siteName"]].metrics.clients["details"] = (
                 groups_to_map(site["clientTypes"])
             )
 
@@ -90,15 +92,15 @@ def transform_to_site_data(site_raw: dict) -> SiteData:
     health_obj = groups_to_map(site_raw.get("health", {}))
     score = compute_health_score(health_obj)
     if score is not None:
-        health_obj["Summary"] = score
-        health_obj.pop("Total", None)
+        health_obj["summary"] = score
+        health_obj.pop("total", None)
 
     devices_obj = groups_to_map(site_raw.get("devices", {}))
 
     metrics = SiteMetrics(
         health=health_obj,
-        devices={"Summary": devices_obj},
-        clients={"Summary": groups_to_map(site_raw.get("clients", {}))},
+        devices={"summary": devices_obj},
+        clients={"summary": groups_to_map(site_raw.get("clients", {}))},
         alerts=groups_to_map(site_raw.get("alerts", {})),
     )
 
@@ -127,7 +129,7 @@ def groups_to_map(obj):
             if not isinstance(item, dict):
                 continue
 
-            name = item.get("name")
+            name = _to_snake_case_key(item.get("name"))
             if not name:
                 continue
 
@@ -162,7 +164,7 @@ def groups_to_map(obj):
             total = None
 
     if total is not None:
-        flat["Total"] = total
+        flat["total"] = total
 
     return flat
 
@@ -170,10 +172,20 @@ def groups_to_map(obj):
 def _groups_list_to_dict(groups: list) -> dict:
     """Convert list of {name, value/count} to dict."""
     return {
-        g.get("name"): g.get("value", g.get("count"))
+        _to_snake_case_key(g.get("name")): g.get("value", g.get("count"))
         for g in groups
-        if g.get("name") is not None
+        if _to_snake_case_key(g.get("name")) is not None
     }
+
+
+def _to_snake_case_key(value):
+    """Normalize Central group labels to snake_case output keys."""
+    if not isinstance(value, str):
+        return value
+
+    normalized = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value.strip())
+    normalized = re.sub(r"[^0-9A-Za-z]+", "_", normalized).strip("_")
+    return normalized.lower() or None
 
 
 def _safe_float(value):
@@ -185,10 +197,10 @@ def _safe_float(value):
 
 def compute_health_score(health_obj: dict) -> int | None:
     """Compute weighted health score from Poor/Fair/Good counts. Returns None if keys are absent."""
-    if all(k in health_obj for k in ["Poor", "Fair", "Good"]):
+    if all(k in health_obj for k in ["poor", "fair", "good"]):
         return round(
-            (health_obj["Poor"] * 0)
-            + (health_obj["Fair"] * 0.5)
-            + (health_obj["Good"] * 1)
+            (health_obj["poor"] * 0)
+            + (health_obj["fair"] * 0.5)
+            + (health_obj["good"] * 1)
         )
     return None

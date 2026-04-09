@@ -134,7 +134,7 @@ def paginated_fetch(
     return items
 
 
-def format_tool_error(operation: str, error: Exception) -> str:
+def format_tool_error(operation: str, error: object) -> str:
     """Return a consistent error string for tool failure responses."""
     return f"Error {operation}: {error}"
 

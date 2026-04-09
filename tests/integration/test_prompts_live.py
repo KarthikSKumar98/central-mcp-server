@@ -72,8 +72,13 @@ async def live_seed_data(sites_tools, devices_tools, clients_tools, live_ctx):
     devices = await devices_tools["central_get_devices"](live_ctx, site_id=first_site_id)
     first_device = devices[0] if isinstance(devices, list) and devices else None
 
-    clients = await clients_tools["central_get_clients"](live_ctx, site_id=first_site_id)
-    first_client = clients[0] if isinstance(clients, list) and clients else None
+    first_client = None
+    for site_name in site_names:
+        site_id = mapping[site_name]["site_id"]
+        clients = await clients_tools["central_get_clients"](live_ctx, site_id=site_id)
+        if isinstance(clients, list) and clients:
+            first_client = clients[0]
+            break
 
     return {
         "site_name": first_site_name,

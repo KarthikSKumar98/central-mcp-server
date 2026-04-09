@@ -72,8 +72,8 @@ async def test_get_wlan_stats_for_known_wlan(tools, live_ctx):
     wlan_name = all_wlans[0].wlan_name
     result = await tools["central_get_wlan_stats"](live_ctx, wlan_name=wlan_name)
     assert isinstance(result, list)
-    assert all("timestamp" in s for s in result)
-    assert all("tx" in s and "rx" in s for s in result)
+    assert all(sample.timestamp for sample in result)
+    assert all(hasattr(sample, "tx") and hasattr(sample, "rx") for sample in result)
 
 
 async def test_get_wlan_stats_explicit_time_window(tools, live_ctx):
@@ -89,7 +89,7 @@ async def test_get_wlan_stats_explicit_time_window(tools, live_ctx):
         end_time="2026-04-07T23:59:59.999Z",
     )
     assert isinstance(result, list)
-    assert all("timestamp" in s for s in result)
+    assert all(sample.timestamp for sample in result)
 
 
 async def test_get_wlan_stats_unknown_wlan_returns_no_data_string(tools, live_ctx):

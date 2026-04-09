@@ -5,7 +5,7 @@ from pycentral.new_monitoring import MonitoringSites
 
 from models import SiteData
 from tools import READ_ONLY
-from utils.common import api_context
+from utils.common import api_context, format_tool_error
 from utils.sites import compute_health_score, fetch_site_data, groups_to_map
 
 
@@ -15,7 +15,7 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_sites(
         ctx: Context, site_names: list[str] | None = None
-    ) -> list[SiteData]:
+    ) -> list[SiteData] | str:
         """Return detailed metrics for one or more sites.
 
         `site_names` must be a list of exact site-name strings.
@@ -42,15 +42,20 @@ def register(mcp: FastMCP) -> None:
 
         """
         async with api_context(ctx) as conn:
-            sites_data = await asyncio.to_thread(
-                fetch_site_data, conn, site_names=site_names
-            )
-            if site_names:
-                return [sites_data[name] for name in site_names if name in sites_data]
-            return list(sites_data.values())
+            try:
+                sites_data = await asyncio.to_thread(
+                    fetch_site_data, conn, site_names=site_names
+                )
+                if site_names:
+                    return [
+                        sites_data[name] for name in site_names if name in sites_data
+                    ]
+                return list(sites_data.values())
+            except Exception as e:
+                return format_tool_error("fetching sites", e)
 
     @mcp.tool(annotations=READ_ONLY)
-    async def central_get_summary(ctx: Context) -> dict:
+    async def central_get_summary(ctx: Context) -> dict | str:
         """Return a lightweight mapping of all site names to their IDs, health score, devices, client & alert counts.
 
         The list is sorted by health score (lowest to highest — worst to best) to help quickly
@@ -70,30 +75,33 @@ def register(mcp: FastMCP) -> None:
         - total_alerts: Total number of alerts at the site.
         """
         async with api_context(ctx) as conn:
-            sites = await asyncio.to_thread(
-                MonitoringSites.get_all_sites, central_conn=conn
-            )
-            mapping = {}
-            for site in sites:
-                health_obj = groups_to_map(site.get("health", {}))
-                summary = compute_health_score(health_obj)
-                mapping[site["siteName"]] = {
-                    "site_id": site.get("id"),
-                    "health": summary,
-                    "total_devices": site.get("devices", {}).get("count", 0),
-                    "total_clients": site.get("clients", {}).get("count", 0),
-                    "critical_alerts": site.get("alerts", {}).get("critical", 0),
-                    "total_alerts": site.get("alerts", {}).get("total", 0),
-                }
-            mapping = dict(
-                sorted(
-                    mapping.items(),
-                    key=lambda item: (
-                        item[1]["health"]
-                        if item[1]["health"] is not None
-                        else float("inf")
-                    ),
-                    reverse=False,
+            try:
+                sites = await asyncio.to_thread(
+                    MonitoringSites.get_all_sites, central_conn=conn
                 )
-            )
-            return mapping
+                mapping = {}
+                for site in sites:
+                    health_obj = groups_to_map(site.get("health", {}))
+                    summary = compute_health_score(health_obj)
+                    mapping[site["siteName"]] = {
+                        "site_id": site.get("id"),
+                        "health": summary,
+                        "total_devices": site.get("devices", {}).get("count", 0),
+                        "total_clients": site.get("clients", {}).get("count", 0),
+                        "critical_alerts": site.get("alerts", {}).get("critical", 0),
+                        "total_alerts": site.get("alerts", {}).get("total", 0),
+                    }
+                mapping = dict(
+                    sorted(
+                        mapping.items(),
+                        key=lambda item: (
+                            item[1]["health"]
+                            if item[1]["health"] is not None
+                            else float("inf")
+                        ),
+                        reverse=False,
+                    )
+                )
+                return mapping
+            except Exception as e:
+                return format_tool_error("fetching site summary", e)

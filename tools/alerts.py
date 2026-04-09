@@ -65,35 +65,40 @@ def register(mcp: FastMCP) -> None:
 
         """
         async with api_context(ctx) as conn:
-            filter_str = build_filters(
-                ALERT_FILTER_FIELDS,
-                status=status,
-                device_type=device_type,
-                category=category,
-                site_id=site_id,
-            )
-            query_params = {"sort": sort}
-            if filter_str:
-                query_params["filter"] = filter_str
+            try:
+                filter_str = build_filters(
+                    ALERT_FILTER_FIELDS,
+                    status=status,
+                    device_type=device_type,
+                    category=category,
+                    site_id=site_id,
+                )
+                query_params = {"sort": sort}
+                if filter_str:
+                    query_params["filter"] = filter_str
 
-            query_params["limit"] = limit
-            if cursor is not None:
-                query_params["next"] = cursor
+                query_params["limit"] = limit
+                if cursor is not None:
+                    query_params["next"] = cursor
 
-            response = await asyncio.to_thread(
-                conn.command,
-                api_method="GET",
-                api_path="network-notifications/v1/alerts",
-                api_params=query_params,
-            )
-            if response["code"] != 200:
-                return format_tool_error("fetching alerts", response["msg"])
-            msg = response["msg"]
-            raw_items = msg.get("items", [])
-            if not raw_items:
-                return "No alerts found matching criteria"
-            return PaginatedAlerts(
-                items=clean_alert_data(raw_items),
-                total=msg.get("total", 0),
-                next_cursor=msg.get("next"),
-            )
+                response = await asyncio.to_thread(
+                    conn.command,
+                    api_method="GET",
+                    api_path="network-notifications/v1/alerts",
+                    api_params=query_params,
+                )
+                if response["code"] != 200:
+                    return format_tool_error("fetching alerts", response["msg"])
+                msg = response["msg"]
+                raw_items = msg.get("items", [])
+                if not raw_items:
+                    return "No alerts found matching criteria"
+                return PaginatedAlerts(
+                    items=clean_alert_data(raw_items),
+                    total=msg.get("total", 0),
+                    next_cursor=msg.get("next"),
+                )
+            except Exception as e:
+                if isinstance(e, KeyError):
+                    return format_tool_error("parsing alerts", e)
+                return format_tool_error("fetching alerts", e)

@@ -82,6 +82,14 @@ async def test_get_sites_unknown_name_returns_error(tools):
     assert result[0].name == "Alpha"
 
 
+@pytest.mark.asyncio
+async def test_get_sites_failure_returns_formatted_error(tools):
+    ctx = make_ctx()
+    with patch("tools.sites.fetch_site_data", side_effect=Exception("boom")):
+        result = await tools["central_get_sites"](ctx)
+    assert result == "Error fetching sites: boom"
+
+
 # --- get_summary ---
 
 
@@ -131,3 +139,14 @@ async def test_get_summary_counts(tools):
     assert entry["total_clients"] == 50
     assert entry["total_alerts"] == 3
     assert entry["critical_alerts"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_summary_failure_returns_formatted_error(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.sites.MonitoringSites.get_all_sites",
+        side_effect=Exception("Central unavailable"),
+    ):
+        result = await tools["central_get_summary"](ctx)
+    assert result == "Error fetching site summary: Central unavailable"

@@ -174,4 +174,7 @@ def register(mcp: FastMCP) -> None:
 
         if not items:
             return f"No WLANs found for AP '{serial_number}'."
-        return clean_wlan_data(items)
+        try:
+            return clean_wlan_data(items)
+        except Exception as e:
+            return format_tool_error("parsing AP WLANs", e)
