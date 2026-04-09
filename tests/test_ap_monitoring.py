@@ -53,10 +53,10 @@ async def test_get_aps_no_filters(tools):
     assert isinstance(result[0], AccessPoint)
     assert result[0].serial_number == "AP123456"
     serialized = result[0].model_dump()
-    assert serialized["serialNumber"] == "AP123456"
+    assert serialized["serial_number"] == "AP123456"
     assert serialized["status"] == "ONLINE"
-    assert serialized["uptimeInMillis"] == 12345
-    assert "lastSeenAt" not in serialized
+    assert serialized["uptime_in_millis"] == 12345
+    assert "last_seen_at" not in serialized
     assert "buildingId" not in serialized
     assert "floorId" not in serialized
     call_kwargs = mock_api.call_args.kwargs
@@ -81,8 +81,8 @@ async def test_get_aps_offline_payload_excludes_uptime(tools):
 
     serialized = result[0].model_dump()
     assert serialized["status"] == "OFFLINE"
-    assert serialized["lastSeenAt"] == "2026-03-22T10:00:00.000Z"
-    assert "uptimeInMillis" not in serialized
+    assert serialized["last_seen_at"] == "2026-03-22T10:00:00.000Z"
+    assert "uptime_in_millis" not in serialized
 
 
 @pytest.mark.asyncio
@@ -103,9 +103,9 @@ async def test_get_aps_null_optional_fields_are_excluded(tools):
         result = await tools["central_get_aps"](ctx)
 
     assert result[0].model_dump() == {
-        "serialNumber": "AP999999",
+        "serial_number": "AP999999",
         "status": "ONLINE",
-        "uptimeInMillis": 321,
+        "uptime_in_millis": 321,
     }
 
 
