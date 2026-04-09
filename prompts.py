@@ -54,7 +54,7 @@ Check connectivity for the client with MAC address "{mac_address}" using evidenc
    - end_time = last_seen_at plus 30 minutes (RFC 3339)
    If last_seen_at is missing, use time_range="last_24h" as fallback for disconnect-state analysis.
 4. If site_id is present, call `central_get_alerts` with site_id=<site_id>, status="Active", category="Clients", limit=20.
-   If client status is "Failed" or "Disconnected", also call `central_get_alerts` with site_id=<site_id>, status="Cleared", category="Clients", sort="updatedAt desc", limit=50, then prioritize alerts whose createdAt/updatedAt timestamps are closest to (or just before) last_seen_at.
+   These are site-wide alerts, not client-specific — treat them as infrastructure context only.
    If site_id is missing, skip this step and explicitly state that site-scoped alerts could not be queried.
 5. If connected_device_serial is present, call `central_find_device` with serial_number=<connected_device_serial>.
    If connected_device_serial is missing, skip this step and state that connected-device health could not be verified.
@@ -70,7 +70,7 @@ Check connectivity for the client with MAC address "{mac_address}" using evidenc
 7. Summarize with these sections:
    - Client snapshot: status, connection type, VLAN/WLAN details, connected device serial/name.
    - Disconnect anchor: last_seen_at and the investigation window used (or why unavailable).
-   - Site signals: active/cleared client-category alerts near the disconnect window (or why unavailable).
+   - Site signals: active client-category alerts at the site (infrastructure context), or why unavailable.
    - Device signals: connected device status/site/firmware (or why unavailable).
    - Recent client events:
      - Failed/Disconnected clients: top event drivers around disconnect window.
