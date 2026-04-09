@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Any, Literal
 
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
@@ -265,6 +266,47 @@ class AccessPointStatistics(BaseModel):
         default=None,
         validation_alias="powerConsumption",
         description="Power consumption reported for the AP at this sample time.",
+    )
+
+
+class WLAN(BaseModel):
+    """WLAN (wireless network) data structure."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    wlan_name: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("wlan_name", "wlanName"),
+        description="Name/SSID of the WLAN.",
+    )
+    security_level: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("security_level", "securityLevel"),
+        description="Security level (e.g., Open, Personal, Enterprise).",
+    )
+    security: str | None = Field(
+        default=None,
+        description="Security protocol (e.g., WPA2, WPA3).",
+    )
+    band: str | None = Field(
+        default=None,
+        description="Wireless band (e.g., 2.4GHz, 5GHz, 6GHz).",
+    )
+    status: str | None = Field(default=None, description="WLAN operational status.")
+    vlan: str | None = Field(default=None, description="VLAN assigned to this WLAN.")
+
+
+class WLANThroughputSample(BaseModel):
+    """Standardized WLAN throughput time-series sample."""
+
+    timestamp: str = Field(description="RFC 3339 timestamp for the throughput sample.")
+    tx: int | float | None = Field(
+        default=None,
+        description="Transmitted (tx) throughput reported for the WLAN at this timestamp, in bits per second.",
+    )
+    rx: int | float | None = Field(
+        default=None,
+        description="Received (rx) throughput reported for the WLAN at this timestamp, in bits per second.",
     )
 
 

@@ -5,7 +5,7 @@ from fastmcp import Context, FastMCP
 from pycentral.new_monitoring import MonitoringAPs
 
 from constants import TIME_RANGE
-from models import AccessPoint, AccessPointStatistics
+from models import WLAN, AccessPoint, AccessPointStatistics
 from tools import READ_ONLY
 from utils.common import (
     FilterField,
@@ -14,6 +14,7 @@ from utils.common import (
     format_tool_error,
 )
 from utils.events import _resolve_time_window
+from utils.wlans import clean_wlan_data
 
 AP_FILTER_FIELDS: dict[str, FilterField] = {
     "site_id": FilterField("siteId"),
@@ -139,3 +140,38 @@ def register(mcp: FastMCP) -> None:
                 return [AccessPointStatistics(**stat) for stat in stats]
             except Exception as e:
                 return format_tool_error("parsing access point statistics", e)
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def central_get_ap_wlans(
+        ctx: Context,
+        serial_number: str,
+        wlan_name: str | None = None,
+    ) -> list[WLAN] | str:
+        """Return WLANs associated with a specific AP.
+
+        Retrieves all WLANs currently active on the AP identified by serial_number.
+        Use wlan_name to narrow results to a single SSID by exact name.
+
+        Parameters
+        ----------
+        - serial_number: Serial number of the AP to query. Required.
+        - wlan_name: Exact WLAN name (SSID) to filter by. Applied client-side.
+
+        """
+        async with api_context(ctx) as conn:
+            try:
+                response = await asyncio.to_thread(
+                    MonitoringAPs.get_ap_wlans,
+                    central_conn=conn,
+                    serial_number=serial_number,
+                )
+            except Exception as e:
+                return format_tool_error("fetching AP WLANs", e)
+
+        items = response.get("items", []) if isinstance(response, dict) else []
+        if wlan_name:
+            items = [w for w in items if w.get("wlanName") == wlan_name]
+
+        if not items:
+            return f"No WLANs found for AP '{serial_number}'."
+        return clean_wlan_data(items)

@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 import tools.ap_monitoring as mod
-from models import AccessPoint, AccessPointStatistics
+from models import WLAN, AccessPoint, AccessPointStatistics
 from tests.conftest import FakeMCP, make_ctx
 
 RAW_AP = {
@@ -41,6 +41,7 @@ def tools():
 def test_registers_ap_tools(tools):
     assert "central_get_aps" in tools
     assert "central_get_ap_statistics" in tools
+    assert "central_get_ap_wlans" in tools
 
 
 @pytest.mark.asyncio
@@ -268,3 +269,78 @@ async def test_get_ap_statistics_error_returns_formatted_error(tools):
     ):
         result = await tools["central_get_ap_statistics"](ctx, serial_number="AP123456")
     assert result == "Error fetching access point statistics: stats unavailable"
+
+
+RAW_WLAN = {
+    "id": "wlan-1",
+    "wlanName": "Corp-WiFi",
+    "primaryUsage": "employee",
+    "securityLevel": "Enterprise",
+    "security": "WPA3",
+    "band": "5GHz",
+    "status": "enabled",
+    "vlan": "10",
+    "type": "standard",
+}
+
+RAW_WLAN_2 = {
+    "id": "wlan-2",
+    "wlanName": "Guest-WiFi",
+    "primaryUsage": "guest",
+    "securityLevel": "Personal",
+    "security": "WPA2",
+    "band": "2.4GHz",
+    "status": "enabled",
+    "vlan": "20",
+    "type": "standard",
+}
+
+
+@pytest.mark.asyncio
+async def test_get_ap_wlans_success(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.ap_monitoring.MonitoringAPs.get_ap_wlans",
+        return_value={"items": [RAW_WLAN, RAW_WLAN_2]},
+    ) as mock_api:
+        result = await tools["central_get_ap_wlans"](ctx, serial_number="AP123456")
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert isinstance(result[0], WLAN)
+    assert mock_api.call_args.kwargs["serial_number"] == "AP123456"
+
+
+@pytest.mark.asyncio
+async def test_get_ap_wlans_wlan_name_filter(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.ap_monitoring.MonitoringAPs.get_ap_wlans",
+        return_value={"items": [RAW_WLAN, RAW_WLAN_2]},
+    ):
+        result = await tools["central_get_ap_wlans"](
+            ctx, serial_number="AP123456", wlan_name="Corp-WiFi"
+        )
+    assert len(result) == 1
+    assert result[0].wlan_name == "Corp-WiFi"
+
+
+@pytest.mark.asyncio
+async def test_get_ap_wlans_empty_returns_string(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.ap_monitoring.MonitoringAPs.get_ap_wlans",
+        return_value={"items": []},
+    ):
+        result = await tools["central_get_ap_wlans"](ctx, serial_number="AP123456")
+    assert result == "No WLANs found for AP 'AP123456'."
+
+
+@pytest.mark.asyncio
+async def test_get_ap_wlans_error_returns_formatted_error(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.ap_monitoring.MonitoringAPs.get_ap_wlans",
+        side_effect=Exception("AP unreachable"),
+    ):
+        result = await tools["central_get_ap_wlans"](ctx, serial_number="AP123456")
+    assert result == "Error fetching AP WLANs: AP unreachable"
