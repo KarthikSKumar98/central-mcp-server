@@ -83,6 +83,4 @@ async def test_get_ap_wlans_wlan_name_filter(tools, live_ctx):
     )
     assert isinstance(result, list)
     assert all(w.wlan_name == target_name for w in result)
-    if isinstance(result, str):
-        return
-    assert all(isinstance(stat, AccessPointStatistics) for stat in result)
+    assert all(isinstance(wlan, WLAN) for wlan in result)

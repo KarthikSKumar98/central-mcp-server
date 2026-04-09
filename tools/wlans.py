@@ -44,6 +44,8 @@ def register(mcp: FastMCP) -> None:
                         api_path=f"network-monitoring/v1/wlans/{wlan_name}",
                         api_params=api_params,
                     )
+                    if response["code"] == 404:
+                        return "No WLANs found matching the specified criteria."
                     if response["code"] != 200:
                         return format_tool_error(
                             "fetching WLANs",
