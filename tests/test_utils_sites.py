@@ -4,6 +4,7 @@ import pytest
 
 from models import SiteData
 from utils.sites import (
+    compute_health_score,
     fetch_site_data,
     groups_to_map,
     process_site_health_data,
@@ -27,6 +28,12 @@ def test_groups_to_map_nested_under_key():
     obj = {"health": {"groups": [{"name": "Good", "value": 5}]}}
     result = groups_to_map(obj)
     assert result["good"] == 5
+
+
+def test_groups_to_map_flat_dict_normalizes_keys():
+    obj = {"Poor": 58, "Fair": 0, "Good": 42}
+    result = groups_to_map(obj)
+    assert result == {"poor": 58, "fair": 0, "good": 42}
 
 
 def test_groups_to_map_empty_dict():
@@ -84,6 +91,15 @@ def test_transform_to_site_data_site_id():
 def test_transform_to_site_data_health_summary():
     result = transform_to_site_data(_RAW_SITE)
     # Good=8, Fair=2, Poor=0 → round(8*1 + 2*0.5 + 0*0) = 9
+    assert result.metrics.health["summary"] == 9
+
+
+def test_transform_to_site_data_health_summary_with_missing_zero_value_groups():
+    raw = {
+        **_RAW_SITE,
+        "health": {"groups": [{"name": "Good", "value": 8}, {"name": "Fair", "value": 2}]},
+    }
+    result = transform_to_site_data(raw)
     assert result.metrics.health["summary"] == 9
 
 
@@ -232,3 +248,11 @@ def test_process_site_health_data_unknown_site_in_client_health_skipped():
     )
     assert len(result) == 1
     assert "HQ" in result
+
+
+def test_compute_health_score_partial_groups_treats_missing_buckets_as_zero():
+    assert compute_health_score({"good": 8, "fair": 2}) == 9
+
+
+def test_compute_health_score_no_known_groups_returns_none():
+    assert compute_health_score({"total": 10}) is None

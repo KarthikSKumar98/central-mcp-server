@@ -36,6 +36,21 @@ RAW_SITE = {
     "alerts": {"total": 3, "critical": 1},
 }
 
+RAW_SITE_PARTIAL_HEALTH = {
+    **RAW_SITE,
+    "health": {
+        "groups": [
+            {"name": "Good", "value": 8},
+            {"name": "Fair", "value": 2},
+        ]
+    },
+}
+
+RAW_SITE_FLAT_HEALTH = {
+    **RAW_SITE,
+    "health": {"Poor": 0, "Fair": 2, "Good": 8},
+}
+
 
 @pytest.fixture
 def tools():
@@ -114,6 +129,28 @@ async def test_get_summary_health_calculation(tools):
     with patch("tools.sites.MonitoringSites.get_all_sites", return_value=[RAW_SITE]):
         result = await tools["central_get_summary"](ctx)
     # Good=8, Fair=2, Poor=0 → round(8*1 + 2*0.5 + 0*0) = round(9) = 9
+    assert result["HQ"]["health"] == 9
+
+
+@pytest.mark.asyncio
+async def test_get_summary_partial_health_groups_treat_missing_groups_as_zero(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.sites.MonitoringSites.get_all_sites",
+        return_value=[RAW_SITE_PARTIAL_HEALTH],
+    ):
+        result = await tools["central_get_summary"](ctx)
+    assert result["HQ"]["health"] == 9
+
+
+@pytest.mark.asyncio
+async def test_get_summary_flat_health_dict_is_normalized(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.sites.MonitoringSites.get_all_sites",
+        return_value=[RAW_SITE_FLAT_HEALTH],
+    ):
+        result = await tools["central_get_summary"](ctx)
     assert result["HQ"]["health"] == 9
 
 
