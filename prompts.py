@@ -58,12 +58,8 @@ Check connectivity for the client with MAC address "{mac_address}" using evidenc
    If site_id is missing, skip this step and explicitly state that site-scoped alerts could not be queried.
 5. If connected_device_serial is present, call `central_find_device` with serial_number=<connected_device_serial>.
    If connected_device_serial is missing, skip this step and state that connected-device health could not be verified.
-6. If site_id is present, map connection_type to events context_type:
-   - Wireless -> WIRELESS_CLIENT
-   - Wired -> WIRED_CLIENT
-   If client status is "Failed" or "Disconnected", call `central_get_events_count` with site_id=<site_id>, context_type=<mapped type>, context_identifier="{mac_address}", response_mode="compact", and:
-   - start_time/end_time from step 3 when last_seen_at is available, or
-   - time_range="last_24h" fallback when it is not.
+6. If site_id is present, map connection_type to events context_type (Wireless -> WIRELESS_CLIENT, Wired -> WIRED_CLIENT).
+   If client status is "Failed" or "Disconnected", call `central_get_events_count` with site_id=<site_id>, context_type=<mapped type>, context_identifier="{mac_address}", response_mode="compact", using start_time/end_time from step 3 when last_seen_at is available, or time_range="last_24h" fallback when it is not.
    If total > 0, call `central_get_events` with the same context and same time bounds, plus top event_id/category filters from the count output (limit=20).
    If client status is "Connected", call `central_get_events_count` with site_id=<site_id>, context_type=<mapped type>, context_identifier="{mac_address}", time_range="last_24h", response_mode="compact" and summarize that 24-hour event-count output.
    If connection_type is missing or unmapped, skip event calls and state why.
