@@ -213,4 +213,6 @@ def compute_health_score(health_obj: dict) -> int | None:
     if not any(key in health_obj for key in weights):
         return None
 
-    return round(sum(health_obj.get(key, 0) * weight for key, weight in weights.items()))
+    return round(
+        sum(health_obj.get(key, 0) * weight for key, weight in weights.items())
+    )
