@@ -224,6 +224,7 @@ graph TD
 |------|-------------|
 | `central_get_aps` | Filtered list of access points — filter by site, serial number, status, model, firmware version, deployment, or cluster |
 | `central_get_ap_statistics` | AP CPU, memory, and power statistics for a given AP serial number within a selected time window |
+| `central_get_ap_wlans` | WLANs that are broadcasted from a given AP |
 
 #### WLAN
 | Tool | Description |

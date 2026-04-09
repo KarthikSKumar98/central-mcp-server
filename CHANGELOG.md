@@ -2,6 +2,55 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4] - 2026-04-09
+
+### New Tools
+- `central_get_aps` — filtered AP inventory with OData filtering by site, status, model, firmware, deployment, and cluster
+- `central_get_ap_statistics` — AP CPU, memory, and power statistics over a configurable time range
+- `central_get_ap_wlans` — WLANs active on a specific AP with optional online/offline filtering
+- `central_get_wlans` — WLAN configurations from Central with optional SSID name filtering
+- `central_get_wlan_stats` — throughput statistics (tx/rx time-series) for a specific WLAN over a time range
+
+### New Models
+- `AccessPoint` — full AP data model with `from_api()` normalization and `to_mcp_dict()` serialization
+- `AccessPointStatistics` — AP statistics model with graph-data flattening
+- `WLAN` — wireless network configuration model with alias choices for camelCase API fields
+- `WLANThroughputSample` — standardized throughput data model for WLAN stats output
+
+### New Prompts
+- `wlan_health_check` — SSID configuration and throughput trend analysis using `central_get_wlans` and `central_get_wlan_stats`
+
+### Prompt Improvements
+- All prompts updated to call `central_get_summary` instead of `central_get_site_name_id_mapping`
+- `network_health_overview`: added `central_get_alerts` for priority sites; skips detail steps when all sites are healthy
+- `troubleshoot_site`: added event investigation steps using `central_get_events_count` and `central_get_events`
+- `client_connectivity_check`: overhauled with evidence-first workflow — disconnect anchor from `last_seen_at`, cleared client alerts, per-client event history using `central_get_events_count`/`central_get_events`
+- `failed_clients_investigation`: deduplicates `central_find_device` calls across shared connected devices
+- `device_type_health`: limits event investigation to top 3 alerted devices instead of all
+- `critical_alerts_review`: focuses on top 5 sites by `critical_alerts` count instead of all sites
+
+### Bug Fixes
+- Fixed `central_get_ap_statistics` to correctly flatten graph-format response data
+- Fixed `central_get_ap_wlans` to handle empty WLAN result sets without error
+- Wrapped all tool domains (alerts, clients, devices, events, sites) in `try/except` for consistent error handling via `format_tool_error`
+
+### Constants & Utilities
+- Added `WLAN_LIMIT = 100` and `TIME_RANGE` literal type to `constants.py`
+- Added `utils/wlans.py` with `clean_wlan_data` and `clean_wlan_stats_data` helpers
+
+### Tests
+- Added `tests/test_wlans.py` and `tests/test_ap_monitoring.py` with unit test coverage for all new tools
+- Added `tests/integration/test_wlans_live.py` and `tests/integration/test_ap_monitoring_live.py`
+- Added `tests/test_tools_structure.py` to validate tool registration and annotations
+- Expanded `tests/test_sites.py` and `tests/test_utils_sites.py` for site name filtering
+
+### Documentation
+- Updated `INSTRUCTIONS.md` to reference `central_get_summary` and add AP-specific tool guidance
+- Updated README with WLAN and AP monitoring tools in the tools table and architecture diagram
+- Bumped package version to `0.1.4` in `pyproject.toml`
+
+---
+
 ## [0.1.3] - 2026-04-02
 
 ### Features

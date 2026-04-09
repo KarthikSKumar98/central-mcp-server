@@ -54,23 +54,19 @@ Check connectivity for the client with MAC address "{mac_address}" using evidenc
    - end_time = last_seen_at plus 30 minutes (RFC 3339)
    If last_seen_at is missing, use time_range="last_24h" as fallback for disconnect-state analysis.
 4. If site_id is present, call `central_get_alerts` with site_id=<site_id>, status="Active", category="Clients", limit=20.
-   If client status is "Failed" or "Disconnected", also call `central_get_alerts` with site_id=<site_id>, status="Cleared", category="Clients", sort="updatedAt desc", limit=50, then prioritize alerts whose createdAt/updatedAt timestamps are closest to (or just before) last_seen_at.
+   These are site-wide alerts, not client-specific — treat them as infrastructure context only.
    If site_id is missing, skip this step and explicitly state that site-scoped alerts could not be queried.
 5. If connected_device_serial is present, call `central_find_device` with serial_number=<connected_device_serial>.
    If connected_device_serial is missing, skip this step and state that connected-device health could not be verified.
-6. If site_id is present, map connection_type to events context_type:
-   - Wireless -> WIRELESS_CLIENT
-   - Wired -> WIRED_CLIENT
-   If client status is "Failed" or "Disconnected", call `central_get_events_count` with site_id=<site_id>, context_type=<mapped type>, context_identifier="{mac_address}", response_mode="compact", and:
-   - start_time/end_time from step 3 when last_seen_at is available, or
-   - time_range="last_24h" fallback when it is not.
+6. If site_id is present, map connection_type to events context_type (Wireless -> WIRELESS_CLIENT, Wired -> WIRED_CLIENT).
+   If client status is "Failed" or "Disconnected", call `central_get_events_count` with site_id=<site_id>, context_type=<mapped type>, context_identifier="{mac_address}", response_mode="compact", using start_time/end_time from step 3 when last_seen_at is available, or time_range="last_24h" fallback when it is not.
    If total > 0, call `central_get_events` with the same context and same time bounds, plus top event_id/category filters from the count output (limit=20).
    If client status is "Connected", call `central_get_events_count` with site_id=<site_id>, context_type=<mapped type>, context_identifier="{mac_address}", time_range="last_24h", response_mode="compact" and summarize that 24-hour event-count output.
    If connection_type is missing or unmapped, skip event calls and state why.
 7. Summarize with these sections:
    - Client snapshot: status, connection type, VLAN/WLAN details, connected device serial/name.
    - Disconnect anchor: last_seen_at and the investigation window used (or why unavailable).
-   - Site signals: active/cleared client-category alerts near the disconnect window (or why unavailable).
+   - Site signals: active client-category alerts at the site (infrastructure context), or why unavailable.
    - Device signals: connected device status/site/firmware (or why unavailable).
    - Recent client events:
      - Failed/Disconnected clients: top event drivers around disconnect window.
