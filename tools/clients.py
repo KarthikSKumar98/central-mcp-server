@@ -62,16 +62,15 @@ def register(mcp: FastMCP) -> None:
 
         """
         async with api_context(ctx) as conn:
-            filter_str = build_filters(
-                CLIENT_FILTER_FIELDS,
-                status=status,
-                connection_type=connection_type,
-                wlan_name=wlan_name,
-                vlan_id=vlan_id,
-                tunnel_type=tunnel_type,
-            )
-
             try:
+                filter_str = build_filters(
+                    CLIENT_FILTER_FIELDS,
+                    status=status,
+                    connection_type=connection_type,
+                    wlan_name=wlan_name,
+                    vlan_id=vlan_id,
+                    tunnel_type=tunnel_type,
+                )
                 clients = await asyncio.to_thread(
                     Clients.get_all_clients,
                     central_conn=conn,
@@ -87,7 +86,10 @@ def register(mcp: FastMCP) -> None:
 
             if not clients:
                 return "No clients found matching the specified criteria."
-            return clean_client_data(clients)
+            try:
+                return clean_client_data(clients)
+            except Exception as e:
+                return format_tool_error("parsing client data", e)
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_find_client(
@@ -120,4 +122,7 @@ def register(mcp: FastMCP) -> None:
             if not result:
                 return f"No client found with MAC address '{mac_address}'."
 
-            return clean_client_data([result])[0]
+            try:
+                return clean_client_data([result])[0]
+            except Exception as e:
+                return format_tool_error("parsing client data", e)

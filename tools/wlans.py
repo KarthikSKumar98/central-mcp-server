@@ -67,7 +67,10 @@ def register(mcp: FastMCP) -> None:
 
         if not wlans:
             return "No WLANs found matching the specified criteria."
-        return clean_wlan_data(wlans)
+        try:
+            return clean_wlan_data(wlans)
+        except Exception as e:
+            return format_tool_error("parsing WLANs", e)
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_wlan_stats(
@@ -119,7 +122,10 @@ def register(mcp: FastMCP) -> None:
                 "fetching WLAN statistics",
                 Exception(f"API returned {response['code']}: {response['msg']}"),
             )
-        samples = clean_wlan_stats_data(response["msg"])
+        try:
+            samples = clean_wlan_stats_data(response["msg"])
+        except Exception as e:
+            return format_tool_error("parsing WLAN statistics", e)
         if not samples:
             return f"No throughput data found for WLAN '{wlan_name}'."
         return samples

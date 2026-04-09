@@ -145,31 +145,31 @@ def register(mcp: FastMCP) -> None:
             return format_tool_error("fetching events", exc)
 
         async with api_context(ctx) as conn:
-            start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
-            filter_str = build_filters(
-                EVENT_FILTERS,
-                event_id=event_id,
-                category=category,
-                source_type=source_type,
-            )
-
-            query_params = {
-                "context-type": context_type,
-                "context-identifier": resolved_identifier,
-                "start-at": start_at,
-                "end-at": end_at,
-                "site-id": site_id,
-            }
-            if filter_str:
-                query_params["filter"] = filter_str
-            if search:
-                query_params["search"] = search
-
-            query_params["limit"] = limit
-            if cursor is not None:
-                query_params["next"] = cursor
-
             try:
+                start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
+                filter_str = build_filters(
+                    EVENT_FILTERS,
+                    event_id=event_id,
+                    category=category,
+                    source_type=source_type,
+                )
+
+                query_params = {
+                    "context-type": context_type,
+                    "context-identifier": resolved_identifier,
+                    "start-at": start_at,
+                    "end-at": end_at,
+                    "site-id": site_id,
+                }
+                if filter_str:
+                    query_params["filter"] = filter_str
+                if search:
+                    query_params["search"] = search
+
+                query_params["limit"] = limit
+                if cursor is not None:
+                    query_params["next"] = cursor
+
                 response = await asyncio.to_thread(
                     conn.command,
                     api_method="GET",
@@ -183,11 +183,14 @@ def register(mcp: FastMCP) -> None:
 
             msg = response["msg"]
             raw_events = msg.get("events", [])  # key is "events", not "items"
-            return PaginatedEvents(
-                items=[Event(**e) for e in raw_events],
-                total=msg.get("total", 0),
-                next_cursor=msg.get("next"),
-            )
+            try:
+                return PaginatedEvents(
+                    items=[Event(**e) for e in raw_events],
+                    total=msg.get("total", 0),
+                    next_cursor=msg.get("next"),
+                )
+            except Exception as e:
+                return format_tool_error("parsing events", e)
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_events_count(
@@ -246,9 +249,9 @@ def register(mcp: FastMCP) -> None:
                 "fetching event filters",
                 ValueError("response_mode must be one of: full, compact"),
             )
-        start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
         async with api_context(ctx) as conn:
             try:
+                start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
                 response = await asyncio.to_thread(
                     conn.command,
                     api_method="GET",
@@ -265,7 +268,10 @@ def register(mcp: FastMCP) -> None:
                     return format_tool_error("fetching event filters", response["msg"])
             except Exception as e:
                 return format_tool_error("fetching event filters", e)
-            filters = clean_event_filters(response["msg"])
-            if response_mode == "compact":
-                return compact_event_filters(filters)
-            return filters
+            try:
+                filters = clean_event_filters(response["msg"])
+                if response_mode == "compact":
+                    return compact_event_filters(filters)
+                return filters
+            except Exception as e:
+                return format_tool_error("parsing event filters", e)

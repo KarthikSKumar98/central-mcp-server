@@ -61,26 +61,28 @@ def register(mcp: FastMCP) -> None:
 
         """
         async with api_context(ctx) as conn:
-            filter_pairs = dict(
-                site_id=site_id,
-                device_type=device_type,
-                device_name=device_name,
-                serial_number=serial_number,
-                model=model,
-                device_function=device_function,
-            )
-            if is_provisioned is not None:
-                filter_pairs["is_provisioned"] = "Yes" if is_provisioned else "No"
-            filter_str = build_filters(DEVICE_FILTER_FIELDS, **filter_pairs)
-
-            # normalize site_assigned: True -> "ASSIGNED", False -> "UNASSIGNED", None -> None
-            site_assigned = (
-                None
-                if site_assigned is None
-                else ("ASSIGNED" if site_assigned else "UNASSIGNED")
-            )
-
             try:
+                filter_pairs = dict(
+                    site_id=site_id,
+                    device_type=device_type,
+                    device_name=device_name,
+                    serial_number=serial_number,
+                    model=model,
+                    device_function=device_function,
+                )
+                if is_provisioned is not None:
+                    filter_pairs["is_provisioned"] = (
+                        "Yes" if is_provisioned else "No"
+                    )
+                filter_str = build_filters(DEVICE_FILTER_FIELDS, **filter_pairs)
+
+                # normalize site_assigned: True -> "ASSIGNED", False -> "UNASSIGNED", None -> None
+                site_assigned = (
+                    None
+                    if site_assigned is None
+                    else ("ASSIGNED" if site_assigned else "UNASSIGNED")
+                )
+
                 devices = await asyncio.to_thread(
                     MonitoringDevices.get_all_device_inventory,
                     central_conn=conn,
@@ -95,7 +97,10 @@ def register(mcp: FastMCP) -> None:
                 return "No devices found matching the specified criteria."
             if device_status:
                 devices = process_device_status(devices, device_status)
-            return clean_device_data(devices)
+            try:
+                return clean_device_data(devices)
+            except Exception as e:
+                return format_tool_error("parsing device data", e)
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_find_device(
@@ -118,12 +123,12 @@ def register(mcp: FastMCP) -> None:
             return "Please provide only one unique identifier: either serial_number or device_name, not both."
 
         async with api_context(ctx) as conn:
-            filter_str = build_filters(
-                DEVICE_FILTER_FIELDS,
-                device_name=device_name,
-                serial_number=serial_number,
-            )
             try:
+                filter_str = build_filters(
+                    DEVICE_FILTER_FIELDS,
+                    device_name=device_name,
+                    serial_number=serial_number,
+                )
                 device_resp = await asyncio.to_thread(
                     MonitoringDevices.get_device_inventory,
                     central_conn=conn,
@@ -132,10 +137,16 @@ def register(mcp: FastMCP) -> None:
             except Exception as e:
                 return format_tool_error("fetching device data", e)
             if "items" not in device_resp:
-                return f"Unexpected API error response: {device_resp}"
+                return format_tool_error(
+                    "fetching device data",
+                    ValueError("Unexpected API response: missing 'items'"),
+                )
 
             if len(device_resp["items"]) == 0:
                 return "No device found matching the provided criteria."
             if len(device_resp["items"]) > 1:
                 return "Multiple devices found matching the criteria. Use serial_number for a unique match."
-            return clean_device_data(device_resp["items"])[0]
+            try:
+                return clean_device_data(device_resp["items"])[0]
+            except Exception as e:
+                return format_tool_error("parsing device data", e)
