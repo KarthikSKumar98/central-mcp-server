@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4] - 2026-04-09
+
+### New Tools
+- `central_get_wlans` — list WLANs configured in Central with filtering by SSID name
+- `central_get_wlan_stats` — retrieve throughput and usage statistics for a specific WLAN
+- `central_get_ap_wlans` — list WLANs active on a specific AP with online/offline filtering
+
+### Features
+- Added `WLAN`, `WLANThroughputSample` Pydantic models for wireless network data and throughput statistics
+- AP model (`AccessPoint`, `AccessPointStatistics`) enhanced with serialization and normalization methods
+- `central_get_sites` now supports site name filtering via OData for targeted site queries
+- AP statistics retrieval updated to include time range support
+
+### Bug Fixes
+- Fixed `central_get_ap_statistics` return format — graph data is now correctly flattened
+- Fixed `central_get_ap_wlans` to handle empty WLAN result sets gracefully
+- Fixed `central_get_sites` and AP outputs to use consistent snake_case field names
+- Standardized tool error responses across all tool domains using `format_tool_error`
+
+### Refactoring
+- Normalized `AccessPoint` and `AccessPointStatistics` model field names with aliases
+- Enhanced network health overview and client connectivity prompts for clarity
+- Updated MCP server instructions for improved tool usage guidance
+
+### Tests
+- Added unit and integration tests for all WLAN tools
+- Expanded AP monitoring test coverage for new model methods and edge cases
+
+### Documentation
+- Updated README with WLAN tool category in architecture diagram and tools table
+- Bumped package version to `0.1.4` in `pyproject.toml`
+
+---
+
 ## [0.1.3] - 2026-04-02
 
 ### Features
