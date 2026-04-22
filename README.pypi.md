@@ -210,6 +210,16 @@ See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-cent
 | `central_get_events` | Events for a site, device, or client within a time window |
 | `central_get_events_count` | Event count breakdown by type with `response_mode="full"` (counts) or `response_mode="compact"` (ranked event id/name pairs + lists) |
 
+#### Application Visibility
+| Tool | Description |
+|------|-------------|
+| `central_get_apps` | Application visibility data for a site — filter by category, risk, state, TLS version, host type, or country |
+
+#### Network Topology
+| Tool | Description |
+|------|-------------|
+| `central_get_network_hierarchy` | Nested hierarchy tree (Global → Site Collection → Site → Device) ready for Mermaid or Excalidraw rendering |
+
 ### LLM Workflow for Events
 
 Use this sequence for faster, lower-token event investigations:
