@@ -538,3 +538,127 @@ class PaginatedEvents(BaseModel):
         default=None,
         description="Cursor for the next page. Pass as `cursor` in the next call. None means no more pages.",
     )
+
+
+class App(BaseModel):
+    """Application visibility data structure."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    app_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("app_id", "id"),
+        description="Unique identifier for the application.",
+    )
+    app_name: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("app_name", "name"),
+        description="Display name of the application.",
+    )
+    categories: list[str] | None = Field(
+        default=None,
+        description="Application category tags (e.g. ['Social Networking', 'Social Networking Web']).",
+    )
+    experience: dict[str, int] | None = Field(
+        default=None,
+        description="Session count by experience tier: {Poor: N, Fair: N, Good: N}.",
+    )
+    risk: str | None = Field(
+        default=None,
+        description="Risk level of the application (e.g. 'LOW', 'HIGH', 'TRUSTWORTHY').",
+    )
+    state: str | None = Field(
+        default=None,
+        description="Permission state of the application: ALLOWED, PARTIAL, or BLOCKED.",
+    )
+    tx_bytes: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("tx_bytes", "txBytes"),
+        description="Bytes transmitted to this application.",
+    )
+    rx_bytes: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("rx_bytes", "rxBytes"),
+        description="Bytes received from this application.",
+    )
+    last_used_time: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("last_used_time", "lastUsedTime"),
+        description="Epoch milliseconds timestamp of last application use.",
+    )
+    tls_version: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("tls_version", "tlsVersion"),
+        description="TLS version used by the application (e.g. 'TLS 1.2').",
+    )
+    certificate_expiry_date: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "certificate_expiry_date", "certificateExpiryDate"
+        ),
+        description="Certificate expiry date for the application.",
+    )
+    host_type: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("host_type", "applicationHostType"),
+        description="Application host type: Hybrid, Private, or Public.",
+    )
+    dest_location: list[str] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("dest_location", "destLocation"),
+        description="ISO 3166-1 alpha-2 country codes of destination server locations (e.g. ['US', 'DE']).",
+    )
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields during serialization to keep app payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class PaginatedApps(BaseModel):
+    items: list[App] = Field(description="Page of application visibility records.")
+    total: int = Field(
+        description="Total applications matching the filter across all pages."
+    )
+    offset: int = Field(description="Offset of the current page.")
+    limit: int = Field(description="Page size used for this request.")
+
+
+class HierarchyNode(BaseModel):
+    """A single node in the network hierarchy tree."""
+
+    id: str = Field(
+        description="Stable unique identifier. Format: 'global', 'collection:<uuid>', 'site:<id>', 'device:<serial>'."
+    )
+    label: str = Field(description="Human-readable display name for this node.")
+    type: Literal["root", "collection", "site", "device"] = Field(
+        description="Node tier: root (Global), collection (Site Collection), site, or device."
+    )
+    device_type: str | None = Field(
+        default=None,
+        description="Device category — present only on device nodes: ACCESS_POINT, SWITCH, or GATEWAY.",
+    )
+    provisioned: bool | None = Field(
+        default=None,
+        description="Present only on device nodes. True if the device is managed by new Central; False if it is managed by Classic Central.",
+    )
+    children: list["HierarchyNode"] = Field(
+        default_factory=list,
+        description="Child nodes. Empty for leaf nodes (devices or sites with no devices).",
+    )
+
+
+HierarchyNode.model_rebuild()
+
+
+class NetworkHierarchy(BaseModel):
+    """Full network hierarchy rooted at the Global node."""
+
+    root: HierarchyNode = Field(
+        description="Global root node. Its children are Site Collections (if any exist), then Sites, then Devices."
+    )
