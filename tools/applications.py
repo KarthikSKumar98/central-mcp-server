@@ -11,7 +11,6 @@ from utils.common import FilterField, api_context, build_filters, format_tool_er
 from utils.events import _resolve_time_window
 
 APP_FILTER_FIELDS: dict[str, FilterField] = {
-    "client_id": FilterField("clientId"),
     "app_category": FilterField(
         "APP_CAT",
         [
@@ -117,7 +116,6 @@ def register(mcp: FastMCP) -> None:
                 )
                 filter_str = build_filters(
                     APP_FILTER_FIELDS,
-                    client_id=client_id,
                     app_category=app_category,
                     state=state,
                     risk=risk,
@@ -133,6 +131,8 @@ def register(mcp: FastMCP) -> None:
                     "limit": limit,
                     "offset": offset,
                 }
+                if client_id:
+                    query_params["client-id"] = client_id
                 if filter_str:
                     query_params["filter"] = filter_str
 
