@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4.2] - 2026-04-29
+
+### Features
+- Added `MCP_TRANSPORT` environment variable to select transport mode (`stdio`, `streamable-http`, or `sse`); defaults to `stdio`
+- Added `MCP_HOST` (default `127.0.0.1`) and `MCP_PORT` (default `8000`) environment variables for HTTP transport binding
+- Server entry point (`run()`) and `__main__` block now honour `MCP_TRANSPORT` — set the variable and restart to switch modes with no code changes
+
+### Refactoring
+- Removed duplicate transport logic from `__main__` block; it now delegates to `run()`
+
+### Documentation
+- Added HTTP transport setup section to `README.md` and `README.pypi.md` with step-by-step instructions, environment variable reference table, and MCP client connection examples
+
+---
+
 ## [0.1.4.1] - 2026-04-10
 
 ### Bug Fixes
