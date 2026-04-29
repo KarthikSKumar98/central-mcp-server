@@ -9,7 +9,16 @@ import prompts
 from config import DYNAMIC_TOOLS
 from constants import API_CONCURRENCY_LIMIT
 from services.central_service import get_conn, verify_connection
-from tools import alerts, ap_monitoring, clients, devices, events, sites, wlans
+from tools import (
+    alerts,
+    ap_monitoring,
+    clients,
+    devices,
+    events,
+    sites,
+    troubleshooting,
+    wlans,
+)
 
 _INSTRUCTIONS = (Path(__file__).parent / "INSTRUCTIONS.md").read_text()
 
@@ -50,6 +59,7 @@ alerts.register(mcp)
 events.register(mcp)
 ap_monitoring.register(mcp)
 wlans.register(mcp)
+troubleshooting.register(mcp)
 
 # Register prompts with the MCP server
 prompts.register(mcp)
