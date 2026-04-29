@@ -88,7 +88,7 @@ ignore = [
 # D and ANN strictly enforced only in tools/ — LLM descriptions and schemas live there
 # D417 suppressed in tools/ — ctx parameter is boilerplate in every tool, not worth documenting
 "tools/*.py"    = ["D417"]
-"utils/*.py"    = ["D102", "D103", "ANN001", "ANN201", "ANN202"]
+"utils/*.py"    = ["D102", "D103", "ANN001", "ANN201", "ANN202", "ANN401"]
 "services/*.py" = ["D102", "D103", "ANN001", "ANN201", "ANN202"]
 "models.py"     = ["D102", "D103", "ANN001", "ANN201", "ANN202"]
 "config.py"     = ["D102", "D103", "ANN001", "ANN201", "ANN202"]

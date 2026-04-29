@@ -6,3 +6,10 @@ READ_ONLY = ToolAnnotations(
     idempotentHint=True,
     openWorldHint=True,
 )
+
+DIAGNOSTIC = ToolAnnotations(
+    readOnlyHint=False,
+    destructiveHint=False,
+    idempotentHint=False,
+    openWorldHint=True,
+)
