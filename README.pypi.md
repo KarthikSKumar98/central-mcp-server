@@ -210,6 +210,12 @@ See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-cent
 | `central_get_events` | Events for a site, device, or client within a time window |
 | `central_get_events_count` | Event count breakdown by type with `response_mode="full"` (counts) or `response_mode="compact"` (ranked event id/name pairs + lists) |
 
+#### Troubleshooting
+| Tool | Description |
+|------|-------------|
+| `central_run_network_test` | Run a live network diagnostic (ping, traceroute, http, https, tcp, nslookup) against a device — device family resolved automatically from serial number |
+| `central_run_show_commands` | Execute show commands on a device; auto-validates against the device's supported command catalog and returns the catalog on any mismatch |
+
 ### LLM Workflow for Events
 
 Use this sequence for faster, lower-token event investigations:

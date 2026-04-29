@@ -195,12 +195,13 @@ graph TD
     MCP --> Events["Events"]
     MCP --> APMon["AP Monitoring"]
     MCP--> WLAN["WLAN"]
+    MCP --> Troubleshooting["Troubleshooting"]
 
     classDef mcp fill:#05cc93,color:#001b14,stroke:#000000,stroke-width:2px;
     classDef tool fill:#0070f8,color:#ffffff,stroke:#000000,stroke-width:1.5px;
 
     class MCP mcp;
-    class Sites,Devices,APMon,Clients,Alerts,Events,WLAN tool;
+    class Sites,Devices,APMon,Clients,Alerts,Events,WLAN,Troubleshooting tool;
 
     linkStyle default stroke:#ffffff,stroke-width:2px;
 ```
@@ -248,6 +249,12 @@ graph TD
 |------|-------------|
 | `central_get_events` | Events for a site, device, or client within a time window |
 | `central_get_events_count` | Event count breakdown by type with `response_mode="full"` (counts) or `response_mode="compact"` (ranked event id/name pairs + lists) |
+
+#### Troubleshooting
+| Tool | Description |
+|------|-------------|
+| `central_run_network_test` | Run a live network diagnostic (ping, traceroute, http, https, tcp, nslookup) against a device — device family resolved automatically from serial number |
+| `central_run_show_commands` | Execute show commands on a device; auto-validates against the device's supported command catalog and returns the catalog on any mismatch |
 
 ### LLM Workflow for Events
 
