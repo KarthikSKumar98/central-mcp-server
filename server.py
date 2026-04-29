@@ -65,7 +65,4 @@ def run():
 
 # For local development, you can run this script directly with `python server.py` to start the MCP server.
 if __name__ == "__main__":
-    if MCP_TRANSPORT == "stdio":
-        mcp.run()
-    else:
-        mcp.run(transport=MCP_TRANSPORT, host=MCP_HOST, port=MCP_PORT)
+    run()
