@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
     "fastmcp[code-mode]>=3.1.1",
     "python-dotenv>=1.0.0",
-    "pycentral==2.0a17",
+    "pycentral==2.0a19",
 ]
 
 [project.urls]

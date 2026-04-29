@@ -144,7 +144,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", extras = ["code-mode"], specifier = ">=3.1.1" },
-    { name = "pycentral", specifier = "==2.0a17" },
+    { name = "pycentral", specifier = "==2.0a19" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
 ]
 
@@ -931,21 +931,31 @@ memory = [
 
 [[package]]
 name = "pycentral"
-version = "2.0a17"
+version = "2.0a19"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx", extra = ["http2"] },
     { name = "oauthlib" },
     { name = "protobuf" },
+    { name = "pycountry" },
     { name = "pytz" },
     { name = "pyyaml" },
     { name = "requests" },
     { name = "requests-oauthlib" },
     { name = "websocket-client" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/87/0e/9068abaa0d34b25c6fd203bf8394b9c5698a542e272973b2850712c736de/pycentral-2.0a17.tar.gz", hash = "sha256:48c3bb88c6f46da4a1e99f1f792c979bee73a57711adad901fdd23b90c2ceb9d", size = 128494, upload-time = "2026-03-24T20:32:50.796Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8f/6f/278cec52bdf61ee99b3285929b44f6eb4b94cc89e82674f0f1bd0b6dc763/pycentral-2.0a19.tar.gz", hash = "sha256:f3135d85ccd6b2a3959511898f5aaea07591e0ed51168be23fbe79530c29ea5e", size = 139169, upload-time = "2026-04-27T15:53:52.705Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/27/4f94c63fdf7effa6a70f031bb6641dc2bd898dabb17ab5ed234576362a84/pycentral-2.0a17-py3-none-any.whl", hash = "sha256:ec1f150c2870f9f529174530bc7ddfdd4762df1a22a46e778c547b09eeb7401b", size = 169300, upload-time = "2026-03-24T20:32:49.504Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/49/4a5467b9d312e527ae676e3026a04f367b50acc9f16928cca40b125aa152/pycentral-2.0a19-py3-none-any.whl", hash = "sha256:5d7fb7366ca8f25b430d66bd46e95d2bd1cb5c0731eb260ddcae865711499e2a", size = 182039, upload-time = "2026-04-27T15:53:51.002Z" },
+]
+
+[[package]]
+name = "pycountry"
+version = "26.2.16"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/1d/061b9e7a48b85cfd69f33c33d2ef784a531c359399ad764243399673c8f5/pycountry-26.2.16.tar.gz", hash = "sha256:5b6027d453fcd6060112b951dd010f01f168b51b4bf8a1f1fc8c95c8d94a0801", size = 7711342, upload-time = "2026-02-17T03:42:52.367Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9c/42/7703bd45b62fecd44cd7d3495423097e2f7d28bc2e99e7c1af68892ab157/pycountry-26.2.16-py3-none-any.whl", hash = "sha256:115c4baf7cceaa30f59a4694d79483c9167dbce7a9de4d3d571c5f3ea77c305a", size = 8044600, upload-time = "2026-02-17T03:42:49.777Z" },
 ]
 
 [[package]]
@@ -1382,7 +1392,7 @@ wheels = [
 
 [[package]]
 name = "requests"
-version = "2.32.5"
+version = "2.33.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -1390,9 +1400,9 @@ dependencies = [
     { name = "idna" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/74/b3ff8e6c8446842c3f5c837e9c3dfcfe2018ea6ecef224c710c85ef728f4/requests-2.32.5.tar.gz", hash = "sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf", size = 134517, upload-time = "2025-08-18T20:46:02.573Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/34/64/8860370b167a9721e8956ae116825caff829224fbca0ca6e7bf8ddef8430/requests-2.33.0.tar.gz", hash = "sha256:c7ebc5e8b0f21837386ad0e1c8fe8b829fa5f544d8df3b2253bff14ef29d7652", size = 134232, upload-time = "2026-03-25T15:10:41.586Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1e/db/4254e3eabe8020b458f1a747140d32277ec7a271daf1d235b70dc0b4e6e3/requests-2.32.5-py3-none-any.whl", hash = "sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6", size = 64738, upload-time = "2025-08-18T20:46:00.542Z" },
+    { url = "https://files.pythonhosted.org/packages/56/5d/c814546c2333ceea4ba42262d8c4d55763003e767fa169adc693bd524478/requests-2.33.0-py3-none-any.whl", hash = "sha256:3324635456fa185245e24865e810cecec7b4caf933d7eb133dcde67d48cee69b", size = 65017, upload-time = "2026-03-25T15:10:40.382Z" },
 ]
 
 [[package]]
