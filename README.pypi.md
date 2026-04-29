@@ -156,7 +156,24 @@ See the [GitHub CoPilot setup guide](https://developer.arubanetworks.com/new-cen
 
 By default the server runs over `stdio`, which is the right choice for most MCP clients. If you need to run the server as a persistent HTTP process — for example, to share it across multiple clients or to connect via a remote URL — you can switch to the `streamable-http` transport.
 
-Set these environment variables before starting the server:
+**Step 1 — Install the server as a CLI tool** (if you haven't already):
+
+```bash
+uv tool install --prerelease=allow central-mcp-server
+```
+
+> `--prerelease=allow` is required because this server depends on `pycentral`, which currently only has a pre-release version on PyPI.
+
+**Step 2 — Create a `.env` file** in your working directory with your credentials and transport settings:
+
+```
+CENTRAL_BASE_URL=your-central-base-url
+CENTRAL_CLIENT_ID=your-client-id
+CENTRAL_CLIENT_SECRET=your-client-secret
+MCP_TRANSPORT=http
+MCP_HOST=127.0.0.1
+MCP_PORT=8000
+```
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -164,17 +181,19 @@ Set these environment variables before starting the server:
 | `MCP_HOST` | `127.0.0.1` | Host to bind when using HTTP transport |
 | `MCP_PORT` | `8000` | Port to listen on when using HTTP transport |
 
-Start the server in HTTP mode:
+**Step 3 — Start the server:**
 
 ```bash
-MCP_TRANSPORT=http python server.py
-# or with custom host/port:
-MCP_TRANSPORT=http MCP_HOST=0.0.0.0 MCP_PORT=9000 python server.py
+# If installed via uv tool install:
+central-mcp-server
+
+# If running from source:
+python server.py
 ```
 
 The MCP endpoint will be available at `http://<MCP_HOST>:<MCP_PORT>/mcp`.
 
-Connect an MCP client (e.g. Claude Code) to the running server:
+**Step 4 — Connect your MCP client** to the running server:
 
 ```bash
 claude mcp add central-mcp --transport http --url http://127.0.0.1:8000/mcp
