@@ -15,6 +15,10 @@ CENTRAL_CLIENT_ID = os.getenv("CENTRAL_CLIENT_ID", "")
 CENTRAL_CLIENT_SECRET = os.getenv("CENTRAL_CLIENT_SECRET", "")
 DYNAMIC_TOOLS = os.getenv("DYNAMIC_TOOLS", "false").lower() == "true"
 
+MCP_TRANSPORT = os.getenv("MCP_TRANSPORT", "stdio")
+MCP_HOST = os.getenv("MCP_HOST", "127.0.0.1")
+MCP_PORT = int(os.getenv("MCP_PORT", "8000"))
+
 
 def validate_credentials():
     """Validate that all required credentials are set.
