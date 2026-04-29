@@ -152,6 +152,49 @@ Add to `.gitignore`:
 
 See the [GitHub CoPilot setup guide](https://developer.arubanetworks.com/new-central/docs/central-github-copilot-setup) for full steps and troubleshooting.
 
+#### HTTP Transport (Streamable HTTP)
+
+By default the server runs over `stdio`, which is the right choice for most MCP clients. If you need to run the server as a persistent HTTP process — for example, to share it across multiple clients or to connect via a remote URL — you can switch to the `streamable-http` transport.
+
+Set these environment variables before starting the server:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` or `http` |
+| `MCP_HOST` | `127.0.0.1` | Host to bind when using HTTP transport |
+| `MCP_PORT` | `8000` | Port to listen on when using HTTP transport |
+
+Start the server in HTTP mode:
+
+```bash
+MCP_TRANSPORT=http python server.py
+# or with custom host/port:
+MCP_TRANSPORT=http MCP_HOST=0.0.0.0 MCP_PORT=9000 python server.py
+```
+
+The MCP endpoint will be available at `http://<MCP_HOST>:<MCP_PORT>/mcp`.
+
+Connect an MCP client (e.g. Claude Code) to the running server:
+
+```bash
+claude mcp add central-mcp --transport http --url http://127.0.0.1:8000/mcp
+```
+
+Or add it to your MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "central-mcp": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp"
+    }
+  }
+}
+```
+
+> **Note:** Credentials must be set in the server's environment (via `.env` or OS env vars) before starting it. They are not passed through the HTTP client config.
+
 ---
 
 ## What You Can Ask
