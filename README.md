@@ -321,6 +321,7 @@ graph TD
 |------|-------------|
 | `central_run_network_test` | Run a live network diagnostic (ping, traceroute, http, https, tcp, nslookup) against a device — device family resolved automatically from serial number |
 | `central_run_show_commands` | Execute show commands on a device; auto-validates against the device's supported command catalog and returns the catalog on any mismatch |
+| `central_bounce_switch_port` | Bounce ports or toggle PoE on CX/AOS-S switches and gateways — fetches live interface state and requires user confirmation before executing |
 
 ### LLM Workflow for Events
 

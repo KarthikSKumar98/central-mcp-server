@@ -39,6 +39,26 @@ When a user asks you to run a live diagnostic (ping, traceroute, show commands, 
 - Use `central_run_show_commands` to execute show commands. The tool validates commands against the device's supported catalog before running — if a command is unsupported, the catalog is returned so you can select a valid alternative.
 - Relay the raw diagnostic output to the user exactly as returned. Do NOT interpret results as confirming or denying any configuration change.
 
+## Destructive Operations
+
+Some tools are annotated as destructive and require user confirmation via an in-tool elicitation prompt before they execute. These tools make real changes to the network.
+
+When using destructive tools:
+- Only invoke them when the user has explicitly asked for the action (e.g. "bounce port 1/1/1 on switch SW001").
+- The tool will present a confirmation prompt showing the current state of the affected ports. Wait for the user to accept before the action proceeds.
+- If the user declines or cancels, the tool returns an error and no network change is made.
+- Relay the result exactly as returned. Do NOT interpret or recommend follow-up actions.
+- Never recommend a bounce proactively. Only run it when the user explicitly requests it.
+
+### Port & PoE Bounce (`central_bounce_port`)
+
+Use `central_bounce_port` to bounce one or more ports or toggle PoE on a CX switch, AOS-S switch, or gateway.
+
+- `bounce_type="port"` disables and re-enables the physical port.
+- `bounce_type="poe"` cuts and restores Power over Ethernet to the connected device.
+
+The tool automatically fetches the live interface list, validates the requested port names, and presents per-port state (status, speed, PoE class/state) in the confirmation prompt before executing.
+
 ## Constraints
 
 - ONLY answer based on data returned by the available tools. Never infer, estimate, or fabricate network state from your training knowledge.
