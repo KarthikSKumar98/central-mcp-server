@@ -123,6 +123,48 @@ class Device(BaseModel):
     )
 
 
+_REBOOT_REASON_MAP: dict[str, str] = {
+    "UNKNOWN": "Unknown",
+    "AP_RELOAD": "Reload",
+    "USER_REBOOT": "User reboot",
+    "WRITE_ERASE_REBOOT": "Write erase reboot",
+    "WRITE_ERASE_ALL_REBOOT": "Write erase all reboot",
+    "IMAGE_SYNC_FAILED": "Image sync failed",
+    "IMAGE_SYNC_SUCCESSFUL": "Image sync successful",
+    "IMAGE_UPGRADE": "Image upgrade successful",
+    "IMAGE_DOWNLOAD_FAILURE": "Image download failure",
+    "OUT_OF_MEMORY": "Reboot caused by out of memory",
+    "DOWN_UPLINK": "Current uplink down, no useable uplink.",
+    "CONDUCTOR_TO_LOCAL": "Conductor transitioned to local",
+    "NETWORK_DISCONNECT_USB_RESET": "Internet connection lost, reset usb modem",
+    "NETWORK_DISCONNECT": "Internet connection lost",
+    "UNREACHABLE_GATEWAY": "Gateway unreachable",
+    "FATAL_EXCEPTION": "Reboot caused by kernel panic: fatal exception",
+    "FATAL_EXCEPTION_IN_INTERRUPT": "Reboot caused by kernel panic: fatal exception in interrupt",
+    "SOFTLOCKUP": "Reboot caused by kernel panic: softlockup: hung tasks",
+    "NTP_SYNC": "System clock is too far ahead of ntp sync result",
+    "BAD_MESH_LINK": "Mesh link bad. Rebooting mesh point by sapd",
+    "MESH_TO_PORTAL": "Mesh point transitioned to portal",
+    "REBOOT_BY_AIRWAVE": "Reboot by Airwave",
+    "AMP_COMMAND": "Amp",
+    "VC_COMMAND": "VC",
+    "REBOOTED_BY_CENTRAL": "Reboot by Central",
+    "CLOUD_MANAGEMENT_COMMAND": "Cloud management",
+    "CLI_COMMAND": "CLI",
+    "CONDUCTOR_IP_FAILURE": "Failed to get conductor-ip",
+    "NON_FIPS": "Non-fips --> fips",
+    "FIPS": "Fips --> non-fips",
+    "TOPOLOGY_CHANGE": "Rebooting AP due to topology change: hierarchy to flat",
+    "AP_DISCONNECTED": "AP disconnected from Central",
+    "VC_DISCONNECTED": "Virtual controller disconnected from Central",
+    "COLD_HW_RESET": "AP reboot caused by cold hw reset(power loss)",
+    "POWER_LOSS": "AP rebooted due to loss power",
+    "THERMAL_MODE": "Reboot due to trigger the cooldown event",
+    "OVERHEAT_EVENT": "Reboot due to trigger the overheat event",
+    "PREEMPTED_BY_CONDUCTOR": "Preempted by provisioned conductor",
+}
+
+
 class AccessPoint(BaseModel):
     """Access point monitoring data structure."""
 
@@ -232,6 +274,9 @@ class AccessPoint(BaseModel):
         normalized = dict(raw_ap)
         if normalized.get("status") == "ONLINE":
             normalized["lastSeenAt"] = None
+        reason = normalized.get("lastRebootReason")
+        if reason and reason in _REBOOT_REASON_MAP:
+            normalized["lastRebootReason"] = _REBOOT_REASON_MAP[reason]
         return cls(**normalized)
 
     @model_serializer(mode="wrap")

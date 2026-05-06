@@ -27,7 +27,7 @@ RAW_AP = {
     "memoryUtilization": 45,
     "powerConsumption": 8.5,
     "clientCount": 3,
-    "lastRebootReason": "Management server connected fail",
+    "lastRebootReason": "COLD_HW_RESET",
     "publicIpv4": "61.246.230.194",
     "lastSeenAt": None,
     # These should be silently ignored by the model:
@@ -72,7 +72,7 @@ async def test_get_aps_no_filters(tools):
     assert serialized["serial_number"] == "AP123456"
     assert serialized["status"] == "ONLINE"
     assert serialized["client_count"] == 3
-    assert serialized["last_reboot_reason"] == "Management server connected fail"
+    assert serialized["last_reboot_reason"] == "AP reboot caused by cold hw reset(power loss)"
     assert serialized["public_ipv4"] == "61.246.230.194"
     assert serialized["cpu_utilization"] == 12
     assert serialized["memory_utilization"] == 45
@@ -85,6 +85,24 @@ async def test_get_aps_no_filters(tools):
     call_kwargs = mock_api.call_args.kwargs
     assert call_kwargs["filter_str"] is None
     assert call_kwargs["sort"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_aps_reboot_reason_key_is_mapped_to_description(tools):
+    ctx = make_ctx()
+    raw = {"serialNumber": "AP000001", "status": "ONLINE", "lastRebootReason": "POWER_LOSS"}
+    with patch("tools.ap_monitoring.MonitoringAPs.get_all_aps", return_value=[raw]):
+        result = await tools["central_get_aps"](ctx)
+    assert result[0].last_reboot_reason == "AP rebooted due to loss power"
+
+
+@pytest.mark.asyncio
+async def test_get_aps_reboot_reason_unknown_key_is_passed_through(tools):
+    ctx = make_ctx()
+    raw = {"serialNumber": "AP000002", "status": "ONLINE", "lastRebootReason": "SOME_FUTURE_KEY"}
+    with patch("tools.ap_monitoring.MonitoringAPs.get_all_aps", return_value=[raw]):
+        result = await tools["central_get_aps"](ctx)
+    assert result[0].last_reboot_reason == "SOME_FUTURE_KEY"
 
 
 @pytest.mark.asyncio
