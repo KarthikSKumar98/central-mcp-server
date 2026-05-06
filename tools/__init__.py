@@ -13,3 +13,10 @@ DIAGNOSTIC = ToolAnnotations(
     idempotentHint=False,
     openWorldHint=True,
 )
+
+DESTRUCTIVE = ToolAnnotations(
+    readOnlyHint=False,
+    destructiveHint=True,
+    idempotentHint=False,
+    openWorldHint=True,
+)

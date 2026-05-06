@@ -543,10 +543,6 @@ class PaginatedEvents(BaseModel):
 class TroubleshootingResult(BaseModel):
     """Result of an async troubleshooting task run against a Central-managed device."""
 
-    task_id: str | None = Field(
-        default=None,
-        description="Identifier for the async task on Central. None if the task never started.",
-    )
     status: str = Field(
         description="Final task status returned by Central (e.g. COMPLETED, FAILED, RUNNING)."
     )
@@ -554,6 +550,10 @@ class TroubleshootingResult(BaseModel):
         description="Resolved device family used to dispatch the test (aps, cx, aoss, or gateways)."
     )
     serial_number: str = Field(description="Serial number of the device under test.")
+    raw_output: str | None = Field(
+        default=None,
+        description="CLI Raw output for Troubleshooting Test (populated for ping and traceroute).",
+    )
     output: dict[str, Any] | str | None = Field(
         default=None,
         description="Parsed output payload from Central. Structure varies by test type.",

@@ -2,9 +2,13 @@ import asyncio
 from typing import Any
 
 from pycentral.new_monitoring import MonitoringDevices
+from pycentral.new_monitoring.gateways import MonitoringGateways
+from pycentral.new_monitoring.switches import MonitoringSwitches
 from pycentral.troubleshooting import Troubleshooting
 
 from models import TroubleshootingResult
+
+SWITCH_OS_MAPPING = {"cx": [6, 8, 9, 1, 4], "aos-s": [2, 3, 5]}
 
 # Maps (test_type, device_family) -> (initiate_method_name, get_result_method_name).
 # String names are used so that test patches on Troubleshooting attributes are picked up
@@ -35,7 +39,8 @@ NETWORK_TEST_DISPATCH: dict[tuple[str, str], tuple[str, str]] = {
     ("http", "gateways"): ("initiate_http_test", "get_http_test_result"),
     # https
     ("https", "aps"): ("initiate_https_aps_test", "get_https_test_result"),
-    ("https", "cx"): ("initiate_https_cx_test", "get_https_test_result"),
+    # CX HTTPS posts to /http with protocol=HTTPS; result must be polled from /http/async-operations/
+    ("https", "cx"): ("initiate_https_cx_test", "get_http_test_result"),
     ("https", "gateways"): ("initiate_https_gateways_test", "get_https_test_result"),
     # tcp — aps only per Central support matrix
     ("tcp", "aps"): ("initiate_tcp_test", "get_tcp_test_result"),
@@ -54,8 +59,9 @@ def resolve_device_family(device: dict[str, Any]) -> str:
     """Map a raw inventory device record to a pycentral device-family string.
 
     Returns one of 'aps', 'cx', 'aos-s', or 'gateways'.  For switches the model
-    field is inspected: if it contains 'CX' (case-insensitive) the device is
-    treated as CX; otherwise AOS-S is assumed.
+    field is inspected by its leading digit: CX models start with 1, 4, 6, 8, or 9;
+    AOS-S models start with 2, 3, or 5.  The Central inventory API returns bare
+    model numbers (e.g. "6300M", "2930F") without a vendor-prefix.
 
     Args:
         device: Raw dict from MonitoringDevices.get_all_device_inventory.
@@ -71,9 +77,10 @@ def resolve_device_family(device: dict[str, Any]) -> str:
         return "gateways"
     if device_type == "SWITCH":
         model = device.get("model") or ""
-        if "CX" in model.upper():
+        if int(model[0]) in SWITCH_OS_MAPPING["cx"]:
             return "cx"
-        return "aos-s"
+        elif int(model[0]) in SWITCH_OS_MAPPING["aos-s"]:
+            return "aos-s"
     raise ValueError(
         f"Unrecognised deviceType '{device_type}' for serial "
         f"'{device.get('serialNumber')}'. Expected ACCESS_POINT, SWITCH, or GATEWAY."
@@ -112,6 +119,11 @@ async def resolve_family_from_serial(conn: Any, serial_number: str) -> str:
 
     """
     device = await asyncio.to_thread(lookup_device_by_serial, conn, serial_number)
+    if device["status"] != "ONLINE":
+        raise ValueError(
+            f"Device with serial '{serial_number}' is currently offline. "
+            "Troubleshooting tests require the device to be online."
+        )
     return resolve_device_family(device)
 
 
@@ -166,7 +178,6 @@ async def run_async_test(
 
     if not task_id:
         return TroubleshootingResult(
-            task_id=None,
             status="FAILED",
             device_type=device_family,
             serial_number=serial_number,
@@ -187,7 +198,7 @@ async def run_async_test(
         )
         status = (last_response.get("status") or "").upper()
         if status in ("COMPLETED", "FAILED"):
-            return _build_result(last_response, device_family, serial_number, task_id)
+            return _build_result(last_response, device_family, serial_number)
 
     # Extra wait if task is still running after all attempts
     status = (last_response.get("status") or "").upper()
@@ -201,16 +212,16 @@ async def run_async_test(
             serial_number=serial_number,
         )
 
-    return _build_result(last_response, device_family, serial_number, task_id)
+    return _build_result(last_response, device_family, serial_number)
 
 
 def _build_result(
     response: dict[str, Any],
     device_family: str,
     serial_number: str,
-    task_id: str,
 ) -> TroubleshootingResult:
     status = (response.get("status") or "UNKNOWN").upper()
+    raw_output = response.get("rawOutput") or response.get("raw_output")
     output = response.get("result") or response.get("output") or response.get("data")
     error = response.get("error") or response.get("errorMessage")
     if not output and status != "FAILED":
@@ -218,15 +229,15 @@ def _build_result(
         output = {
             k: v
             for k, v in response.items()
-            if k not in ("status", "error", "errorMessage")
+            if k not in ("status", "error", "errorMessage", "rawOutput", "raw_output")
         }
         if not output:
             output = None
     return TroubleshootingResult(
-        task_id=task_id,
         status=status,
         device_type=device_family,
         serial_number=serial_number,
+        raw_output=str(raw_output) if raw_output else None,
         output=output,
         error=str(error) if error else None,
     )
@@ -275,3 +286,70 @@ def validate_show_commands_against_catalog(
         if normalised not in supported:
             unmatched.append(cmd)
     return unmatched
+
+
+async def fetch_device_interfaces(
+    conn: Any, family: str, serial_number: str
+) -> list[dict]:
+    """Fetch interface/port list for a switch (CX/AOS-S) or gateway.
+
+    Returns a normalised list of dicts. Each dict has at minimum a 'name' key.
+    Switch interfaces come from network-monitoring/v1/switches/{serial}/interfaces.
+    Gateway ports come from network-monitoring/v1alpha1/gateways/{serial}/ports.
+
+    Raises:
+        ValueError: If family is not cx, aos-s, or gateways.
+        Exception: Propagated from pycentral on API errors.
+
+    """
+    if family in ("cx", "aos-s"):
+        response = await asyncio.to_thread(
+            MonitoringSwitches.get_switch_interfaces,
+            central_conn=conn,
+            serial_number=serial_number,
+        )
+    elif family == "gateways":
+        response = await asyncio.to_thread(
+            MonitoringGateways.get_gateway_interfaces,
+            central_conn=conn,
+            serial_number=serial_number,
+        )
+    else:
+        raise ValueError(f"fetch_device_interfaces: unsupported family '{family}'")
+
+    if isinstance(response, list):
+        return response
+    if isinstance(response, dict):
+        for key in ("items", "data", "ports", "interfaces", "result"):
+            if key in response and isinstance(response[key], list):
+                return response[key]
+    return []
+
+
+def select_interfaces_for_ports(
+    interfaces: list[dict], ports: list[str]
+) -> tuple[list[dict], list[str]]:
+    """Return (matched_interface_dicts, unknown_port_names).
+
+    Matches by the 'name' field of each interface dict. Case-insensitive.
+
+    Args:
+        interfaces: Interface list from fetch_device_interfaces.
+        ports: Port names the user wants to bounce.
+
+    Returns:
+        Tuple of (list of matched dicts, list of port names not found).
+
+    """
+    iface_by_name: dict[str, dict] = {
+        str(iface.get("name", "")).lower(): iface for iface in interfaces
+    }
+    matched: list[dict] = []
+    unknown: list[str] = []
+    for port in ports:
+        iface = iface_by_name.get(port.lower())
+        if iface is not None:
+            matched.append(iface)
+        else:
+            unknown.append(port)
+    return matched, unknown
