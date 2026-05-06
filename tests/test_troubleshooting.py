@@ -1,6 +1,8 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastmcp.server.elicitation import AcceptedElicitation
+from mcp.server.elicitation import CancelledElicitation, DeclinedElicitation
 
 import tools.troubleshooting as mod
 from models import TroubleshootingResult
@@ -32,7 +34,7 @@ RAW_AP = {
     "stackId": None,
 }
 
-RAW_CX = {**RAW_AP, "serialNumber": "SW001", "deviceType": "SWITCH", "model": "CX 6300M", "deviceName": "cx-01"}
+RAW_CX = {**RAW_AP, "serialNumber": "SW001", "deviceType": "SWITCH", "model": "6300M", "deviceName": "cx-01"}
 RAW_AOSS = {**RAW_AP, "serialNumber": "SW002", "deviceType": "SWITCH", "model": "2930F", "deviceName": "aoss-01"}
 RAW_GW = {**RAW_AP, "serialNumber": "GW001", "deviceType": "GATEWAY", "model": "9004", "deviceName": "gw-01"}
 
@@ -133,7 +135,7 @@ async def test_ping_ap_success(tools):
     ctx = make_ctx()
     with _patch_inventory(RAW_AP), \
          patch("utils.troubleshooting.Troubleshooting.initiate_ping_aps_test", return_value={"location": "/tasks/T001"}) as mock_init, \
-         patch("utils.troubleshooting.Troubleshooting.get_ping_test_result", return_value={"status": "COMPLETED", "result": {"output": "ping OK"}}), \
+         patch("utils.troubleshooting.Troubleshooting.get_ping_test_result", return_value={"status": "COMPLETED", "result": {"output": "ping OK"}, "rawOutput": "PING 8.8.8.8: 5 data bytes\n5 packets received"}), \
          patch("asyncio.sleep"):
         result = await tools["central_run_network_test"](
             ctx, test_type="ping", serial_number="AP001", destination="8.8.8.8", max_attempts=1, poll_interval=1
@@ -141,8 +143,10 @@ async def test_ping_ap_success(tools):
     assert isinstance(result, TroubleshootingResult)
     assert result.status == "COMPLETED"
     assert result.device_type == "aps"
+    assert result.raw_output == "PING 8.8.8.8: 5 data bytes\n5 packets received"
     mock_init.assert_called_once()
     assert mock_init.call_args.kwargs["destination"] == "8.8.8.8"
+    assert mock_init.call_args.kwargs.get("include_raw_output") is True
 
 
 @pytest.mark.asyncio
@@ -201,8 +205,8 @@ async def test_ping_gateway_success(tools):
 async def test_traceroute_ap_success(tools):
     ctx = make_ctx()
     with _patch_inventory(RAW_AP), \
-         patch("utils.troubleshooting.Troubleshooting.initiate_traceroute_aps_test", return_value={"location": "/tasks/T001"}), \
-         patch("utils.troubleshooting.Troubleshooting.get_traceroute_test_result", return_value={"status": "COMPLETED", "result": {}}), \
+         patch("utils.troubleshooting.Troubleshooting.initiate_traceroute_aps_test", return_value={"location": "/tasks/T001"}) as mock_tr_init, \
+         patch("utils.troubleshooting.Troubleshooting.get_traceroute_test_result", return_value={"status": "COMPLETED", "result": {}, "rawOutput": "traceroute to 8.8.8.8\n 1  10.0.0.1  1.234 ms"}), \
          patch("asyncio.sleep"):
         result = await tools["central_run_network_test"](
             ctx, test_type="traceroute", serial_number="AP001", destination="8.8.8.8",
@@ -210,6 +214,8 @@ async def test_traceroute_ap_success(tools):
         )
     assert isinstance(result, TroubleshootingResult)
     assert result.status == "COMPLETED"
+    assert result.raw_output == "traceroute to 8.8.8.8\n 1  10.0.0.1  1.234 ms"
+    assert mock_tr_init.call_args.kwargs.get("include_raw_output") is True
 
 
 @pytest.mark.asyncio
@@ -225,6 +231,23 @@ async def test_http_test_cx_success(tools):
         )
     assert isinstance(result, TroubleshootingResult)
     assert mock_init.call_args.kwargs["device_type"] == "cx"
+
+
+@pytest.mark.asyncio
+async def test_https_test_cx_uses_http_result_endpoint(tools):
+    """CX HTTPS initiate posts to /http with protocol=HTTPS; result must be polled from /http/async-operations/."""
+    ctx = make_ctx()
+    with _patch_inventory(RAW_CX), \
+         patch("utils.troubleshooting.Troubleshooting.initiate_https_cx_test", return_value={"location": "/tasks/T001"}) as mock_init, \
+         patch("utils.troubleshooting.Troubleshooting.get_http_test_result", return_value={"status": "COMPLETED", "result": {}}) as mock_get, \
+         patch("asyncio.sleep"):
+        result = await tools["central_run_network_test"](
+            ctx, test_type="https", serial_number="SW001", destination="https://example.com",
+            max_attempts=1, poll_interval=1
+        )
+    assert isinstance(result, TroubleshootingResult)
+    mock_init.assert_called_once()
+    mock_get.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -414,3 +437,187 @@ async def test_show_commands_run_exception(tools):
         )
     assert isinstance(result, str)
     assert result.startswith("Error running show commands:")
+
+
+# ---------------------------------------------------------------------------
+# central_bounce_port
+# ---------------------------------------------------------------------------
+
+_IFACE_RESPONSE = {"items": [{"name": "1/1/1", "operStatus": "UP", "speed": "1G", "description": "uplink"}]}
+_BOUNCE_COMPLETED = {"status": "COMPLETED", "result": {"output": "bounce OK"}, "location": "/tasks/T001"}
+
+
+# --- Parameter validation ---
+
+@pytest.mark.asyncio
+async def test_bounce_invalid_max_attempts(tools):
+    ctx = make_ctx()
+    result = await tools["central_bounce_port"](
+        ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port", max_attempts=0
+    )
+    assert result.startswith("Error validating parameters:")
+
+
+@pytest.mark.asyncio
+async def test_bounce_invalid_poll_interval(tools):
+    ctx = make_ctx()
+    result = await tools["central_bounce_port"](
+        ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port", poll_interval=0
+    )
+    assert result.startswith("Error validating parameters:")
+
+
+@pytest.mark.asyncio
+async def test_bounce_empty_ports(tools):
+    ctx = make_ctx()
+    result = await tools["central_bounce_port"](
+        ctx, serial_number="SW001", ports=[], bounce_type="port"
+    )
+    assert result.startswith("Error validating parameters:")
+
+
+@pytest.mark.asyncio
+async def test_bounce_too_many_ports(tools):
+    ctx = make_ctx()
+    result = await tools["central_bounce_port"](
+        ctx, serial_number="SW001", ports=[f"1/1/{i}" for i in range(21)], bounce_type="port"
+    )
+    assert result.startswith("Error validating parameters:")
+
+
+# --- Family rejection ---
+
+@pytest.mark.asyncio
+async def test_bounce_unsupported_family_ap(tools):
+    ctx = make_ctx()
+    with _patch_inventory(RAW_AP):
+        result = await tools["central_bounce_port"](
+            ctx, serial_number="AP001", ports=["1/1/1"], bounce_type="port"
+        )
+    assert result.startswith("Error running port bounce:")
+
+
+# --- Unknown port ---
+
+@pytest.mark.asyncio
+async def test_bounce_unknown_port(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock()
+    with _patch_inventory(RAW_CX), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_IFACE_RESPONSE):
+        result = await tools["central_bounce_port"](
+            ctx, serial_number="SW001", ports=["1/1/99"], bounce_type="port"
+        )
+    assert result.startswith("Error validating ports:")
+    ctx.elicit.assert_not_called()
+
+
+# --- Decline / cancel ---
+
+@pytest.mark.asyncio
+async def test_bounce_declined(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
+    with _patch_inventory(RAW_CX), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_IFACE_RESPONSE), \
+         patch("utils.troubleshooting.Troubleshooting.initiate_port_bounce_test") as mock_init:
+        result = await tools["central_bounce_port"](
+            ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port"
+        )
+    assert isinstance(result, str)
+    assert "bounce" in result.lower()
+    mock_init.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bounce_cancelled(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(return_value=CancelledElicitation())
+    with _patch_inventory(RAW_CX), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_IFACE_RESPONSE), \
+         patch("utils.troubleshooting.Troubleshooting.initiate_port_bounce_test") as mock_init:
+        result = await tools["central_bounce_port"](
+            ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port"
+        )
+    assert isinstance(result, str)
+    mock_init.assert_not_called()
+
+
+# --- Happy paths ---
+
+@pytest.mark.asyncio
+async def test_bounce_port_cx_success(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(return_value=AcceptedElicitation(data={}))
+    with _patch_inventory(RAW_CX), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_IFACE_RESPONSE), \
+         patch("utils.troubleshooting.Troubleshooting.initiate_port_bounce_test", return_value={"location": "/tasks/T001"}) as mock_init, \
+         patch("utils.troubleshooting.Troubleshooting.get_port_bounce_test_result", return_value=_BOUNCE_COMPLETED), \
+         patch("asyncio.sleep"):
+        result = await tools["central_bounce_port"](
+            ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port",
+            max_attempts=1, poll_interval=1
+        )
+    assert isinstance(result, TroubleshootingResult)
+    assert result.status == "COMPLETED"
+    mock_init.assert_called_once()
+    assert mock_init.call_args.kwargs["ports"] == ["1/1/1"]
+    assert mock_init.call_args.kwargs["device_type"] == "cx"
+
+
+@pytest.mark.asyncio
+async def test_bounce_poe_aoss_success(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(return_value=AcceptedElicitation(data={}))
+    with _patch_inventory(RAW_AOSS), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_IFACE_RESPONSE), \
+         patch("utils.troubleshooting.Troubleshooting.initiate_poe_bounce_test", return_value={"location": "/tasks/T001"}) as mock_init, \
+         patch("utils.troubleshooting.Troubleshooting.get_poe_bounce_test_result", return_value=_BOUNCE_COMPLETED), \
+         patch("asyncio.sleep"):
+        result = await tools["central_bounce_port"](
+            ctx, serial_number="SW002", ports=["1/1/1"], bounce_type="poe",
+            max_attempts=1, poll_interval=1
+        )
+    assert isinstance(result, TroubleshootingResult)
+    assert result.status == "COMPLETED"
+    mock_init.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_bounce_port_gateway_success(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(return_value=AcceptedElicitation(data={}))
+    with _patch_inventory(RAW_GW), \
+         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=_IFACE_RESPONSE), \
+         patch("utils.troubleshooting.Troubleshooting.initiate_port_bounce_test", return_value={"location": "/tasks/T001"}) as mock_init, \
+         patch("utils.troubleshooting.Troubleshooting.get_port_bounce_test_result", return_value=_BOUNCE_COMPLETED), \
+         patch("asyncio.sleep"):
+        result = await tools["central_bounce_port"](
+            ctx, serial_number="GW001", ports=["1/1/1"], bounce_type="port",
+            max_attempts=1, poll_interval=1
+        )
+    assert isinstance(result, TroubleshootingResult)
+    assert result.status == "COMPLETED"
+    mock_init.assert_called_once()
+    assert mock_init.call_args.kwargs["device_type"] == "gateways"
+
+
+# --- PoE fields in approval message ---
+
+@pytest.mark.asyncio
+async def test_bounce_poe_shows_poe_fields_in_elicit_message(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
+    poe_iface_response = {
+        "items": [{"name": "1/1/1", "operStatus": "UP", "speed": "1G",
+                   "poeClass": "class3", "poeStatus": "on", "poeDraw": "15"}]
+    }
+    with _patch_inventory(RAW_AOSS), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=poe_iface_response):
+        await tools["central_bounce_port"](
+            ctx, serial_number="SW002", ports=["1/1/1"], bounce_type="poe"
+        )
+    ctx.elicit.assert_called_once()
+    approval_msg = ctx.elicit.call_args.args[0]
+    assert "poeClass=class3" in approval_msg
+    assert "poeStatus=on" in approval_msg
