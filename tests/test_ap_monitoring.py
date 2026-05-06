@@ -17,10 +17,26 @@ RAW_AP = {
     "deployment": "Standalone",
     "clusterId": "cluster-1",
     "clusterName": "hq-cluster",
-    "uptimeInMillis": 12345,
-    "lastSeenAt": "2026-03-21T10:00:00.000Z",
-    "buildingId": "bldg-1",
-    "floorId": "floor-2",
+    "partNumber": "R7J54A",
+    "deviceFunction": "",
+    "role": "",
+    "ipv4": "10.0.0.1",
+    "ipv6": "",
+    "macAddress": "8c:79:09:c3:53:40",
+    "cpuUtilization": 12,
+    "memoryUtilization": 45,
+    "powerConsumption": 8.5,
+    "clientCount": 3,
+    "lastRebootReason": "Management server connected fail",
+    "publicIpv4": "61.246.230.194",
+    "lastSeenAt": None,
+    # These should be silently ignored by the model:
+    "type": "network-monitoring/access-point-monitoring",
+    "id": "AP123456",
+    "buildingId": "",
+    "floorId": "",
+    "deviceGroupId": "",
+    "deviceGroupName": "",
 }
 
 RAW_STATS = {
@@ -55,23 +71,29 @@ async def test_get_aps_no_filters(tools):
     serialized = result[0].model_dump()
     assert serialized["serial_number"] == "AP123456"
     assert serialized["status"] == "ONLINE"
-    assert serialized["uptime_in_millis"] == 12345
+    assert serialized["client_count"] == 3
+    assert serialized["last_reboot_reason"] == "Management server connected fail"
+    assert serialized["public_ipv4"] == "61.246.230.194"
+    assert serialized["cpu_utilization"] == 12
+    assert serialized["memory_utilization"] == 45
+    assert serialized["power_consumption"] == 8.5
+    assert "uptime_in_millis" not in serialized
+    assert "notes" not in serialized
+    assert "type" not in serialized
+    assert "id" not in serialized
     assert "last_seen_at" not in serialized
-    assert "buildingId" not in serialized
-    assert "floorId" not in serialized
     call_kwargs = mock_api.call_args.kwargs
     assert call_kwargs["filter_str"] is None
     assert call_kwargs["sort"] is None
 
 
 @pytest.mark.asyncio
-async def test_get_aps_offline_payload_excludes_uptime(tools):
+async def test_get_aps_offline_payload_keeps_last_seen_at(tools):
     ctx = make_ctx()
     raw_offline_ap = {
-        **RAW_AP,
+        "serialNumber": "AP123456",
         "status": "OFFLINE",
-        "uptimeInMillis": 99999,
-        "lastSeenAt": "2026-03-22T10:00:00.000Z",
+        "lastSeenAt": "2026-03-21T10:00:00.000Z",
     }
     with patch(
         "tools.ap_monitoring.MonitoringAPs.get_all_aps",
@@ -81,8 +103,9 @@ async def test_get_aps_offline_payload_excludes_uptime(tools):
 
     serialized = result[0].model_dump()
     assert serialized["status"] == "OFFLINE"
-    assert serialized["last_seen_at"] == "2026-03-22T10:00:00.000Z"
+    assert serialized["last_seen_at"] == "2026-03-21T10:00:00.000Z"
     assert "uptime_in_millis" not in serialized
+    assert "cpu_utilization" not in serialized
 
 
 @pytest.mark.asyncio
@@ -91,10 +114,6 @@ async def test_get_aps_null_optional_fields_are_excluded(tools):
     raw_sparse_ap = {
         "serialNumber": "AP999999",
         "status": "ONLINE",
-        "deviceName": None,
-        "macAddress": None,
-        "firmwareVersion": None,
-        "uptimeInMillis": 321,
     }
     with patch(
         "tools.ap_monitoring.MonitoringAPs.get_all_aps",
@@ -102,11 +121,13 @@ async def test_get_aps_null_optional_fields_are_excluded(tools):
     ):
         result = await tools["central_get_aps"](ctx)
 
-    assert result[0].model_dump() == {
-        "serial_number": "AP999999",
-        "status": "ONLINE",
-        "uptime_in_millis": 321,
-    }
+    serialized = result[0].model_dump()
+    assert serialized == {"serial_number": "AP999999", "status": "ONLINE"}
+    assert "client_count" not in serialized
+    assert "last_reboot_reason" not in serialized
+    assert "public_ipv4" not in serialized
+    assert "uptime_in_millis" not in serialized
+    assert "notes" not in serialized
 
 
 @pytest.mark.asyncio

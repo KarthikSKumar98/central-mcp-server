@@ -190,18 +190,10 @@ class AccessPoint(BaseModel):
     )
     ipv4: str | None = Field(default=None, description="IPv4 address of the AP.")
     ipv6: str | None = Field(default=None, description="IPv6 address of the AP.")
-    uptime_in_millis: int | None = Field(
-        default=None,
-        validation_alias="uptimeInMillis",
-        description="Device uptime in milliseconds.",
-    )
     last_seen_at: str | None = Field(
         default=None,
         validation_alias="lastSeenAt",
         description="Timestamp when the AP was last seen in monitoring.",
-    )
-    notes: str | None = Field(
-        default=None, description="Operator notes associated with the AP."
     )
     cpu_utilization: int | float | None = Field(
         default=None,
@@ -218,21 +210,28 @@ class AccessPoint(BaseModel):
         validation_alias="powerConsumption",
         description="Latest AP power consumption value.",
     )
+    client_count: int | None = Field(
+        default=None,
+        validation_alias="clientCount",
+        description="Number of clients currently connected to the AP.",
+    )
+    last_reboot_reason: str | None = Field(
+        default=None,
+        validation_alias="lastRebootReason",
+        description="Reason for the last AP reboot.",
+    )
+    public_ipv4: str | None = Field(
+        default=None,
+        validation_alias="publicIpv4",
+        description="Public IPv4 address of the AP.",
+    )
 
     @classmethod
     def from_api(cls, raw_ap: dict[str, Any]) -> "AccessPoint":
         """Normalize raw Central AP payloads into a sparse MCP-friendly shape."""
         normalized = dict(raw_ap)
-        status = normalized.get("status")
-
-        if status == "ONLINE":
+        if normalized.get("status") == "ONLINE":
             normalized["lastSeenAt"] = None
-        elif status == "OFFLINE":
-            normalized["uptimeInMillis"] = None
-
-        normalized.pop("buildingId", None)
-        normalized.pop("floorId", None)
-
         return cls(**normalized)
 
     @model_serializer(mode="wrap")
