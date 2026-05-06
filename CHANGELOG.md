@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.5] - 2026-05-06
+
+### Features
+- Updated `AccessPoint` model to match new `get_all_aps` API response structure — now includes `client_count`, `last_reboot_reason`, and `public_ipv4` fields with camelCase validation aliases (`clientCount`, `lastRebootReason`, `publicIpv4`)
+- Added human-readable translation for `last_reboot_reason` on `AccessPoint` — Central reboot codes (e.g. `COLD_HW_RESET`, `POWER_LOSS`, `SOFTLOCKUP`) are mapped to descriptive strings via an internal `_REBOOT_REASON_MAP` covering 35+ codes; unknown codes pass through unchanged
+
+### Refactoring
+- Removed deprecated `uptime_in_millis` and `notes` fields from `AccessPoint` to match the trimmed Central payload
+- Simplified `AccessPoint.from_api()` normalization — dropped explicit `buildingId`/`floorId` pop calls (silently ignored by the model now) and removed the `OFFLINE`-branch `uptimeInMillis` clearing; `lastSeenAt` blanking for `ONLINE` APs is retained
+
+### Tests
+- Updated `tests/test_ap_monitoring.py` raw fixture to reflect new payload shape (adds `partNumber`, `ipv4`/`ipv6`, `macAddress`, `cpuUtilization`, `memoryUtilization`, `powerConsumption`, `clientCount`, `lastRebootReason`, `publicIpv4`)
+- Added regression tests for reboot-reason mapping: known key translated, unknown key passed through unchanged
+- Replaced uptime-exclusion test with `test_get_aps_offline_payload_keeps_last_seen_at`; asserted removal of `uptime_in_millis` and `notes` from serialized output
+
+### Release
+- Bumped package version to `0.1.5` in `pyproject.toml` and `uv.lock`
+
+### Maintenance
+- Removed stale references to the `development` branch: updated `.github/pull_request_template.md`, `CONTRIBUTING.md`, and `.github/workflows/ci.yml` to reflect the current `main`-only merge flow
+
+---
+
 ## [0.1.4.2] - 2026-04-29
 
 ### Features

@@ -164,7 +164,7 @@ uv run pytest tests/ -v
 
 When opening a PR on GitHub, select the matching template (New Tool, Bug Fix, or Infrastructure). Fill in all sections before requesting review.
 
-- **Target branch**: open PRs against `development`, not `main`. Direct PRs to `main` will not be merged.
+- **Target branch**: open PRs against `main`.
 - **PR title**: describe the tool added or the change made (e.g. `Add central_get_clients tool`)
 - **Reference the API**: include the Central v1 API endpoint your tool wraps in the PR description
 - **APIs from the same category only, max 3 per PR**: tools must wrap APIs from the same category (e.g. Sites, Devices, Clients, Alerts, Events). Do not mix categories or submit more than 3 tools in one PR.
