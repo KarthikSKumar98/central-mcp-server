@@ -6,7 +6,7 @@ from fastmcp import FastMCP
 from fastmcp.experimental.transforms.code_mode import CodeMode
 
 import prompts
-from config import DYNAMIC_TOOLS
+from config import DYNAMIC_TOOLS, MCP_HOST, MCP_PORT, MCP_TRANSPORT
 from constants import API_CONCURRENCY_LIMIT
 from services.central_service import get_conn, verify_connection
 from tools import alerts, ap_monitoring, clients, devices, events, sites, wlans
@@ -57,12 +57,12 @@ prompts.register(mcp)
 
 # Entry point for the installed CLI command: `central-mcp-server` (see pyproject.toml)
 def run():
-    mcp.run()
+    if MCP_TRANSPORT == "stdio":
+        mcp.run()
+    else:
+        mcp.run(transport=MCP_TRANSPORT, host=MCP_HOST, port=MCP_PORT)
 
 
 # For local development, you can run this script directly with `python server.py` to start the MCP server.
 if __name__ == "__main__":
-    mcp.run()
-
-    # For local development with sse, use the following command:
-    # mcp.run(transport="sse", host="127.0.0.1", port=8001)
+    run()
