@@ -16,7 +16,7 @@ Fixes #<!-- issue number, if applicable -->
 Category: <!-- e.g. Sites, Devices, Clients, Alerts, Events -->
 
 ## Checklist
-- [ ] PR targets `development`, not `main`
+- [ ] PR targets `main`
 - [ ] `ruff check . && ruff format .` passes
 - [ ] `uv run pytest tests/ -v` passes
 - [ ] New/updated tests cover the change
