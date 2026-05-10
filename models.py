@@ -582,3 +582,27 @@ class PaginatedEvents(BaseModel):
         default=None,
         description="Cursor for the next page. Pass as `cursor` in the next call. None means no more pages.",
     )
+
+
+class TroubleshootingResult(BaseModel):
+    """Result of an async troubleshooting task run against a Central-managed device."""
+
+    status: str = Field(
+        description="Final task status returned by Central (e.g. COMPLETED, FAILED, RUNNING)."
+    )
+    device_type: str = Field(
+        description="Resolved device family used to dispatch the test (aps, cx, aoss, or gateways)."
+    )
+    serial_number: str = Field(description="Serial number of the device under test.")
+    raw_output: str | None = Field(
+        default=None,
+        description="CLI Raw output for Troubleshooting Test (populated for ping and traceroute).",
+    )
+    output: dict[str, Any] | str | None = Field(
+        default=None,
+        description="Parsed output payload from Central. Structure varies by test type.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error detail returned by Central if the task failed, or None on success.",
+    )

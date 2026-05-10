@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "central-mcp-server"
-version = "0.1.5"
+version = "0.1.6"
 description = "Unofficial MCP server for HPE Aruba Networking Central"
 readme = {file = "README.pypi.md", content-type = "text/markdown"}
 requires-python = ">=3.10"
@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
     "fastmcp[code-mode]>=3.1.1",
     "python-dotenv>=1.0.0",
-    "pycentral==2.0a17",
+    "pycentral==2.0a19",
 ]
 
 [project.urls]
@@ -88,7 +88,7 @@ ignore = [
 # D and ANN strictly enforced only in tools/ — LLM descriptions and schemas live there
 # D417 suppressed in tools/ — ctx parameter is boilerplate in every tool, not worth documenting
 "tools/*.py"    = ["D417"]
-"utils/*.py"    = ["D102", "D103", "ANN001", "ANN201", "ANN202"]
+"utils/*.py"    = ["D102", "D103", "ANN001", "ANN201", "ANN202", "ANN401"]
 "services/*.py" = ["D102", "D103", "ANN001", "ANN201", "ANN202"]
 "models.py"     = ["D102", "D103", "ANN001", "ANN201", "ANN202"]
 "config.py"     = ["D102", "D103", "ANN001", "ANN201", "ANN202"]

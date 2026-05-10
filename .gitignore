@@ -7,3 +7,7 @@ docs/*
 AGENTS.md
 CLAUDE.md
 .github/agents/*
+fastmcp-docs.md
+mcp.json
+.agents/*
+scripts/fetch_fastmcp_docs.py
