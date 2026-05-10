@@ -326,6 +326,18 @@ async def fetch_device_interfaces(
     return []
 
 
+def format_port_speed(value) -> str:
+    """Convert raw Mbps speed value to human-readable string (e.g. 2500 → '2.5G')."""
+    try:
+        mbps = int(value)
+    except (TypeError, ValueError):
+        return "unknown"
+    if mbps >= 1000:
+        g = mbps / 1000
+        return f"{g:g}G"
+    return f"{mbps}M"
+
+
 def select_interfaces_for_ports(
     interfaces: list[dict], ports: list[str]
 ) -> tuple[list[dict], list[str]]:

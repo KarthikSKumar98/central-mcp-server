@@ -609,8 +609,13 @@ async def test_bounce_poe_shows_poe_fields_in_elicit_message(tools):
     ctx = make_ctx()
     ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
     poe_iface_response = {
-        "items": [{"name": "1/1/1", "operStatus": "UP", "speed": "1G",
-                   "poeClass": "class3", "poeStatus": "on", "poeDraw": "15"}]
+        "items": [{
+            "name": "1/1/1", "operStatus": "Up", "speed": 2500,
+            "poeClass": "802.3at (PoE+)", "poeStatus": "Drawing Watts",
+            "description": "Campus-AP",
+            "neighbour": "CP-DFW-AP07", "neighbourType": "Access Point",
+            "neighbourHealth": "Good",
+        }]
     }
     with _patch_inventory(RAW_AOSS), \
          patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=poe_iface_response):
@@ -619,5 +624,69 @@ async def test_bounce_poe_shows_poe_fields_in_elicit_message(tools):
         )
     ctx.elicit.assert_called_once()
     approval_msg = ctx.elicit.call_args.args[0]
-    assert "poeClass=class3" in approval_msg
-    assert "poeStatus=on" in approval_msg
+    assert "WARNING:" in approval_msg
+    assert "PoE power" in approval_msg
+    assert "poeStatus=Drawing Watts" in approval_msg
+    assert "poeClass=802.3at (PoE+)" in approval_msg
+    assert "speed=2.5G" in approval_msg
+    assert "connected: CP-DFW-AP07 (Access Point, health=Good)" in approval_msg
+    assert "poeDraw" not in approval_msg
+
+
+@pytest.mark.asyncio
+async def test_bounce_port_shows_warning_and_neighbour(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
+    iface_response = {
+        "items": [{
+            "name": "1/1/2", "operStatus": "Up", "speed": 1000,
+            "description": "Uplink",
+            "neighbour": "SW-CORE-01", "neighbourType": "Switch",
+            "neighbourHealth": "Good",
+        }]
+    }
+    with _patch_inventory(RAW_AOSS), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=iface_response):
+        await tools["central_bounce_port"](
+            ctx, serial_number="SW002", ports=["1/1/2"], bounce_type="port"
+        )
+    ctx.elicit.assert_called_once()
+    approval_msg = ctx.elicit.call_args.args[0]
+    assert "WARNING:" in approval_msg
+    assert "drop the link" in approval_msg
+    assert "connected: SW-CORE-01 (Switch, health=Good)" in approval_msg
+    assert "speed=1G" in approval_msg
+    assert "poeStatus" not in approval_msg
+    assert "poeClass" not in approval_msg
+
+
+@pytest.mark.asyncio
+async def test_bounce_port_omits_neighbour_line_when_no_neighbour(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
+    iface_response = {
+        "items": [{"name": "1/1/3", "operStatus": "Down", "speed": 100, "neighbour": None}]
+    }
+    with _patch_inventory(RAW_AOSS), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=iface_response):
+        await tools["central_bounce_port"](
+            ctx, serial_number="SW002", ports=["1/1/3"], bounce_type="port"
+        )
+    ctx.elicit.assert_called_once()
+    approval_msg = ctx.elicit.call_args.args[0]
+    assert "connected:" not in approval_msg
+    assert "speed=100M" in approval_msg
+
+
+@pytest.mark.parametrize("value,expected", [
+    (2500, "2.5G"),
+    (1000, "1G"),
+    (10000, "10G"),
+    (100, "100M"),
+    (10, "10M"),
+    (None, "unknown"),
+    ("foo", "unknown"),
+])
+def test_format_port_speed(value, expected):
+    from utils.troubleshooting import format_port_speed
+    assert format_port_speed(value) == expected

@@ -16,6 +16,7 @@ from utils.common import api_context, format_tool_error
 from utils.troubleshooting import (
     NETWORK_TEST_DISPATCH,
     fetch_device_interfaces,
+    format_port_speed,
     get_supported_families,
     resolve_family_from_serial,
     run_async_test,
@@ -405,24 +406,47 @@ def register(mcp: FastMCP) -> None:
                     ),
                 )
 
+            if bounce_type == "poe":
+                warning = (
+                    "WARNING: This will cut PoE power to the listed ports for several seconds. "
+                    "Any powered device (AP, phone, camera) will lose power and reboot."
+                )
+            else:
+                warning = (
+                    "WARNING: This will drop the link on the listed ports for several seconds. "
+                    "Any connected device or client will lose connectivity during that time."
+                )
             lines = [
                 f"Confirm {bounce_type.upper()} BOUNCE on device {serial_number} ({family})",
+                warning,
                 f"The following {len(matched)} port(s) will be affected:\n",
             ]
             for iface in matched:
                 name = iface.get("name", "?")
                 oper = iface.get("operStatus") or iface.get("status") or "unknown"
-                speed = iface.get("speed", "unknown")
+                speed = format_port_speed(iface.get("speed"))
                 desc = iface.get("description") or iface.get("alias") or ""
                 line = f"  • {name}  status={oper}  speed={speed}"
                 if desc:
                     line += f"  desc={desc}"
                 if bounce_type == "poe":
-                    poe_class = iface.get("poeClass", "N/A")
                     poe_status = iface.get("poeStatus", "N/A")
-                    poe_draw = iface.get("poeDraw", "N/A")
-                    line += f"  poeClass={poe_class}  poeStatus={poe_status}  poeDraw={poe_draw}"
-                lines.append(line)
+                    poe_class = iface.get("poeClass", "N/A")
+                    line += f"  poeStatus={poe_status}  poeClass={poe_class}"
+                neighbour = iface.get("neighbour")
+                if neighbour:
+                    n_type = iface.get("neighbourType")
+                    n_health = iface.get("neighbourHealth")
+                    if n_type and n_health:
+                        neighbour_line = f"      connected: {neighbour} ({n_type}, health={n_health})"
+                    elif n_type:
+                        neighbour_line = f"      connected: {neighbour} ({n_type})"
+                    else:
+                        neighbour_line = f"      connected: {neighbour}"
+                    lines.append(line)
+                    lines.append(neighbour_line)
+                else:
+                    lines.append(line)
             lines.append("\nAccept to proceed. Decline or cancel to abort.")
             approval_msg = "\n".join(lines)
 
