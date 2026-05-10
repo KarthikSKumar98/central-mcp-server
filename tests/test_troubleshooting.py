@@ -685,8 +685,95 @@ async def test_bounce_port_omits_neighbour_line_when_no_neighbour(tools):
     (100, "100M"),
     (10, "10M"),
     (None, "unknown"),
-    ("foo", "unknown"),
+    ("foo", "foo"),
+    ("Auto", "Auto"),
+    ("10000", "10G"),
 ])
 def test_format_port_speed(value, expected):
     from utils.troubleshooting import format_port_speed
     assert format_port_speed(value) == expected
+
+
+# ---------------------------------------------------------------------------
+# central_bounce_port — gateway port approval message
+# ---------------------------------------------------------------------------
+
+_GW_IFACE_UP = {
+    "name": "GE 0/0/1",
+    "operState": "Up",
+    "speed": "10000",
+    "health": "Good",
+    "portType": "Access",
+    "duplex": "Full",
+    "adminState": "Enabled",
+    "vlan": "101,201,3002",
+}
+
+_GW_IFACE_DOWN = {
+    "name": "GE 0/0/0",
+    "operState": "Down",
+    "speed": "Auto",
+    "health": "Unknown",
+    "portType": "Access",
+    "duplex": "Auto",
+    "adminState": "Enabled",
+}
+
+
+@pytest.mark.asyncio
+async def test_gateway_approval_shows_operState_and_health(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
+    gw_response = {"ports": [_GW_IFACE_UP]}
+    with _patch_inventory(RAW_GW), \
+         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+        await tools["central_bounce_port"](
+            ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="port"
+        )
+    approval_msg = ctx.elicit.call_args.args[0]
+    assert "status=Up" in approval_msg
+    assert "health=Good" in approval_msg
+    assert "operStatus" not in approval_msg
+
+
+@pytest.mark.asyncio
+async def test_gateway_approval_speed_auto_passes_through(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
+    gw_response = {"ports": [_GW_IFACE_DOWN]}
+    with _patch_inventory(RAW_GW), \
+         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+        await tools["central_bounce_port"](
+            ctx, serial_number="GW001", ports=["GE 0/0/0"], bounce_type="port"
+        )
+    approval_msg = ctx.elicit.call_args.args[0]
+    assert "speed=Auto" in approval_msg
+
+
+@pytest.mark.asyncio
+async def test_gateway_approval_omits_neighbour_section(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
+    gw_response = {"ports": [_GW_IFACE_UP]}
+    with _patch_inventory(RAW_GW), \
+         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+        await tools["central_bounce_port"](
+            ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="port"
+        )
+    approval_msg = ctx.elicit.call_args.args[0]
+    assert "connected:" not in approval_msg
+
+
+@pytest.mark.asyncio
+async def test_gateway_approval_omits_poe_fields_for_poe_bounce(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
+    gw_response = {"ports": [_GW_IFACE_UP]}
+    with _patch_inventory(RAW_GW), \
+         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+        await tools["central_bounce_port"](
+            ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="poe"
+        )
+    approval_msg = ctx.elicit.call_args.args[0]
+    assert "poeStatus" not in approval_msg
+    assert "poeClass" not in approval_msg

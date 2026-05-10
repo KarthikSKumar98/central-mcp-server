@@ -423,30 +423,36 @@ def register(mcp: FastMCP) -> None:
             ]
             for iface in matched:
                 name = iface.get("name", "?")
-                oper = iface.get("operStatus") or iface.get("status") or "unknown"
                 speed = format_port_speed(iface.get("speed"))
-                desc = iface.get("description") or iface.get("alias") or ""
-                line = f"  • {name}  status={oper}  speed={speed}"
-                if desc:
-                    line += f"  desc={desc}"
-                if bounce_type == "poe":
-                    poe_status = iface.get("poeStatus", "N/A")
-                    poe_class = iface.get("poeClass", "N/A")
-                    line += f"  poeStatus={poe_status}  poeClass={poe_class}"
-                neighbour = iface.get("neighbour")
-                if neighbour:
-                    n_type = iface.get("neighbourType")
-                    n_health = iface.get("neighbourHealth")
-                    if n_type and n_health:
-                        neighbour_line = f"      connected: {neighbour} ({n_type}, health={n_health})"
-                    elif n_type:
-                        neighbour_line = f"      connected: {neighbour} ({n_type})"
-                    else:
-                        neighbour_line = f"      connected: {neighbour}"
+                if family == "gateways":
+                    oper = iface.get("operState", "unknown")
+                    health = iface.get("health", "unknown")
+                    line = f"  • {name}  status={oper}  speed={speed}  health={health}"
                     lines.append(line)
-                    lines.append(neighbour_line)
                 else:
-                    lines.append(line)
+                    oper = iface.get("operStatus") or iface.get("status") or "unknown"
+                    desc = iface.get("description") or iface.get("alias") or ""
+                    line = f"  • {name}  status={oper}  speed={speed}"
+                    if desc:
+                        line += f"  desc={desc}"
+                    if bounce_type == "poe":
+                        poe_status = iface.get("poeStatus", "N/A")
+                        poe_class = iface.get("poeClass", "N/A")
+                        line += f"  poeStatus={poe_status}  poeClass={poe_class}"
+                    neighbour = iface.get("neighbour")
+                    if neighbour:
+                        n_type = iface.get("neighbourType")
+                        n_health = iface.get("neighbourHealth")
+                        if n_type and n_health:
+                            neighbour_line = f"      connected: {neighbour} ({n_type}, health={n_health})"
+                        elif n_type:
+                            neighbour_line = f"      connected: {neighbour} ({n_type})"
+                        else:
+                            neighbour_line = f"      connected: {neighbour}"
+                        lines.append(line)
+                        lines.append(neighbour_line)
+                    else:
+                        lines.append(line)
             lines.append("\nAccept to proceed. Decline or cancel to abort.")
             approval_msg = "\n".join(lines)
 

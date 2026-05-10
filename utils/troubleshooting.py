@@ -327,11 +327,16 @@ async def fetch_device_interfaces(
 
 
 def format_port_speed(value) -> str:
-    """Convert raw Mbps speed value to human-readable string (e.g. 2500 → '2.5G')."""
+    """Convert raw Mbps speed value to human-readable string (e.g. 2500 → '2.5G').
+
+    Non-numeric strings (e.g. 'Auto') are returned as-is. None returns 'unknown'.
+    """
+    if value is None:
+        return "unknown"
     try:
         mbps = int(value)
     except (TypeError, ValueError):
-        return "unknown"
+        return str(value)
     if mbps >= 1000:
         g = mbps / 1000
         return f"{g:g}G"
