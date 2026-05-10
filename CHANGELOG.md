@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.6.1] - 2026-05-11
+
+### Bug Fixes
+- Fixed `central_bounce_port` approval message for gateway ports — gateway ports use `operState`/`health` instead of `operStatus`, report speed as strings (e.g. `"Auto"`) rather than integer Mbps, and have no neighbour or PoE fields; `format_port_speed()` now passes through non-numeric strings unchanged and the approval message builder has a dedicated gateway branch
+
+### Maintenance
+- Lowered `BOUNCE_PORTS_MAX` from 20 to 5 and added `SHOW_COMMANDS_MAX = 5` in `constants.py` to reduce blast radius; updated validation logic, error messages, and docstrings in `central_bounce_port` and `central_run_show_commands` accordingly
+
+### Release
+- Bumped package version to `0.1.6.1` in `pyproject.toml` and `uv.lock`
+
+---
+
 ## [0.1.6] - 2026-05-11
 
 ### New Tools
