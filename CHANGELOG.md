@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.6] - 2026-05-11
+
+### New Tools
+- `central_run_network_test` — initiate ping, traceroute, or HTTPS reachability tests on CX/AOS-S/gateway devices and poll for results
+- `central_run_show_commands` — execute read-only `show` commands on CX/AOS-S/gateway devices and return structured output
+- `central_bounce_port` — bounce a switch port or toggle PoE on CX/AOS-S/gateway devices, gated by MCP elicitation confirmation; approval message surfaces connection-loss warnings, neighbour/connected-device details, current PoE status, and link speed
+
+### Features
+- Added `DIAGNOSTIC` and `DESTRUCTIVE` `ToolAnnotations` constants in `tools/__init__.py` for non-read-only tool classification
+- Added `TroubleshootingResult` Pydantic model in `models.py` with `raw_output` field for ping/traceroute output capture
+- Added troubleshooting limit/poll constants to `constants.py`
+- Added `fetch_device_interfaces` and `select_interfaces_for_ports` helpers in `utils/troubleshooting.py`
+- Added speed formatting utility for port-bounce approval messages
+
+### Tests
+- Added `tests/test_troubleshooting.py` covering `central_run_network_test`, `central_run_show_commands`, and `central_bounce_port`: parameter validation, unsupported family rejection, unknown port detection, decline/cancel flows, successful port and PoE bounce, HTTPS CX polling via `get_http_test_result`, and ping/traceroute `include_raw_output=True` initiation
+- Added `tests/integration/test_troubleshooting_live.py` with auto-discovery against a live Central instance
+- Updated fixtures to use bare model numbers (e.g. `"6300M"`) matching Central API responses
+
+### Documentation
+- Added Troubleshooting Tools section to `README.md` and `README.pypi.md`
+- Added Destructive Operations section to `INSTRUCTIONS.md` describing the confirmation workflow and `central_bounce_port` usage guidelines
+- Refreshed README AI assistant query examples and command descriptions
+- Clarified network-monitoring usage guidelines in `INSTRUCTIONS.md`
+
+### Maintenance
+- Bumped `pycentral` to `2.0a19`
+- Removed development-branch step from publish workflow
+- Gitignored `fastmcp-docs.md`, `mcp.json`, `.agents/`, and `scripts/fetch_fastmcp_docs.py`
+
+### Release
+- Bumped package version to `0.1.6` in `pyproject.toml` and `uv.lock`
+
+---
+
 ## [0.1.5] - 2026-05-06
 
 ### Features
