@@ -246,6 +246,9 @@ Once connected, you can ask your AI assistant questions like:
 - *"What critical alerts are active across the network?"*
 - *"Find all failed wireless clients at HQ in the last 24 hours."*
 - *"What events happened on switch SW-CORE-01 yesterday?"*
+- *"Ping 8.8.8.8 from switch SW-CORE-01."*
+- *"Run 'show version' and 'show interfaces brief' on switch SG43KN5017."*
+- *"Bounce PoE on port 1/1/6 of switch SG43KN5017."*
 
 See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-central/docs/central-mcp-in-action)) for real query examples across all supported clients.
 
@@ -321,7 +324,7 @@ graph TD
 |------|-------------|
 | `central_run_network_test` | Run a live network diagnostic (ping, traceroute, http, https, tcp, nslookup) against a device — device family resolved automatically from serial number |
 | `central_run_show_commands` | Execute show commands on a device; auto-validates against the device's supported command catalog and returns the catalog on any mismatch |
-| `central_bounce_switch_port` | Bounce ports or toggle PoE on CX/AOS-S switches and gateways — fetches live interface state and requires user confirmation before executing |
+| `central_bounce_port` | Bounce ports or toggle PoE on CX/AOS-S switches and gateways — fetches live interface state and requires user confirmation before executing |
 
 ### LLM Workflow for Events
 
