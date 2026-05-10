@@ -7,6 +7,7 @@ from pycentral.troubleshooting import Troubleshooting
 
 from constants import (
     BOUNCE_PORTS_MAX,
+    SHOW_COMMANDS_MAX,
     TROUBLESHOOTING_POLL_INTERVAL,
     TROUBLESHOOTING_POLL_MAX_ATTEMPTS,
 )
@@ -243,7 +244,7 @@ def register(mcp: FastMCP) -> None:
         supported, an error is returned listing both the unmatched commands and the full
         catalog so you can select a valid alternative and retry.
 
-        Each command must begin with 'show ' (case-insensitive). Maximum 20 commands per call.
+        Each command must begin with 'show ' (case-insensitive). Maximum 5 commands per call.
 
         Workflow:
         1. Resolves device family from serial_number.
@@ -256,7 +257,7 @@ def register(mcp: FastMCP) -> None:
         ----------
         - serial_number: Serial number of the target device.
         - commands: List of show commands to execute (e.g. ["show version", "show arp"]).
-          Each must start with 'show ' (case-insensitive). Maximum 20 commands.
+          Each must start with 'show ' (case-insensitive). Maximum 5 commands.
         - max_attempts: Maximum polling iterations (default 5).
         - poll_interval: Seconds between polling attempts (default 5).
 
@@ -273,9 +274,10 @@ def register(mcp: FastMCP) -> None:
             return format_tool_error(
                 "validating parameters", ValueError("commands list must not be empty")
             )
-        if len(commands) > 20:
+        if len(commands) > SHOW_COMMANDS_MAX:
             return format_tool_error(
-                "validating parameters", ValueError("maximum 20 commands per call")
+                "validating parameters",
+                ValueError(f"maximum {SHOW_COMMANDS_MAX} commands per call"),
             )
 
         invalid = [c for c in commands if not c.strip().lower().startswith("show ")]
@@ -347,7 +349,7 @@ def register(mcp: FastMCP) -> None:
         Parameters
         ----------
         - serial_number: Serial number of the target device.
-        - ports: List of port names to bounce (e.g. ["1/1/1", "1/1/2"]). Maximum 20 ports.
+        - ports: List of port names to bounce (e.g. ["1/1/1", "1/1/2"]). Maximum 5 ports.
         - bounce_type: "port" for a physical port bounce (disables then re-enables the port),
           "poe" to toggle Power over Ethernet (cuts and restores power to the connected device).
         - max_attempts: Maximum polling iterations (default 10).

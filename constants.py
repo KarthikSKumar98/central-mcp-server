@@ -9,7 +9,8 @@ TROUBLESHOOTING_POLL_MAX_ATTEMPTS = (
     10  # Default poll iterations for async diagnostic tasks
 )
 TROUBLESHOOTING_POLL_INTERVAL = 15  # Default seconds between polls
-BOUNCE_PORTS_MAX = 20  # Max ports per bounce call
+BOUNCE_PORTS_MAX = 5  # Max ports per bounce call
+SHOW_COMMANDS_MAX = 5  # Max show commands per central_run_show_commands call
 
 TIME_RANGE = Literal[
     "last_1h", "last_6h", "last_24h", "last_7d", "last_30d", "today", "yesterday"
