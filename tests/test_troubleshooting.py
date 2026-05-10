@@ -365,7 +365,7 @@ async def test_show_commands_empty_list(tools):
 async def test_show_commands_exceeds_max(tools):
     ctx = make_ctx()
     result = await tools["central_run_show_commands"](
-        ctx, serial_number="AP001", commands=[f"show vlan {i}" for i in range(21)]
+        ctx, serial_number="AP001", commands=[f"show vlan {i}" for i in range(6)]
     )
     assert result.startswith("Error validating parameters:")
 
@@ -480,7 +480,7 @@ async def test_bounce_empty_ports(tools):
 async def test_bounce_too_many_ports(tools):
     ctx = make_ctx()
     result = await tools["central_bounce_port"](
-        ctx, serial_number="SW001", ports=[f"1/1/{i}" for i in range(21)], bounce_type="port"
+        ctx, serial_number="SW001", ports=[f"1/1/{i}" for i in range(6)], bounce_type="port"
     )
     assert result.startswith("Error validating parameters:")
 
