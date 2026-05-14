@@ -528,59 +528,59 @@ def register(mcp: FastMCP) -> None:
             except Exception as e:
                 return format_tool_error(f"running {bounce_type} bounce", e)
 
-    @mcp.tool(annotations=DIAGNOSTIC)
-    async def central_get_port_details(
-        ctx: Context,
-        serial_number: str,
-        ports: list[str],
-    ) -> str:
-        """Return live port state for one or more switch or gateway ports.
+    # @mcp.tool(annotations=DIAGNOSTIC)
+    # async def central_get_port_details(
+    #     ctx: Context,
+    #     serial_number: str,
+    #     ports: list[str],
+    # ) -> str:
+    #     """Return live port state for one or more switch or gateway ports.
 
-        Fetches the current interface list for the device and returns status,
-        speed, neighbour information, and PoE state (poeStatus/poeClass) for each
-        requested port when the interface reports it.
-        Use this tool to assess port health or understand what is connected
-        before deciding whether to take action (e.g. bouncing a port).
+    #     Fetches the current interface list for the device and returns status,
+    #     speed, neighbour information, and PoE state (poeStatus/poeClass) for each
+    #     requested port when the interface reports it.
+    #     Use this tool to assess port health or understand what is connected
+    #     before deciding whether to take action (e.g. bouncing a port).
 
-        Supported device families: CX switches, AOS-S switches, gateways.
-        Not supported: access points.
+    #     Supported device families: CX switches, AOS-S switches, gateways.
+    #     Not supported: access points.
 
-        Parameters
-        ----------
-        - serial_number: Serial number of the target device.
-        - ports: List of port names to inspect (e.g. ["1/1/1", "1/1/2"]).
+    #     Parameters
+    #     ----------
+    #     - serial_number: Serial number of the target device.
+    #     - ports: List of port names to inspect (e.g. ["1/1/1", "1/1/2"]).
 
-        """
-        async with api_context(ctx) as conn:
-            try:
-                family = await resolve_family_from_serial(conn, serial_number)
-            except ValueError as e:
-                return format_tool_error("resolving device family", e)
+    #     """
+    #     async with api_context(ctx) as conn:
+    #         try:
+    #             family = await resolve_family_from_serial(conn, serial_number)
+    #         except ValueError as e:
+    #             return format_tool_error("resolving device family", e)
 
-            if family not in ("cx", "aos-s", "gateways"):
-                return format_tool_error(
-                    "fetching port details",
-                    ValueError(
-                        f"Device '{serial_number}' (family: {family}) does not support port inspection. "
-                        "Supported families: cx, aos-s, gateways."
-                    ),
-                )
+    #         if family not in ("cx", "aos-s", "gateways"):
+    #             return format_tool_error(
+    #                 "fetching port details",
+    #                 ValueError(
+    #                     f"Device '{serial_number}' (family: {family}) does not support port inspection. "
+    #                     "Supported families: cx, aos-s, gateways."
+    #                 ),
+    #             )
 
-            try:
-                interfaces = await fetch_device_interfaces(conn, family, serial_number)
-            except Exception as e:
-                return format_tool_error("fetching interface list", e)
+    #         try:
+    #             interfaces = await fetch_device_interfaces(conn, family, serial_number)
+    #         except Exception as e:
+    #             return format_tool_error("fetching interface list", e)
 
-            matched, unknown = select_interfaces_for_ports(interfaces, ports)
-            if unknown:
-                return format_tool_error(
-                    "fetching port details",
-                    ValueError(
-                        f"Unknown ports: {unknown}. "
-                        f"Available ports on this device: {[i.get('name') for i in interfaces]}"
-                    ),
-                )
+    #         matched, unknown = select_interfaces_for_ports(interfaces, ports)
+    #         if unknown:
+    #             return format_tool_error(
+    #                 "fetching port details",
+    #                 ValueError(
+    #                     f"Unknown ports: {unknown}. "
+    #                     f"Available ports on this device: {[i.get('name') for i in interfaces]}"
+    #                 ),
+    #             )
 
-            lines = [f"Port details for device {serial_number} ({family}):\n"]
-            lines.extend(_format_port_lines(matched, family, include_poe=True))
-            return "\n".join(lines)
+    #         lines = [f"Port details for device {serial_number} ({family}):\n"]
+    #         lines.extend(_format_port_lines(matched, family, include_poe=True))
+    #         return "\n".join(lines)

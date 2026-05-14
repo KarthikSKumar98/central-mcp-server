@@ -8,9 +8,6 @@ All notable changes to this project will be documented in this file.
 - Guarded `ctx.elicit` against `McpError` in `central_bounce_port` so clients that don't support elicitation receive a clear error instead of a crash
 - Fixed gateway port name matching in `select_interfaces_for_ports` — gateway interface names like `"GE 0/0/0"` now match user input `"0/0/0"`, `"GE0/0/0"`, or `"GE 0/0/0"` interchangeably via prefix-stripping fuzzy normalization
 
-### New Tools
-- `central_get_port_details` — inspect a specific port on a CX/AOS-S/gateway device, returning operational state, neighbour/connected-device info, PoE status, and link speed
-
 ### Refactoring
 - Replaced `bounce_type` sentinel in `_format_port_lines` with an `include_poe` bool for clarity
 

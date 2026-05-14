@@ -826,90 +826,90 @@ _CX_IFACE_RESPONSE = {
 }
 
 
-@pytest.mark.asyncio
-async def test_get_port_details_cx(tools):
-    """Happy path for CX switch: returns formatted port details."""
-    ctx = make_ctx()
-    with _patch_inventory(RAW_CX), \
-         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_CX_IFACE_RESPONSE):
-        result = await tools["central_get_port_details"](
-            ctx, serial_number="SW001", ports=["1/1/1"]
-        )
-    assert isinstance(result, str)
-    assert "1/1/1" in result
-    assert "status=Up" in result
-    assert "speed=1G" in result
-    assert "connected: CORE-SW (Switch, health=Good)" in result
+# @pytest.mark.asyncio
+# async def test_get_port_details_cx(tools):
+#     """Happy path for CX switch: returns formatted port details."""
+#     ctx = make_ctx()
+#     with _patch_inventory(RAW_CX), \
+#          patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_CX_IFACE_RESPONSE):
+#         result = await tools["central_get_port_details"](
+#             ctx, serial_number="SW001", ports=["1/1/1"]
+#         )
+#     assert isinstance(result, str)
+#     assert "1/1/1" in result
+#     assert "status=Up" in result
+#     assert "speed=1G" in result
+#     assert "connected: CORE-SW (Switch, health=Good)" in result
 
 
-@pytest.mark.asyncio
-async def test_get_port_details_gateway(tools):
-    """Happy path for gateway: returns operState and health fields."""
-    ctx = make_ctx()
-    gw_response = {"ports": [_GW_IFACE_UP]}
-    with _patch_inventory(RAW_GW), \
-         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
-        result = await tools["central_get_port_details"](
-            ctx, serial_number="GW001", ports=["GE 0/0/1"]
-        )
-    assert isinstance(result, str)
-    assert "GE 0/0/1" in result
-    assert "status=Up" in result
-    assert "health=Good" in result
-    assert "speed=10G" in result
+# @pytest.mark.asyncio
+# async def test_get_port_details_gateway(tools):
+#     """Happy path for gateway: returns operState and health fields."""
+#     ctx = make_ctx()
+#     gw_response = {"ports": [_GW_IFACE_UP]}
+#     with _patch_inventory(RAW_GW), \
+#          patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+#         result = await tools["central_get_port_details"](
+#             ctx, serial_number="GW001", ports=["GE 0/0/1"]
+#         )
+#     assert isinstance(result, str)
+#     assert "GE 0/0/1" in result
+#     assert "status=Up" in result
+#     assert "health=Good" in result
+#     assert "speed=10G" in result
 
 
-@pytest.mark.asyncio
-async def test_get_port_details_unknown_ports(tools):
-    """Unknown ports produce an error listing available ports."""
-    ctx = make_ctx()
-    with _patch_inventory(RAW_CX), \
-         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_CX_IFACE_RESPONSE):
-        result = await tools["central_get_port_details"](
-            ctx, serial_number="SW001", ports=["9/9/9"]
-        )
-    assert result.startswith("Error fetching port details:")
-    assert "9/9/9" in result
-    assert "1/1/1" in result  # available ports listed
+# @pytest.mark.asyncio
+# async def test_get_port_details_unknown_ports(tools):
+#     """Unknown ports produce an error listing available ports."""
+#     ctx = make_ctx()
+#     with _patch_inventory(RAW_CX), \
+#          patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_CX_IFACE_RESPONSE):
+#         result = await tools["central_get_port_details"](
+#             ctx, serial_number="SW001", ports=["9/9/9"]
+#         )
+#     assert result.startswith("Error fetching port details:")
+#     assert "9/9/9" in result
+#     assert "1/1/1" in result  # available ports listed
 
 
-@pytest.mark.asyncio
-async def test_get_port_details_unsupported_family(tools):
-    """Access points are not supported; returns clear error."""
-    ctx = make_ctx()
-    with _patch_inventory(RAW_AP):
-        result = await tools["central_get_port_details"](
-            ctx, serial_number="AP001", ports=["eth0"]
-        )
-    assert result.startswith("Error fetching port details:")
+# @pytest.mark.asyncio
+# async def test_get_port_details_unsupported_family(tools):
+#     """Access points are not supported; returns clear error."""
+#     ctx = make_ctx()
+#     with _patch_inventory(RAW_AP):
+#         result = await tools["central_get_port_details"](
+#             ctx, serial_number="AP001", ports=["eth0"]
+#         )
+#     assert result.startswith("Error fetching port details:")
 
 
-@pytest.mark.asyncio
-async def test_get_port_details_includes_poe_fields_when_present(tools):
-    """central_get_port_details emits poeStatus/poeClass when the interface reports them."""
-    ctx = make_ctx()
-    poe_iface_response = {
-        "items": [
-            {
-                "name": "1/1/3",
-                "operStatus": "Up",
-                "speed": 2500,
-                "description": "AP uplink",
-                "poeStatus": "Drawing Watts",
-                "poeClass": "802.3at (PoE+)",
-                "neighbour": None,
-            }
-        ]
-    }
-    with _patch_inventory(RAW_CX), \
-         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=poe_iface_response):
-        result = await tools["central_get_port_details"](
-            ctx, serial_number="SW001", ports=["1/1/3"]
-        )
-    assert isinstance(result, str)
-    assert "1/1/3" in result
-    assert "poeStatus=Drawing Watts" in result
-    assert "poeClass=802.3at (PoE+)" in result
+# @pytest.mark.asyncio
+# async def test_get_port_details_includes_poe_fields_when_present(tools):
+#     """central_get_port_details emits poeStatus/poeClass when the interface reports them."""
+#     ctx = make_ctx()
+#     poe_iface_response = {
+#         "items": [
+#             {
+#                 "name": "1/1/3",
+#                 "operStatus": "Up",
+#                 "speed": 2500,
+#                 "description": "AP uplink",
+#                 "poeStatus": "Drawing Watts",
+#                 "poeClass": "802.3at (PoE+)",
+#                 "neighbour": None,
+#             }
+#         ]
+#     }
+#     with _patch_inventory(RAW_CX), \
+#          patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=poe_iface_response):
+#         result = await tools["central_get_port_details"](
+#             ctx, serial_number="SW001", ports=["1/1/3"]
+#         )
+#     assert isinstance(result, str)
+#     assert "1/1/3" in result
+#     assert "poeStatus=Drawing Watts" in result
+#     assert "poeClass=802.3at (PoE+)" in result
 
 
 # ---------------------------------------------------------------------------
@@ -980,16 +980,16 @@ def test_normalize_port_name_edge_case_all_letters():
 # test_get_port_details_gateway — normalized port name lookup
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
-async def test_get_port_details_gateway_normalized_port(tools):
-    """central_get_port_details finds a gateway port when user passes '0/0/1' instead of 'GE 0/0/1'."""
-    ctx = make_ctx()
-    gw_response = {"ports": [_GW_IFACE_UP]}  # _GW_IFACE_UP has name "GE 0/0/1"
-    with _patch_inventory(RAW_GW), \
-         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
-        result = await tools["central_get_port_details"](
-            ctx, serial_number="GW001", ports=["0/0/1"]
-        )
-    assert isinstance(result, str)
-    assert "GE 0/0/1" in result
-    assert "status=Up" in result
+# @pytest.mark.asyncio
+# async def test_get_port_details_gateway_normalized_port(tools):
+#     """central_get_port_details finds a gateway port when user passes '0/0/1' instead of 'GE 0/0/1'."""
+#     ctx = make_ctx()
+#     gw_response = {"ports": [_GW_IFACE_UP]}  # _GW_IFACE_UP has name "GE 0/0/1"
+#     with _patch_inventory(RAW_GW), \
+#          patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+#         result = await tools["central_get_port_details"](
+#             ctx, serial_number="GW001", ports=["0/0/1"]
+#         )
+#     assert isinstance(result, str)
+#     assert "GE 0/0/1" in result
+#     assert "status=Up" in result
