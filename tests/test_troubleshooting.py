@@ -2,7 +2,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastmcp.server.elicitation import AcceptedElicitation
+from mcp import McpError
 from mcp.server.elicitation import CancelledElicitation, DeclinedElicitation
+from mcp.types import ErrorData
 
 import tools.troubleshooting as mod
 from models import TroubleshootingResult
@@ -777,3 +779,106 @@ async def test_gateway_approval_omits_poe_fields_for_poe_bounce(tools):
     approval_msg = ctx.elicit.call_args.args[0]
     assert "poeStatus" not in approval_msg
     assert "poeClass" not in approval_msg
+
+
+# ---------------------------------------------------------------------------
+# central_bounce_port — elicitation unsupported (McpError)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_bounce_port_elicitation_unsupported(tools):
+    """ctx.elicit() raising McpError returns a graceful error message."""
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(side_effect=McpError(ErrorData(code=-32601, message="Method not found")))
+    with _patch_inventory(RAW_CX), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_IFACE_RESPONSE):
+        result = await tools["central_bounce_port"](
+            ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port"
+        )
+    assert isinstance(result, str)
+    assert "elicitation" in result.lower()
+    assert "Error running port bounce:" in result
+
+
+# ---------------------------------------------------------------------------
+# central_get_port_details
+# ---------------------------------------------------------------------------
+
+_CX_IFACE_RESPONSE = {
+    "items": [
+        {
+            "name": "1/1/1",
+            "operStatus": "Up",
+            "speed": 1000,
+            "description": "uplink",
+            "neighbour": "CORE-SW",
+            "neighbourType": "Switch",
+            "neighbourHealth": "Good",
+        },
+        {
+            "name": "1/1/2",
+            "operStatus": "Down",
+            "speed": 100,
+            "description": "",
+            "neighbour": None,
+        },
+    ]
+}
+
+
+@pytest.mark.asyncio
+async def test_get_port_details_cx(tools):
+    """Happy path for CX switch: returns formatted port details."""
+    ctx = make_ctx()
+    with _patch_inventory(RAW_CX), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_CX_IFACE_RESPONSE):
+        result = await tools["central_get_port_details"](
+            ctx, serial_number="SW001", ports=["1/1/1"]
+        )
+    assert isinstance(result, str)
+    assert "1/1/1" in result
+    assert "status=Up" in result
+    assert "speed=1G" in result
+    assert "connected: CORE-SW (Switch, health=Good)" in result
+
+
+@pytest.mark.asyncio
+async def test_get_port_details_gateway(tools):
+    """Happy path for gateway: returns operState and health fields."""
+    ctx = make_ctx()
+    gw_response = {"ports": [_GW_IFACE_UP]}
+    with _patch_inventory(RAW_GW), \
+         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+        result = await tools["central_get_port_details"](
+            ctx, serial_number="GW001", ports=["GE 0/0/1"]
+        )
+    assert isinstance(result, str)
+    assert "GE 0/0/1" in result
+    assert "status=Up" in result
+    assert "health=Good" in result
+    assert "speed=10G" in result
+
+
+@pytest.mark.asyncio
+async def test_get_port_details_unknown_ports(tools):
+    """Unknown ports produce an error listing available ports."""
+    ctx = make_ctx()
+    with _patch_inventory(RAW_CX), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_CX_IFACE_RESPONSE):
+        result = await tools["central_get_port_details"](
+            ctx, serial_number="SW001", ports=["9/9/9"]
+        )
+    assert result.startswith("Error fetching port details:")
+    assert "9/9/9" in result
+    assert "1/1/1" in result  # available ports listed
+
+
+@pytest.mark.asyncio
+async def test_get_port_details_unsupported_family(tools):
+    """Access points are not supported; returns clear error."""
+    ctx = make_ctx()
+    with _patch_inventory(RAW_AP):
+        result = await tools["central_get_port_details"](
+            ctx, serial_number="AP001", ports=["eth0"]
+        )
+    assert result.startswith("Error fetching port details:")

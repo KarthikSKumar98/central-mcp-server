@@ -3,6 +3,7 @@ from typing import Literal
 
 from fastmcp import Context, FastMCP
 from fastmcp.server.elicitation import AcceptedElicitation
+from mcp import McpError
 from pycentral.troubleshooting import Troubleshooting
 
 from constants import (
@@ -29,6 +30,60 @@ from utils.troubleshooting import (
 def _strip_none(d: dict) -> dict:
     """Return a copy of d with None values removed."""
     return {k: v for k, v in d.items() if v is not None}
+
+
+def _format_port_lines(
+    matched: list[dict],
+    family: str,
+    bounce_type: str,
+) -> list[str]:
+    """Build per-port detail lines for elicitation messages and port-details output.
+
+    Returns a list of strings (one or two lines per port depending on neighbour data).
+    Each port line includes name, status, speed, and optional PoE/neighbour fields.
+
+    Args:
+        matched: Interface dicts from select_interfaces_for_ports.
+        family: Device family string ('cx', 'aos-s', 'gateways').
+        bounce_type: 'port' or 'poe' — controls whether PoE fields are included.
+
+    """
+    lines: list[str] = []
+    for iface in matched:
+        name = iface.get("name", "?")
+        speed = format_port_speed(iface.get("speed"))
+        if family == "gateways":
+            oper = iface.get("operState", "unknown")
+            health = iface.get("health", "unknown")
+            line = f"  • {name}  status={oper}  speed={speed}  health={health}"
+            lines.append(line)
+        else:
+            oper = iface.get("operStatus") or iface.get("status") or "unknown"
+            desc = iface.get("description") or iface.get("alias") or ""
+            line = f"  • {name}  status={oper}  speed={speed}"
+            if desc:
+                line += f"  desc={desc}"
+            if bounce_type == "poe":
+                poe_status = iface.get("poeStatus", "N/A")
+                poe_class = iface.get("poeClass", "N/A")
+                line += f"  poeStatus={poe_status}  poeClass={poe_class}"
+            neighbour = iface.get("neighbour")
+            if neighbour:
+                n_type = iface.get("neighbourType")
+                n_health = iface.get("neighbourHealth")
+                if n_type and n_health:
+                    neighbour_line = (
+                        f"      connected: {neighbour} ({n_type}, health={n_health})"
+                    )
+                elif n_type:
+                    neighbour_line = f"      connected: {neighbour} ({n_type})"
+                else:
+                    neighbour_line = f"      connected: {neighbour}"
+                lines.append(line)
+                lines.append(neighbour_line)
+            else:
+                lines.append(line)
+    return lines
 
 
 def _build_initiate_kwargs(
@@ -423,42 +478,20 @@ def register(mcp: FastMCP) -> None:
                 warning,
                 f"The following {len(matched)} port(s) will be affected:\n",
             ]
-            for iface in matched:
-                name = iface.get("name", "?")
-                speed = format_port_speed(iface.get("speed"))
-                if family == "gateways":
-                    oper = iface.get("operState", "unknown")
-                    health = iface.get("health", "unknown")
-                    line = f"  • {name}  status={oper}  speed={speed}  health={health}"
-                    lines.append(line)
-                else:
-                    oper = iface.get("operStatus") or iface.get("status") or "unknown"
-                    desc = iface.get("description") or iface.get("alias") or ""
-                    line = f"  • {name}  status={oper}  speed={speed}"
-                    if desc:
-                        line += f"  desc={desc}"
-                    if bounce_type == "poe":
-                        poe_status = iface.get("poeStatus", "N/A")
-                        poe_class = iface.get("poeClass", "N/A")
-                        line += f"  poeStatus={poe_status}  poeClass={poe_class}"
-                    neighbour = iface.get("neighbour")
-                    if neighbour:
-                        n_type = iface.get("neighbourType")
-                        n_health = iface.get("neighbourHealth")
-                        if n_type and n_health:
-                            neighbour_line = f"      connected: {neighbour} ({n_type}, health={n_health})"
-                        elif n_type:
-                            neighbour_line = f"      connected: {neighbour} ({n_type})"
-                        else:
-                            neighbour_line = f"      connected: {neighbour}"
-                        lines.append(line)
-                        lines.append(neighbour_line)
-                    else:
-                        lines.append(line)
+            lines.extend(_format_port_lines(matched, family, bounce_type))
             lines.append("\nAccept to proceed. Decline or cancel to abort.")
             approval_msg = "\n".join(lines)
 
-            elicit_result = await ctx.elicit(approval_msg, response_type=None)
+            try:
+                elicit_result = await ctx.elicit(approval_msg, response_type=None)
+            except McpError:
+                return format_tool_error(
+                    f"running {bounce_type} bounce",
+                    ValueError(
+                        "This MCP client does not support elicitation. "
+                        "Port bounce requires a client that declares elicitation capability."
+                    ),
+                )
             if not isinstance(elicit_result, AcceptedElicitation):
                 return format_tool_error(
                     f"running {bounce_type} bounce",
@@ -490,3 +523,59 @@ def register(mcp: FastMCP) -> None:
                 )
             except Exception as e:
                 return format_tool_error(f"running {bounce_type} bounce", e)
+
+    @mcp.tool(annotations=DIAGNOSTIC)
+    async def central_get_port_details(
+        ctx: Context,
+        serial_number: str,
+        ports: list[str],
+    ) -> str:
+        """Return live port state for one or more switch or gateway ports.
+
+        Fetches the current interface list for the device and returns status,
+        speed, PoE state, and neighbour information for each requested port.
+        Use this tool to assess port health or understand what is connected
+        before deciding whether to take action (e.g. bouncing a port).
+
+        Supported device families: CX switches, AOS-S switches, gateways.
+        Not supported: access points.
+
+        Parameters
+        ----------
+        - serial_number: Serial number of the target device.
+        - ports: List of port names to inspect (e.g. ["1/1/1", "1/1/2"]).
+
+        """
+        async with api_context(ctx) as conn:
+            try:
+                family = await resolve_family_from_serial(conn, serial_number)
+            except ValueError as e:
+                return format_tool_error("resolving device family", e)
+
+            if family not in ("cx", "aos-s", "gateways"):
+                return format_tool_error(
+                    "fetching port details",
+                    ValueError(
+                        f"Device '{serial_number}' (family: {family}) does not support port inspection. "
+                        "Supported families: cx, aos-s, gateways."
+                    ),
+                )
+
+            try:
+                interfaces = await fetch_device_interfaces(conn, family, serial_number)
+            except Exception as e:
+                return format_tool_error("fetching interface list", e)
+
+            matched, unknown = select_interfaces_for_ports(interfaces, ports)
+            if unknown:
+                return format_tool_error(
+                    "fetching port details",
+                    ValueError(
+                        f"Unknown ports: {unknown}. "
+                        f"Available ports on this device: {[i.get('name') for i in interfaces]}"
+                    ),
+                )
+
+            lines = [f"Port details for device {serial_number} ({family}):\n"]
+            lines.extend(_format_port_lines(matched, family, "port"))
+            return "\n".join(lines)
