@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.6.2] - 2026-05-14
+
+### Bug Fixes
+- Guarded `ctx.elicit` against `McpError` in `central_bounce_port` so clients that don't support elicitation receive a clear error instead of a crash
+- Fixed gateway port name matching in `select_interfaces_for_ports` — gateway interface names like `"GE 0/0/0"` now match user input `"0/0/0"`, `"GE0/0/0"`, or `"GE 0/0/0"` interchangeably via prefix-stripping fuzzy normalization
+
+### Refactoring
+- Replaced `bounce_type` sentinel in `_format_port_lines` with an `include_poe` bool for clarity
+
+### Tests
+- Added comprehensive test coverage for gateway port name normalization in `select_interfaces_for_ports`
+
+### Release
+- Bumped package version to `0.1.6.2` in `pyproject.toml` and `uv.lock`
+
+---
+
 ## [0.1.6.1] - 2026-05-11
 
 ### Bug Fixes
