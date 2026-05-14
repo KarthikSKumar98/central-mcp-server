@@ -343,12 +343,36 @@ def format_port_speed(value) -> str:
     return f"{mbps}M"
 
 
+def _normalize_port_name(name: str) -> str:
+    """Normalize a port name for fuzzy matching.
+
+    Strips whitespace, lowercases, and removes a leading interface-type prefix
+    (letters before the first digit, e.g. 'ge', 'tenge', 'xgige').
+
+    Examples:
+        "GE 0/0/0"  -> "0/0/0"
+        "ge0/0/0"   -> "0/0/0"
+        "0/0/0"     -> "0/0/0"
+        "1/1/1"     -> "1/1/1"  (no prefix to strip)
+
+    """
+    s = "".join(name.split()).lower()
+    i = 0
+    while i < len(s) and s[i].isalpha():
+        i += 1
+    return s[i:] or s  # if all letters, fall back to original
+
+
 def select_interfaces_for_ports(
     interfaces: list[dict], ports: list[str]
 ) -> tuple[list[dict], list[str]]:
     """Return (matched_interface_dicts, unknown_port_names).
 
-    Matches by the 'name' field of each interface dict. Case-insensitive.
+    Matches by the 'name' field of each interface dict. Case-insensitive and
+    whitespace-tolerant. For gateway interfaces whose names include an
+    interface-type prefix (e.g. "GE 0/0/0"), also registers a normalized key
+    (stripping the prefix) so users may pass "0/0/0", "GE0/0/0", or
+    "GE 0/0/0" interchangeably.
 
     Args:
         interfaces: Interface list from fetch_device_interfaces.
@@ -358,13 +382,21 @@ def select_interfaces_for_ports(
         Tuple of (list of matched dicts, list of port names not found).
 
     """
-    iface_by_name: dict[str, dict] = {
-        str(iface.get("name", "")).lower(): iface for iface in interfaces
-    }
+    iface_by_name: dict[str, dict] = {}
+    for iface in interfaces:
+        raw = str(iface.get("name", ""))
+        # Always register the raw (lowercased) form.
+        iface_by_name[raw.lower()] = iface
+        # Also register the normalized form (prefix stripped) so that gateway
+        # port names like "GE 0/0/0" match user input "0/0/0" or "ge0/0/0".
+        iface_by_name.setdefault(_normalize_port_name(raw), iface)
+
     matched: list[dict] = []
     unknown: list[str] = []
     for port in ports:
-        iface = iface_by_name.get(port.lower())
+        iface = iface_by_name.get(port.lower()) or iface_by_name.get(
+            _normalize_port_name(port)
+        )
         if iface is not None:
             matched.append(iface)
         else:

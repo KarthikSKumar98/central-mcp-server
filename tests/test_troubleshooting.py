@@ -910,3 +910,86 @@ async def test_get_port_details_includes_poe_fields_when_present(tools):
     assert "1/1/3" in result
     assert "poeStatus=Drawing Watts" in result
     assert "poeClass=802.3at (PoE+)" in result
+
+
+# ---------------------------------------------------------------------------
+# select_interfaces_for_ports — unit tests for normalization
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("user_port", [
+    "0/0/0",        # numeric only
+    "GE 0/0/0",    # exact match with space
+    "ge 0/0/0",    # lower with space
+    "GE0/0/0",     # no space, uppercase prefix
+    "ge0/0/0",     # no space, lowercase prefix
+    "GE 0/0/0 ",   # trailing whitespace
+])
+def test_select_interfaces_gateway_port_name_variants(user_port):
+    """Gateway iface 'GE 0/0/0' matches all common user-supplied forms."""
+    from utils.troubleshooting import select_interfaces_for_ports
+
+    iface = {"name": "GE 0/0/0", "operState": "Up"}
+    matched, unknown = select_interfaces_for_ports([iface], [user_port])
+    assert matched == [iface], f"Expected match for port {user_port!r}"
+    assert unknown == []
+
+
+def test_select_interfaces_switch_exact_match():
+    """Switch iface '1/1/1' matches exact and whitespace-padded forms."""
+    from utils.troubleshooting import select_interfaces_for_ports
+
+    iface = {"name": "1/1/1", "operStatus": "Up"}
+    for user_port in ("1/1/1", "1/1/1 ", " 1/1/1"):
+        matched, unknown = select_interfaces_for_ports([iface], [user_port])
+        assert matched == [iface], f"Expected match for port {user_port!r}"
+        assert unknown == []
+
+
+def test_select_interfaces_switch_no_false_positive():
+    """Switch iface '1/1/1' does NOT match random unrelated strings."""
+    from utils.troubleshooting import select_interfaces_for_ports
+
+    iface = {"name": "1/1/1", "operStatus": "Up"}
+    matched, unknown = select_interfaces_for_ports([iface], ["2/2/2"])
+    assert matched == []
+    assert unknown == ["2/2/2"]
+
+
+def test_select_interfaces_truly_unknown_port():
+    """A port that doesn't match any interface is returned as unknown."""
+    from utils.troubleshooting import select_interfaces_for_ports
+
+    ifaces = [
+        {"name": "GE 0/0/0", "operState": "Down"},
+        {"name": "GE 0/0/1", "operState": "Up"},
+    ]
+    matched, unknown = select_interfaces_for_ports(ifaces, ["0/0/99"])
+    assert matched == []
+    assert unknown == ["0/0/99"]
+
+
+def test_normalize_port_name_edge_case_all_letters():
+    """A name consisting entirely of letters returns itself (no empty string)."""
+    from utils.troubleshooting import _normalize_port_name
+
+    result = _normalize_port_name("GigabitEthernet")
+    assert result == "gigabitethernet"  # all-letters: fall back to lowercased original
+
+
+# ---------------------------------------------------------------------------
+# test_get_port_details_gateway — normalized port name lookup
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_port_details_gateway_normalized_port(tools):
+    """central_get_port_details finds a gateway port when user passes '0/0/1' instead of 'GE 0/0/1'."""
+    ctx = make_ctx()
+    gw_response = {"ports": [_GW_IFACE_UP]}  # _GW_IFACE_UP has name "GE 0/0/1"
+    with _patch_inventory(RAW_GW), \
+         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+        result = await tools["central_get_port_details"](
+            ctx, serial_number="GW001", ports=["0/0/1"]
+        )
+    assert isinstance(result, str)
+    assert "GE 0/0/1" in result
+    assert "status=Up" in result
