@@ -882,3 +882,31 @@ async def test_get_port_details_unsupported_family(tools):
             ctx, serial_number="AP001", ports=["eth0"]
         )
     assert result.startswith("Error fetching port details:")
+
+
+@pytest.mark.asyncio
+async def test_get_port_details_includes_poe_fields_when_present(tools):
+    """central_get_port_details emits poeStatus/poeClass when the interface reports them."""
+    ctx = make_ctx()
+    poe_iface_response = {
+        "items": [
+            {
+                "name": "1/1/3",
+                "operStatus": "Up",
+                "speed": 2500,
+                "description": "AP uplink",
+                "poeStatus": "Drawing Watts",
+                "poeClass": "802.3at (PoE+)",
+                "neighbour": None,
+            }
+        ]
+    }
+    with _patch_inventory(RAW_CX), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=poe_iface_response):
+        result = await tools["central_get_port_details"](
+            ctx, serial_number="SW001", ports=["1/1/3"]
+        )
+    assert isinstance(result, str)
+    assert "1/1/3" in result
+    assert "poeStatus=Drawing Watts" in result
+    assert "poeClass=802.3at (PoE+)" in result

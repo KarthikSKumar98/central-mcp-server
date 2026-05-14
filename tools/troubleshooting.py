@@ -35,7 +35,7 @@ def _strip_none(d: dict) -> dict:
 def _format_port_lines(
     matched: list[dict],
     family: str,
-    bounce_type: str,
+    include_poe: bool,
 ) -> list[str]:
     """Build per-port detail lines for elicitation messages and port-details output.
 
@@ -45,7 +45,9 @@ def _format_port_lines(
     Args:
         matched: Interface dicts from select_interfaces_for_ports.
         family: Device family string ('cx', 'aos-s', 'gateways').
-        bounce_type: 'port' or 'poe' — controls whether PoE fields are included.
+        include_poe: Whether to append poeStatus/poeClass fields. Set True for PoE
+            bounce confirmation and for general port-detail inspection. Set False for
+            physical port bounce confirmation where PoE context is not relevant.
 
     """
     lines: list[str] = []
@@ -63,7 +65,7 @@ def _format_port_lines(
             line = f"  • {name}  status={oper}  speed={speed}"
             if desc:
                 line += f"  desc={desc}"
-            if bounce_type == "poe":
+            if include_poe:
                 poe_status = iface.get("poeStatus", "N/A")
                 poe_class = iface.get("poeClass", "N/A")
                 line += f"  poeStatus={poe_status}  poeClass={poe_class}"
@@ -478,7 +480,9 @@ def register(mcp: FastMCP) -> None:
                 warning,
                 f"The following {len(matched)} port(s) will be affected:\n",
             ]
-            lines.extend(_format_port_lines(matched, family, bounce_type))
+            lines.extend(
+                _format_port_lines(matched, family, include_poe=(bounce_type == "poe"))
+            )
             lines.append("\nAccept to proceed. Decline or cancel to abort.")
             approval_msg = "\n".join(lines)
 
@@ -533,7 +537,8 @@ def register(mcp: FastMCP) -> None:
         """Return live port state for one or more switch or gateway ports.
 
         Fetches the current interface list for the device and returns status,
-        speed, PoE state, and neighbour information for each requested port.
+        speed, neighbour information, and PoE state (poeStatus/poeClass) for each
+        requested port when the interface reports it.
         Use this tool to assess port health or understand what is connected
         before deciding whether to take action (e.g. bouncing a port).
 
@@ -577,5 +582,5 @@ def register(mcp: FastMCP) -> None:
                 )
 
             lines = [f"Port details for device {serial_number} ({family}):\n"]
-            lines.extend(_format_port_lines(matched, family, "port"))
+            lines.extend(_format_port_lines(matched, family, include_poe=True))
             return "\n".join(lines)
