@@ -223,6 +223,8 @@ Once connected, you can ask your AI assistant questions like:
 - *"Give me a health overview of all sites."*
 - *"Which sites are in poor health right now?"*
 - *"Show me all access points at the Chicago office."*
+- *"List the switches in the London campus and show CPU and PoE trends for SG34L5002Y."*
+- *"How healthy is the BLR gateway cluster, and what's its client capacity trend?"*
 - *"What critical alerts are active across the network?"*
 - *"Find all failed wireless clients at HQ in the last 24 hours."*
 - *"What events happened on switch SW-CORE-01 yesterday?"*
@@ -252,6 +254,22 @@ See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-cent
 | `central_get_aps` | Filtered list of access points — filter by site, serial number, status, model, firmware version, deployment, or cluster |
 | `central_get_ap_details` | Detailed snapshot for a single AP by serial number; optionally embed richer radio (RF health) and uplink-port data via `include`. |
 | `central_get_ap_trends` | Time-series trends for an AP, a radio (`radio_number`), or an uplink port (`port_index`) over a time window — CPU/memory/power/throughput, RF channel/noise, port errors. |
+
+#### Switch Monitoring
+| Tool | Description |
+|------|-------------|
+| `central_get_switches` | Filtered list of switches — filter by site, model, status (title-case `Online`/`Offline`), or deployment (`Standalone`/`Stack`/`VSX`); each item embeds a current hardware-trend snapshot. |
+| `central_get_switch_details` | Detailed snapshot for a single switch (or stack conductor) by serial number; optionally add interfaces, VLANs, PoE, LAG, VSX, stack members, and hardware health via `include`. |
+| `central_get_switch_trends` | Time-series trends for a switch at hardware scope (CPU/memory/temperature/PoE/power) or interface scope (throughput/error counters) over a time window — all metrics returned per sample. |
+
+#### Gateway Monitoring
+| Tool | Description |
+|------|-------------|
+| `central_get_gateways` | Filtered list of gateways — filter by site, serial number, device name, model, status (title-case `Online`/`Offline`), or cluster name. |
+| `central_get_gateway_details` | Detailed snapshot for a single gateway by serial number; optionally add ports, tunnels, uplinks, and VLANs via `include`. |
+| `central_get_gateway_trends` | Time-series trends for a gateway, port (`port_number`), tunnel (`tunnel_name`), or uplink (`link_tag`) over a time window — CPU/memory/availability/temperature, throughput, errors. |
+| `central_get_gateway_cluster` | Snapshot of a gateway cluster — members and per-member tunnel health; optionally add cluster tunnels, VLAN-mismatch summary, and connectivity graph via `include`. |
+| `central_get_cluster_capacity_trends` | Capacity trend samples for a cluster — client and device (AP/switch) counts and percentages vs maximum capacity over a time window. |
 
 #### WLAN
 | Tool | Description |
