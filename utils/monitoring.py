@@ -185,3 +185,230 @@ def fetch_trends(
         kwargs.update({k: v for k, v in extra_params.items() if v is not None})
 
     return getattr(monitor_cls, method_name)(**kwargs)
+
+# --- Gateway monitoring (a20) ---
+from constants import (  # noqa: E402 — mid-file import intentional (append-only rule)
+    GATEWAY_PORT_TREND_METRICS,
+    GATEWAY_TREND_METRICS,
+    GATEWAY_TUNNEL_TREND_METRICS,
+    GATEWAY_UPLINK_TREND_METRICS,
+)
+
+# scope -> (method_name, valid_metrics, required_kwarg_name | None)
+GATEWAY_TREND_SCOPES: dict[str, tuple[str, tuple[str, ...], str | None]] = {
+    "gateway": ("get_gateway_trends", GATEWAY_TREND_METRICS, None),
+    "port": ("get_gateway_port_trends", GATEWAY_PORT_TREND_METRICS, "port_number"),
+    "tunnel": ("get_gateway_tunnel_trends", GATEWAY_TUNNEL_TREND_METRICS, "tunnel_name"),
+    "uplink": ("get_gateway_uplink_trends", GATEWAY_UPLINK_TREND_METRICS, "link_tag"),
+}
+
+# include key -> dedicated method name for gateway sub-resources
+GATEWAY_INCLUDES: dict[str, str] = {
+    "ports": "get_all_gateway_ports",
+    "tunnels": "get_all_gateway_tunnels",
+    "uplinks": "get_gateway_uplinks",
+    "vlans": "get_all_gateway_vlans",
+}
+
+
+def fetch_cluster_snapshot(
+    conn,
+    cluster_name: str,
+    includes: list[str] | None = None,
+    *,
+    monitor_cls=None,
+) -> dict | None:
+    """Fetch a gateway cluster snapshot with optional include sub-resources.
+
+    Always fetches cluster members (get_all_cluster_members) and the tunnel
+    health summary (get_cluster_tunnel_summary, summary_type="health").
+
+    Optionally fetches:
+    - "tunnels": get_all_cluster_tunnels
+    - "vlan_mismatch": get_cluster_vlan_mismatch
+    - "connectivity": get_cluster_connectivity_graph
+
+    Args:
+        conn: Central API connection object.
+        cluster_name: Name of the cluster.
+        includes: Optional list of additional sub-resources to fetch.
+        monitor_cls: MonitoringGateways class (injectable for tests).
+
+    Returns:
+        Dict with keys: cluster_name, members, tunnel_health_summary, and any
+        requested includes. Returns None if cluster_name resolves to no members.
+    """
+    if monitor_cls is None:
+        from pycentral.new_monitoring.gateways import MonitoringGateways as _MG
+        monitor_cls = _MG
+
+    members = monitor_cls.get_all_cluster_members(
+        central_conn=conn, cluster_name=cluster_name
+    )
+    tunnel_health = monitor_cls.get_cluster_tunnel_summary(
+        central_conn=conn, cluster_name=cluster_name, summary_type="health"
+    )
+
+    result: dict = {
+        "cluster_name": cluster_name,
+        "members": members if isinstance(members, list) else [],
+        "tunnel_health_summary": tunnel_health,
+    }
+
+    _CLUSTER_INCLUDES: dict[str, tuple[str, dict]] = {
+        "tunnels": ("get_all_cluster_tunnels", {}),
+        "vlan_mismatch": ("get_cluster_vlan_mismatch", {}),
+        "connectivity": ("get_cluster_connectivity_graph", {}),
+    }
+
+    for key in includes or []:
+        if key not in _CLUSTER_INCLUDES:
+            continue
+        method_name, extra_kwargs = _CLUSTER_INCLUDES[key]
+        data = getattr(monitor_cls, method_name)(
+            central_conn=conn, cluster_name=cluster_name, **extra_kwargs
+        )
+        result[key] = data
+
+    return result
+
+# --- Switch monitoring (a20) ---
+import ast
+from pycentral.new_monitoring import MonitoringSwitches
+
+# scope -> (method_name, valid_metrics | None, required_kwarg | None)
+# Switch trend scopes return ALL metrics per sample (valid_metrics=None)
+SWITCH_TREND_SCOPES: dict[str, tuple[str, tuple[str, ...] | None, str | None]] = {
+    "hardware": ("get_switch_hardware_trends", None, None),
+    "interface": ("get_switch_interface_trends", None, None),
+}
+
+# include key -> dedicated method name
+SWITCH_INCLUDES: dict[str, str] = {
+    "interfaces": "get_switch_interfaces",
+    "vlans": "get_switch_vlans",
+    "poe": "get_switch_interface_poe",
+    "lag": "get_switch_lag",
+    "vsx": "get_switch_vsx",
+    "stack_members": "get_stack_members",
+    "hardware": "get_switch_hardware_categories",
+}
+
+
+def _coerce_trend_values(sample: dict) -> dict:
+    """Coerce string metric values in a trend sample to int or float.
+
+    The switch trend APIs return all numeric metrics as strings
+    (e.g. ``{"cpuUtilization": "2", "memoryUtilization": "35"}``).
+    This helper converts each non-timestamp value to int if possible,
+    then float, leaving other values as-is.
+    """
+    out: dict = {}
+    for k, v in sample.items():
+        if k == "timestamp" or not isinstance(v, str):
+            out[k] = v
+            continue
+        try:
+            out[k] = int(v)
+            continue
+        except (ValueError, TypeError):
+            pass
+        try:
+            out[k] = float(v)
+            continue
+        except (ValueError, TypeError):
+            pass
+        out[k] = v
+    return out
+
+
+def _strip_sentinel(samples: list[dict]) -> list[dict]:
+    """Remove the trailing sentinel sample that contains only a 'timestamp' key.
+
+    Switch trend APIs always append a sparse final item with no metric values
+    (just ``{"timestamp": "..."}``).  Strip it before returning to callers.
+    """
+    if samples and len(samples[-1]) == 1 and "timestamp" in samples[-1]:
+        return samples[:-1]
+    return samples
+
+
+def normalize_switch_trends(samples: list[dict]) -> list[dict]:
+    """Strip sentinel and coerce string metric values for switch trend samples."""
+    return [_coerce_trend_values(s) for s in _strip_sentinel(samples)]
+
+
+def fetch_switch_snapshot(
+    conn,
+    serial_number: str,
+    includes: list[str] | None = None,
+    *,
+    monitor_cls=MonitoringSwitches,
+) -> dict | None:
+    """Fetch an enriched switch detail snapshot with graceful include handling.
+
+    Unlike ``fetch_snapshot`` for APs, switch includes are purely additive —
+    ``get_switch_details`` embeds no sub-resources.  Each include key maps to a
+    dedicated method whose result is stored on the base dict under that key.
+
+    Special handling:
+    - ``poe``: double-wrapped ``{response: {items, count}}`` — unwrapped to
+      ``{items, count}`` before storing.
+    - ``vsx``: raises on non-VSX platforms — caught and stored as
+      ``{"error": "<msg>"}`` rather than propagating.
+    - Other methods: if the result is a dict with ``"items"``, stored as-is.
+      If a bare list, wrapped as ``{"items": result}``.  Failures stored as
+      ``{"error": "<msg>"}``.
+
+    Args:
+        conn: Central API connection object.
+        serial_number: Switch serial number or stack conductor serial.
+        includes: Optional list of sub-resource keys (see ``SWITCH_INCLUDES``).
+        monitor_cls: ``MonitoringSwitches`` class (injectable for tests).
+
+    Returns:
+        Enriched dict from ``get_switch_details``, or falsy/non-dict if not found.
+    """
+    base: dict = monitor_cls.get_switch_details(
+        central_conn=conn, serial_number=serial_number
+    )
+
+    if not base or not isinstance(base, dict):
+        return base  # type: ignore[return-value]
+
+    for key in includes or []:
+        method_name = SWITCH_INCLUDES.get(key)
+        if not method_name:
+            continue
+
+        try:
+            result = getattr(monitor_cls, method_name)(
+                central_conn=conn, serial_number=serial_number
+            )
+        except Exception as exc:
+            base[key] = {"error": str(exc)}
+            continue
+
+        # poe: double-wrapped {response: {items, count}}
+        if key == "poe":
+            if isinstance(result, dict) and "response" in result:
+                base[key] = result["response"]
+            else:
+                base[key] = result
+        elif isinstance(result, dict):
+            base[key] = result
+        elif isinstance(result, list):
+            base[key] = {"items": result}
+        else:
+            base[key] = result
+
+    # Normalize upLinkPorts in switchTrends from stringified Python list to real list
+    for trend in base.get("switchTrends") or []:
+        ul = trend.get("upLinkPorts")
+        if isinstance(ul, str):
+            try:
+                trend["upLinkPorts"] = ast.literal_eval(ul)
+            except (ValueError, SyntaxError):
+                pass
+
+    return base

@@ -39,3 +39,33 @@ PORT_TREND_METRICS: tuple[str, ...] = (
 
 # Valid interface_type values for ap throughput trends.
 AP_INTERFACE_TYPES: tuple[str, ...] = ("WIRED", "WIRELESS", "LTE")
+
+# --- Switch monitoring (a20) ---
+# Deployment literal values for get_all_switches filter
+SWITCH_DEPLOYMENT_VALUES: tuple[str, ...] = ("Standalone", "Stack", "VSX")
+
+# --- Gateway monitoring (a20) ---
+# Valid metric strings accepted by pycentral gateway trend endpoints.
+GATEWAY_TREND_METRICS: tuple[str, ...] = (
+    "cpu-utilization",
+    "memory-utilization",
+    "wan-availability",
+    "vpn-availability",
+    "hardware-temperature",
+)
+GATEWAY_PORT_TREND_METRICS: tuple[str, ...] = (
+    "throughput",
+    "frames",
+    "frames-errors",
+    "frames-packets",
+)
+GATEWAY_TUNNEL_TREND_METRICS: tuple[str, ...] = (
+    "throughput",
+    "status",
+    "dropped-packets",
+)
+GATEWAY_UPLINK_TREND_METRICS: tuple[str, ...] = (
+    "throughput",
+    "wan-compression",
+    "wan-availability",
+)
