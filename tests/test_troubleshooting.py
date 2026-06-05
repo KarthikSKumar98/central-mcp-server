@@ -590,7 +590,7 @@ async def test_bounce_port_gateway_success(tools):
     ctx = make_ctx()
     ctx.elicit = AsyncMock(return_value=AcceptedElicitation(data={}))
     with _patch_inventory(RAW_GW), \
-         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=_IFACE_RESPONSE), \
+         patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=_IFACE_RESPONSE), \
          patch("utils.troubleshooting.Troubleshooting.initiate_port_bounce_test", return_value={"location": "/tasks/T001"}) as mock_init, \
          patch("utils.troubleshooting.Troubleshooting.get_port_bounce_test_result", return_value=_BOUNCE_COMPLETED), \
          patch("asyncio.sleep"):
@@ -728,7 +728,7 @@ async def test_gateway_approval_shows_operState_and_health(tools):
     ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
     gw_response = {"ports": [_GW_IFACE_UP]}
     with _patch_inventory(RAW_GW), \
-         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+         patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
         await tools["central_bounce_port"](
             ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="port"
         )
@@ -744,7 +744,7 @@ async def test_gateway_approval_speed_auto_passes_through(tools):
     ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
     gw_response = {"ports": [_GW_IFACE_DOWN]}
     with _patch_inventory(RAW_GW), \
-         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+         patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
         await tools["central_bounce_port"](
             ctx, serial_number="GW001", ports=["GE 0/0/0"], bounce_type="port"
         )
@@ -758,7 +758,7 @@ async def test_gateway_approval_omits_neighbour_section(tools):
     ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
     gw_response = {"ports": [_GW_IFACE_UP]}
     with _patch_inventory(RAW_GW), \
-         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+         patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
         await tools["central_bounce_port"](
             ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="port"
         )
@@ -772,7 +772,7 @@ async def test_gateway_approval_omits_poe_fields_for_poe_bounce(tools):
     ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
     gw_response = {"ports": [_GW_IFACE_UP]}
     with _patch_inventory(RAW_GW), \
-         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+         patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
         await tools["central_bounce_port"](
             ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="poe"
         )
@@ -848,7 +848,7 @@ _CX_IFACE_RESPONSE = {
 #     ctx = make_ctx()
 #     gw_response = {"ports": [_GW_IFACE_UP]}
 #     with _patch_inventory(RAW_GW), \
-#          patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+#          patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
 #         result = await tools["central_get_port_details"](
 #             ctx, serial_number="GW001", ports=["GE 0/0/1"]
 #         )
@@ -986,7 +986,7 @@ def test_normalize_port_name_edge_case_all_letters():
 #     ctx = make_ctx()
 #     gw_response = {"ports": [_GW_IFACE_UP]}  # _GW_IFACE_UP has name "GE 0/0/1"
 #     with _patch_inventory(RAW_GW), \
-#          patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+#          patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
 #         result = await tools["central_get_port_details"](
 #             ctx, serial_number="GW001", ports=["0/0/1"]
 #         )

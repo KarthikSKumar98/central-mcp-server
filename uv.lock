@@ -125,7 +125,7 @@ wheels = [
 
 [[package]]
 name = "central-mcp-server"
-version = "0.1.6.2"
+version = "0.1.7"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp", extra = ["code-mode"] },
@@ -144,7 +144,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", extras = ["code-mode"], specifier = ">=3.1.1" },
-    { name = "pycentral", specifier = "==2.0a19" },
+    { name = "pycentral", specifier = "==2.0a20" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
 ]
 
@@ -931,7 +931,7 @@ memory = [
 
 [[package]]
 name = "pycentral"
-version = "2.0a19"
+version = "2.0a20"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx", extra = ["http2"] },
@@ -944,9 +944,9 @@ dependencies = [
     { name = "requests-oauthlib" },
     { name = "websocket-client" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8f/6f/278cec52bdf61ee99b3285929b44f6eb4b94cc89e82674f0f1bd0b6dc763/pycentral-2.0a19.tar.gz", hash = "sha256:f3135d85ccd6b2a3959511898f5aaea07591e0ed51168be23fbe79530c29ea5e", size = 139169, upload-time = "2026-04-27T15:53:52.705Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/39/07/27d1de3625fd56b428dd7759e088e90b642e98a05c44e12a5f441a33e9cf/pycentral-2.0a20.tar.gz", hash = "sha256:04c0820afbf4a87c39c2e6668168ae0ac6948b992ddfa8e2ed3dfd6eceb8843f", size = 145278, upload-time = "2026-06-01T15:41:54.15Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ac/49/4a5467b9d312e527ae676e3026a04f367b50acc9f16928cca40b125aa152/pycentral-2.0a19-py3-none-any.whl", hash = "sha256:5d7fb7366ca8f25b430d66bd46e95d2bd1cb5c0731eb260ddcae865711499e2a", size = 182039, upload-time = "2026-04-27T15:53:51.002Z" },
+    { url = "https://files.pythonhosted.org/packages/38/80/119810cf664e86fe7fe54d15b5f137141c42aaa34e3e4e420f3085d2b495/pycentral-2.0a20-py3-none-any.whl", hash = "sha256:f2880787bc2f63ff95c52f798063e45b9d79721d523962a800ecd92dacd807c1", size = 187528, upload-time = "2026-06-01T15:41:52.522Z" },
 ]
 
 [[package]]

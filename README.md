@@ -293,13 +293,13 @@ graph TD
 | Tool | Description |
 |------|-------------|
 | `central_get_aps` | Filtered list of access points — filter by site, serial number, status, model, firmware version, deployment, or cluster |
-| `central_get_ap_statistics` | AP CPU, memory, and power statistics for a given AP serial number within a selected time window |
-| `central_get_ap_wlans` | WLANs that are broadcasted from a given AP |
+| `central_get_ap_details` | Detailed snapshot for a single AP by serial number; optionally embed richer radio (RF health) and uplink-port data via `include`. |
+| `central_get_ap_trends` | Time-series trends for an AP, a radio (`radio_number`), or an uplink port (`port_index`) over a time window — CPU/memory/power/throughput, RF channel/noise, port errors. |
 
 #### WLAN
 | Tool | Description |
 |------|-------------|
-| `central_get_wlans` | Configured WLANs (SSIDs) with optional filtering by WLAN name, site, and sort fields |
+| `central_get_wlans` | Configured WLANs (SSIDs) with optional filtering by WLAN name, site, and sort fields; filter by `serial_number` to list WLANs broadcast by a specific AP. |
 | `central_get_wlan_stats` | Throughput trend samples (tx/rx bps) for a specific WLAN over a selected time window |
 
 #### Clients

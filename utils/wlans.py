@@ -1,33 +1,19 @@
-from pycentral.new_monitoring import MonitoringAPs
+from pycentral.new_monitoring import WLAN as MonitoringWLAN
 
-from constants import WLAN_LIMIT
 from models import WLAN, WLANThroughputSample
 
 
-def get_all_wlans(central_conn, site_id=None, filter_str=None, sort=None):
-    """Fetch all WLAN pages from the Central API, handling pagination."""
-    wlans = []
-    total_wlans = None
-    next_page = 1
-    while True:
-        resp = MonitoringAPs.get_wlans(
-            central_conn,
-            site_id=site_id,
-            filter_str=filter_str,
-            sort=sort,
-            limit=WLAN_LIMIT,
-            next_page=next_page,
-        )
-        if total_wlans is None:
-            total_wlans = resp.get("total", 0)
-        wlans.extend(resp.get("items", []))
-        if len(wlans) >= total_wlans:
-            break
-        next_page = resp.get("next")
-        if not next_page:
-            break
-        next_page = int(next_page)
-    return wlans
+def get_all_wlans(
+    central_conn, site_id=None, serial_number=None, filter_str=None, sort=None
+):
+    """Fetch all WLANs from the Central API, handling pagination automatically."""
+    return MonitoringWLAN.get_all_wlans(
+        central_conn,
+        site_id=site_id,
+        serial_number=serial_number,
+        filter_str=filter_str,
+        sort=sort,
+    )
 
 
 def clean_wlan_data(wlans):

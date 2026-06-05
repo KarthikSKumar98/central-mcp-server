@@ -188,6 +188,55 @@ async def test_get_wlans_sort_passed_to_api(tools):
 
 
 @pytest.mark.asyncio
+async def test_get_wlans_serial_number_uses_list_path(tools):
+    ctx = make_ctx()
+    with patch("tools.wlans.get_all_wlans", return_value=[RAW_WLAN, RAW_WLAN_2]) as mock_fn:
+        result = await tools["central_get_wlans"](ctx, serial_number="USTWM5206L")
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert isinstance(result[0], WLAN)
+    call_kwargs = mock_fn.call_args.kwargs
+    assert call_kwargs["serial_number"] == "USTWM5206L"
+    assert call_kwargs["site_id"] is None
+    assert call_kwargs["sort"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_wlans_serial_number_and_wlan_name_client_side_filter(tools):
+    ctx = make_ctx()
+    with patch("tools.wlans.get_all_wlans", return_value=[RAW_WLAN, RAW_WLAN_2]):
+        result = await tools["central_get_wlans"](
+            ctx, serial_number="USTWM5206L", wlan_name="Corp-WiFi"
+        )
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0].wlan_name == "Corp-WiFi"
+
+
+@pytest.mark.asyncio
+async def test_get_wlans_serial_number_wlan_name_no_match_returns_empty_string(tools):
+    ctx = make_ctx()
+    with patch("tools.wlans.get_all_wlans", return_value=[RAW_WLAN, RAW_WLAN_2]):
+        result = await tools["central_get_wlans"](
+            ctx, serial_number="USTWM5206L", wlan_name="NonExistent-SSID"
+        )
+    assert result == "No WLANs found matching the specified criteria."
+
+
+@pytest.mark.asyncio
+async def test_get_wlans_serial_number_with_site_id(tools):
+    ctx = make_ctx()
+    with patch("tools.wlans.get_all_wlans", return_value=[RAW_WLAN]) as mock_fn:
+        result = await tools["central_get_wlans"](
+            ctx, serial_number="USTWM5206L", site_id="site-xyz"
+        )
+    assert len(result) == 1
+    call_kwargs = mock_fn.call_args.kwargs
+    assert call_kwargs["serial_number"] == "USTWM5206L"
+    assert call_kwargs["site_id"] == "site-xyz"
+
+
+@pytest.mark.asyncio
 async def test_get_wlans_wlan_name_non_200_returns_formatted_error(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = {

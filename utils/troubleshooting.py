@@ -310,7 +310,7 @@ async def fetch_device_interfaces(
         )
     elif family == "gateways":
         response = await asyncio.to_thread(
-            MonitoringGateways.get_gateway_interfaces,
+            MonitoringGateways.get_all_gateway_ports,
             central_conn=conn,
             serial_number=serial_number,
         )

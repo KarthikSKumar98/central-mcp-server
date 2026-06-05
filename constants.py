@@ -15,3 +15,27 @@ SHOW_COMMANDS_MAX = 5  # Max show commands per central_run_show_commands call
 TIME_RANGE = Literal[
     "last_1h", "last_6h", "last_24h", "last_7d", "last_30d", "today", "yesterday"
 ]
+
+# Valid metric strings accepted by pycentral AP trend endpoints (keys of the library's metric maps).
+AP_TREND_METRICS: tuple[str, ...] = (
+    "throughput",
+    "cpu-utilization",
+    "memory-utilization",
+    "power-consumption",
+)
+RADIO_TREND_METRICS: tuple[str, ...] = (
+    "throughput",
+    "channel-utilization",
+    "channel-quality",
+    "noise-floor",
+    "frames",
+)
+PORT_TREND_METRICS: tuple[str, ...] = (
+    "throughput",
+    "frames",
+    "crc",
+    "collisions",
+)
+
+# Valid interface_type values for ap throughput trends.
+AP_INTERFACE_TYPES: tuple[str, ...] = ("WIRED", "WIRELESS", "LTE")

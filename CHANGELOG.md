@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.7] - 2026-06-02
+
+### New Tools
+- `central_get_ap_details` — detailed single-AP snapshot by serial number; summary data (radios, ports, WLANs) included by default; pass `include=["radios"]` or `include=["ports"]` (or both) to upgrade to richer dedicated data: RF health (channel quality/utilization, client count, noise floor, interference) and uplink-port details (port id/type)
+- `central_get_ap_trends` — unified time-series trends for an AP, a radio, or an uplink port over a configurable time window; supports `scope="ap"` (throughput, cpu-utilization, memory-utilization, power-consumption), `scope="radio"` (throughput, channel-utilization, channel-quality, noise-floor, frames — requires `radio_number`), and `scope="port"` (throughput, frames, crc, collisions — requires `port_index`)
+
+### Changed
+- `central_get_wlans` gains a `serial_number` filter — pass an AP serial number to list only the WLANs broadcast by that AP (replaces the removed `central_get_ap_wlans` tool)
+
+### Breaking Changes
+- **REMOVED** `central_get_ap_statistics` — use `central_get_ap_trends` with `scope="ap"` and the equivalent metric (`cpu-utilization`, `memory-utilization`, `power-consumption`) instead
+- **REMOVED** `central_get_ap_wlans` — use `central_get_wlans(serial_number=<AP serial>)` instead
+
+### Dependencies
+- Bumped `pycentral` from `2.0a19` to `2.0a20`; notable upstream changes: `get_ap_stats` removed (AP time-series now served by the new monitoring endpoint); WLAN listing moved to the `WLAN` monitoring class; gateway port fetch migrated to `get_all_gateway_ports`
+
+### Release
+- Bumped package version to `0.1.7` in `pyproject.toml` and `uv.lock`
+
+---
+
 ## [0.1.6.2] - 2026-05-14
 
 ### Bug Fixes

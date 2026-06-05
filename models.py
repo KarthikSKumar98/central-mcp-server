@@ -354,6 +354,348 @@ class WLANThroughputSample(BaseModel):
     )
 
 
+class APRadio(BaseModel):
+    """Access point radio data structure.
+
+    Models the union of embedded radios (from get_ap_details) and the richer
+    dedicated get_ap_radios items.  All fields are optional so both payload
+    shapes deserialise without errors.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    radio_number: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("radio_number", "radioNumber"),
+        description="Radio slot/index number.",
+    )
+    band: str | None = Field(
+        default=None, description="Wireless band (e.g. 2.4GHz, 5GHz, 6GHz)."
+    )
+    band_range: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("band_range", "bandRange"),
+        description="Band range descriptor.",
+    )
+    bandwidth: int | float | str | None = Field(
+        default=None, description="Channel bandwidth (e.g. '20 MHz' or 20)."
+    )
+    channel: int | float | str | None = Field(
+        default=None, description="Current operating channel."
+    )
+    channel_change_count: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("channel_change_count", "channelChangeCount"),
+        description="Number of channel changes since last reset.",
+    )
+    channel_quality: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("channel_quality", "channelQuality"),
+        description="Channel quality score (0–100).",
+    )
+    channel_utilization: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("channel_utilization", "channelUtilization"),
+        description="Channel utilisation percentage.",
+    )
+    client_count: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("client_count", "clientCount"),
+        description="Number of clients currently associated to this radio.",
+    )
+    drops: int | float | None = Field(default=None, description="Dropped frame count.")
+    mac_address: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("mac_address", "macAddress"),
+        description="MAC address of this radio.",
+    )
+    mode: str | None = Field(default=None, description="Radio operating mode.")
+    noise_floor: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("noise_floor", "noiseFloor"),
+        description="Noise floor in dBm.",
+    )
+    non_wifi_interference: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("non_wifi_interference", "nonWifiInterference"),
+        description="Non-Wi-Fi interference percentage.",
+    )
+    power: int | float | str | None = Field(
+        default=None, description="Transmit power (e.g. '20 dBm' or 20)."
+    )
+    power_change_count: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("power_change_count", "powerChangeCount"),
+        description="Number of transmit-power changes since last reset.",
+    )
+    radio_type: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("radio_type", "radioType"),
+        description="Radio hardware type (e.g. 802.11ax).",
+    )
+    retries: int | float | None = Field(default=None, description="Retry frame count.")
+    rx_utilization: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("rx_utilization", "rxUtilization"),
+        description="Receive utilisation percentage.",
+    )
+    tx_utilization: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("tx_utilization", "txUtilization"),
+        description="Transmit utilisation percentage.",
+    )
+    site_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("site_id", "siteId"),
+        description="Site ID reported by the dedicated radio endpoint.",
+    )
+    spatial_stream: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("spatial_stream", "spatialStream"),
+        description="Spatial stream configuration (e.g. '2x2:2').",
+    )
+    antenna: str | None = Field(default=None, description="Antenna type/model.")
+    status: str | None = Field(default=None, description="Radio operational status.")
+    id: str | None = Field(
+        default=None, description="Unique radio resource ID (dedicated endpoint)."
+    )
+    type: str | None = Field(
+        default=None, description="Resource type tag (dedicated endpoint)."
+    )
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> "APRadio":
+        """Normalise a raw radio dict from either embedded or dedicated payloads."""
+        normalized: dict[str, Any] = dict(raw)
+        # Embedded summary shape has radioStats: [{noiseFloor, channelUtilization}]
+        radio_stats = normalized.pop("radioStats", None)
+        if isinstance(radio_stats, list) and radio_stats:
+            for key, value in radio_stats[0].items():
+                normalized.setdefault(key, value)
+        return cls(**normalized)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep radio payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class APPort(BaseModel):
+    """Access point port data structure.
+
+    Models the union of embedded ports (from get_ap_details) and dedicated
+    get_ap_ports items.  All fields are optional.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    port_index: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("port_index", "portIndex"),
+        description="Port index number.",
+    )
+    name: str | None = Field(default=None, description="Port name.")
+    status: str | None = Field(default=None, description="Port operational status.")
+    speed: int | float | str | None = Field(
+        default=None,
+        description="Port speed in Mbps or 'Auto'.",
+    )
+    duplex: str | None = Field(default=None, description="Duplex mode (Full, Half).")
+    connector: str | None = Field(default=None, description="Physical connector type.")
+    mac_address: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("mac_address", "macAddress"),
+        description="MAC address of the port.",
+    )
+    access_vlan: int | str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("access_vlan", "accessVlan"),
+        description="Access VLAN ID assigned to the port ('-' when unset).",
+    )
+    allowed_vlan: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("allowed_vlan", "allowedVlan"),
+        description="Allowed VLANs on the port (trunk mode).",
+    )
+    native_vlan: int | str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("native_vlan", "nativeVlan"),
+        description="Native VLAN for the port ('-' when unset).",
+    )
+    vlan_mode: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("vlan_mode", "vlanMode"),
+        description="VLAN mode (Access, Trunk).",
+    )
+    id: str | None = Field(
+        default=None, description="Unique port resource ID (dedicated endpoint)."
+    )
+    type: str | None = Field(
+        default=None, description="Resource type tag (dedicated endpoint)."
+    )
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> "APPort":
+        """Construct an APPort from a raw port dict."""
+        return cls(**raw)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep port payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class APDetail(AccessPoint):
+    """Rich single-AP detail, as returned by get_ap_details.
+
+    Subclasses AccessPoint and adds detail-only fields plus embedded
+    radios, ports, and wlans.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    # Detail-only scalar fields
+    uptime_in_millis: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("uptime_in_millis", "uptimeInMillis"),
+        description="AP uptime in milliseconds.",
+    )
+    manufacturer: str | None = Field(
+        default=None, description="AP hardware manufacturer."
+    )
+    mode: str | None = Field(
+        default=None, description="Current operating mode of the AP."
+    )
+    mesh_role: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("mesh_role", "meshRole"),
+        description="Mesh role (Portal, MeshPoint).",
+    )
+    default_gateway: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("default_gateway", "defaultGateway"),
+        description="Default gateway IP address.",
+    )
+    subnet_mask: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("subnet_mask", "subnetMask"),
+        description="Subnet mask of the AP's IP address.",
+    )
+    country_code: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("country_code", "countryCode"),
+        description="Regulatory country code.",
+    )
+    current_uplink_in_use: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("current_uplink_in_use", "currentUplinkInUse"),
+        description="Current active uplink interface.",
+    )
+    negotiated_power: int | float | str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("negotiated_power", "negotiatedPower"),
+        description="PoE negotiated power or PoE class (e.g. '802.3at').",
+    )
+    band_selection: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("band_selection", "bandSelection"),
+        description="Band steering/selection mode.",
+    )
+    notes: str | None = Field(default=None, description="Operator notes for the AP.")
+
+    # Embedded sub-entities
+    radios: list[APRadio] | None = Field(
+        default=None,
+        description="List of radio interfaces on this AP.",
+    )
+    ports: list[APPort] | None = Field(
+        default=None,
+        description="List of wired ports on this AP.",
+    )
+    wlans: list[WLAN] | None = Field(
+        default=None,
+        description="List of WLANs served by this AP.",
+    )
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> "APDetail":  # type: ignore[override]
+        """Normalise a get_ap_details payload into an APDetail instance."""
+        normalized: dict[str, Any] = dict(raw)
+
+        # --- Inherited AccessPoint normalisations ---
+        if normalized.get("status") == "ONLINE":
+            normalized["lastSeenAt"] = None
+        reason = normalized.get("lastRebootReason")
+        if reason and reason in _REBOOT_REASON_MAP:
+            normalized["lastRebootReason"] = _REBOOT_REASON_MAP[reason]
+
+        # --- Flatten apStats: [{clientCount, cpuUtilization, memoryUtilization}] ---
+        ap_stats = normalized.pop("apStats", None)
+        if isinstance(ap_stats, list) and ap_stats:
+            stats = ap_stats[0]
+            normalized.setdefault("clientCount", stats.get("clientCount"))
+            normalized.setdefault("cpuUtilization", stats.get("cpuUtilization"))
+            normalized.setdefault("memoryUtilization", stats.get("memoryUtilization"))
+
+        # --- Convert embedded sub-entities ---
+        raw_radios = normalized.pop("radios", None)
+        if isinstance(raw_radios, list):
+            normalized["radios"] = [APRadio.from_api(r) for r in raw_radios]
+
+        raw_ports = normalized.pop("ports", None)
+        if isinstance(raw_ports, list):
+            normalized["ports"] = [APPort.from_api(p) for p in raw_ports]
+
+        raw_wlans = normalized.pop("wlans", None)
+        if isinstance(raw_wlans, list):
+            normalized["wlans"] = [WLAN(**w) for w in raw_wlans]
+
+        return cls(**normalized)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(  # type: ignore[override]
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep detail payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class TrendSample(BaseModel):
+    """Generic AP/radio/port trend sample with a dynamic metric value key.
+
+    The metric value keys (e.g. ``cpu_utilization``, ``tx``, ``rx``,
+    ``non_wifi_interference``) vary per metric type and are captured via
+    ``extra="allow"``.  The sparse serializer drops any null extras.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    timestamp: str = Field(description="RFC 3339 timestamp for the trend sample.")
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields (including extras) to keep trend payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
 class Client(BaseModel):
     """Client device data structure."""
 
