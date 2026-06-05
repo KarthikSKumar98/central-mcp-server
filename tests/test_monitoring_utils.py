@@ -320,6 +320,120 @@ def test_fetch_trends_invalid_scope_raises():
 
 
 # ---------------------------------------------------------------------------
+# fetch_trends — generic paths (multi-metric scopes, sub_id, epoch window)
+# ---------------------------------------------------------------------------
+
+MULTI_METRIC_SCOPES = {
+    "hardware": ("get_switch_hardware_trends", None, None),
+    "interface": ("get_switch_interface_trends", None, None),
+}
+
+GENERIC_SUB_ID_SCOPES = {
+    "tunnel": ("get_gateway_tunnel_trends", ("throughput", "status"), "tunnel_name"),
+}
+
+HARDWARE_SAMPLES = [
+    {"timestamp": "2026-06-01T10:00:00Z", "cpu_utilization": 4, "memory_utilization": 31},
+]
+
+
+def test_fetch_trends_multi_metric_scope_omits_metric_kwarg():
+    cls = _fake_cls(get_switch_hardware_trends=HARDWARE_SAMPLES)
+    result = fetch_trends(
+        conn=MagicMock(),
+        serial_number=SERIAL,
+        scope="hardware",
+        metric=None,
+        window=WINDOW,
+        monitor_cls=cls,
+        scopes=MULTI_METRIC_SCOPES,
+    )
+    call_kwargs = cls.get_switch_hardware_trends.call_args.kwargs
+    assert "metric" not in call_kwargs
+    assert result == HARDWARE_SAMPLES
+
+
+def test_fetch_trends_multi_metric_scope_rejects_explicit_metric():
+    cls = _fake_cls(get_switch_hardware_trends=[])
+    with pytest.raises(ValueError, match="does not take a metric"):
+        fetch_trends(
+            conn=MagicMock(),
+            serial_number=SERIAL,
+            scope="hardware",
+            metric="cpu-utilization",
+            window=WINDOW,
+            monitor_cls=cls,
+            scopes=MULTI_METRIC_SCOPES,
+        )
+
+
+def test_fetch_trends_generic_sub_id_passed_under_required_kwarg_name():
+    cls = _fake_cls(get_gateway_tunnel_trends=[])
+    fetch_trends(
+        conn=MagicMock(),
+        serial_number=SERIAL,
+        scope="tunnel",
+        metric="throughput",
+        window=WINDOW,
+        sub_id="tunnel-1",
+        monitor_cls=cls,
+        scopes=GENERIC_SUB_ID_SCOPES,
+    )
+    call_kwargs = cls.get_gateway_tunnel_trends.call_args.kwargs
+    assert call_kwargs["tunnel_name"] == "tunnel-1"
+
+
+def test_fetch_trends_generic_required_kwarg_missing_raises():
+    cls = _fake_cls(get_gateway_tunnel_trends=[])
+    with pytest.raises(ValueError, match="tunnel_name"):
+        fetch_trends(
+            conn=MagicMock(),
+            serial_number=SERIAL,
+            scope="tunnel",
+            metric="throughput",
+            window=WINDOW,
+            monitor_cls=cls,
+            scopes=GENERIC_SUB_ID_SCOPES,
+        )
+
+
+def test_fetch_trends_epoch_window_converts_rfc3339_to_epoch_seconds():
+    cls = _fake_cls(get_switch_hardware_trends=[])
+    fetch_trends(
+        conn=MagicMock(),
+        serial_number=SERIAL,
+        scope="hardware",
+        metric=None,
+        window=WINDOW,
+        epoch_window=True,
+        monitor_cls=cls,
+        scopes=MULTI_METRIC_SCOPES,
+    )
+    call_kwargs = cls.get_switch_hardware_trends.call_args.kwargs
+    # 2026-06-01T09:00:00Z / 10:00:00Z UTC as epoch seconds
+    assert call_kwargs["start_time"] == 1780304400
+    assert call_kwargs["end_time"] == 1780308000
+    assert isinstance(call_kwargs["start_time"], int)
+
+
+def test_fetch_trends_extra_params_forwarded_and_none_values_dropped():
+    cls = _fake_cls(get_switch_interface_trends=[])
+    fetch_trends(
+        conn=MagicMock(),
+        serial_number=SERIAL,
+        scope="interface",
+        metric=None,
+        window=WINDOW,
+        extra_params={"interface_id": "1/1/1", "uplink": None},
+        monitor_cls=cls,
+        scopes=MULTI_METRIC_SCOPES,
+    )
+    call_kwargs = cls.get_switch_interface_trends.call_args.kwargs
+    assert call_kwargs["interface_id"] == "1/1/1"
+    assert "uplink" not in call_kwargs
+
+
+# ---------------------------------------------------------------------------
 # Lazy-resolution proof — patch on the real class is picked up at call time
 # ---------------------------------------------------------------------------
 

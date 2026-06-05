@@ -144,6 +144,11 @@ def format_rfc3339(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
 
 
+def rfc3339_to_epoch(value: str) -> int:
+    """Convert an RFC 3339 timestamp string to epoch seconds (UTC)."""
+    return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
+
+
 def compute_time_window(time_range: str) -> tuple[datetime, datetime]:
     now = datetime.now(timezone.utc)
 

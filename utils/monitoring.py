@@ -1,7 +1,7 @@
-"""Device-agnostic monitoring helpers for AP (and future switch/gateway) trend and snapshot fetching.
+"""Device-agnostic monitoring helpers for AP/switch/gateway trend and snapshot fetching.
 
 This module provides thin, synchronous wrappers around ``pycentral``'s
-``MonitoringAPs`` class.  Tool-layer functions run these in
+``new_monitoring`` classes.  Tool-layer functions run these in
 ``asyncio.to_thread``; errors propagate as exceptions for the tool layer to
 format via ``format_tool_error``.
 """
@@ -11,6 +11,7 @@ from __future__ import annotations
 from pycentral.new_monitoring import MonitoringAPs
 
 from constants import AP_TREND_METRICS, PORT_TREND_METRICS, RADIO_TREND_METRICS
+from utils.common import rfc3339_to_epoch
 
 # ---------------------------------------------------------------------------
 # Routing maps — method names stored as strings so that patches applied to
@@ -85,16 +86,19 @@ def fetch_trends(
     conn,
     serial_number: str,
     scope: str,
-    metric: str,
+    metric: str | None,
     window: tuple[str, str],
     *,
     radio_number: int | None = None,
     port_index: int | None = None,
+    sub_id: object | None = None,
+    extra_params: dict | None = None,
+    epoch_window: bool = False,
     interface_type: str = "WIRELESS",
     monitor_cls=MonitoringAPs,
-    scopes: dict[str, tuple[str, tuple[str, ...], str | None]] = AP_TREND_SCOPES,
+    scopes: dict[str, tuple[str, tuple[str, ...] | None, str | None]] = AP_TREND_SCOPES,
 ) -> list[dict]:
-    """Fetch time-series trend samples for an AP, radio, or port.
+    """Fetch time-series trend samples for a device-level or sub-resource scope.
 
     Validates ``scope`` and ``metric`` before making any network call so that
     errors surface immediately with actionable messages.  The tool layer wraps
@@ -102,17 +106,28 @@ def fetch_trends(
 
     Args:
         conn: Central API connection object.
-        serial_number: AP serial number.
-        scope: One of ``"ap"``, ``"radio"``, or ``"port"``.
+        serial_number: Device serial number (or stack ID for switches).
+        scope: A key of ``scopes`` (e.g. ``"ap"``, ``"radio"``, ``"port"``).
         metric: Metric name valid for the given scope (see ``constants.py``).
+            Must be ``None`` for multi-metric scopes (``valid_metrics is None``
+            in the scope tuple), where the API returns all metrics per sample.
         window: ``(start_at, end_at)`` tuple of RFC 3339 strings, e.g. from
             ``_resolve_time_window``.
         radio_number: Required when ``scope == "radio"``.
         port_index: Required when ``scope == "port"``.
+        sub_id: Generic per-scope identifier for non-AP scopes whose required
+            kwarg is neither ``radio_number`` nor ``port_index`` (e.g. a
+            gateway ``port_number``, ``tunnel_name``, or ``link_tag``).
+        extra_params: Optional extra kwargs forwarded to the pycentral method
+            (``None`` values are dropped), e.g. switch ``interface_id``/``uplink``.
+        epoch_window: When ``True``, convert the RFC 3339 window to epoch
+            seconds (switch and gateway trend APIs expect epoch ints).
         interface_type: One of ``WIRED``, ``WIRELESS``, ``LTE``.  Applied only
             when ``scope == "ap"`` and ``metric == "throughput"``.
-        monitor_cls: ``MonitoringAPs`` class (injectable for tests).
-        scopes: Scope routing map (injectable for tests).
+        monitor_cls: pycentral monitoring class (injectable for tests).
+        scopes: Scope routing map of
+            ``scope -> (method_name, valid_metrics | None, required_kwarg | None)``
+            (injectable for tests).
 
     Returns:
         List of flat sample dicts, each containing ``"timestamp"`` and one or
@@ -128,30 +143,45 @@ def fetch_trends(
 
     method_name, valid_metrics, required_kwarg = scopes[scope]
 
-    if metric not in valid_metrics:
+    if valid_metrics is None:
+        if metric is not None:
+            raise ValueError(
+                f"Scope '{scope}' does not take a metric; all metrics are "
+                "returned per sample."
+            )
+    elif metric not in valid_metrics:
         raise ValueError(
             f"Invalid metric '{metric}' for scope '{scope}'. "
             f"Valid metrics: {', '.join(valid_metrics)}."
         )
 
-    if required_kwarg == "radio_number" and radio_number is None:
-        raise ValueError("scope 'radio' requires 'radio_number'.")
-    if required_kwarg == "port_index" and port_index is None:
-        raise ValueError("scope 'port' requires 'port_index'.")
+    if required_kwarg is not None:
+        sub_value = sub_id
+        if required_kwarg == "radio_number" and radio_number is not None:
+            sub_value = radio_number
+        elif required_kwarg == "port_index" and port_index is not None:
+            sub_value = port_index
+        if sub_value is None:
+            raise ValueError(f"scope '{scope}' requires '{required_kwarg}'.")
+
+    start_at, end_at = window
+    if epoch_window:
+        start_at, end_at = rfc3339_to_epoch(start_at), rfc3339_to_epoch(end_at)
 
     kwargs: dict = {
         "central_conn": conn,
         "serial_number": serial_number,
-        "metric": metric,
-        "start_time": window[0],
-        "end_time": window[1],
+        "start_time": start_at,
+        "end_time": end_at,
     }
 
-    if scope == "radio":
-        kwargs["radio_number"] = radio_number
-    elif scope == "port":
-        kwargs["port_index"] = port_index
-    elif scope == "ap" and metric == "throughput":
+    if valid_metrics is not None:
+        kwargs["metric"] = metric
+    if required_kwarg is not None:
+        kwargs[required_kwarg] = sub_value
+    if scope == "ap" and metric == "throughput":
         kwargs["interface_type"] = interface_type
+    if extra_params:
+        kwargs.update({k: v for k, v in extra_params.items() if v is not None})
 
     return getattr(monitor_cls, method_name)(**kwargs)
