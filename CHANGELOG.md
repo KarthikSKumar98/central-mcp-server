@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.1.8] - 2026-06-06
 
 ### New Tools
 - `central_get_switches` — filtered list of switches by site, model, status (title-case `Online`/`Offline`), or deployment (`Standalone`/`Stack`/`VSX`); each item embeds a current hardware-trend snapshot (CPU, memory, PoE, power, temperature, uplink ports)
