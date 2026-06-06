@@ -31,7 +31,7 @@ When a user asks about "poor", "fair", or "good" sites:
 - For alerts, `central_get_alerts` REQUIRES `site_id` — resolve via `central_get_sites(site_names=["<name>"])` and read `site_id` from the response. Defaults to `status="Active"`; only pass `"Cleared"` when the user explicitly asks about resolved alerts. For noisy sites, narrow with `device_type` or `category` rather than paging. Only follow `next_cursor` when the user asks for more.
 - For client lookups, when the user names a single MAC address prefer `central_find_client` over `central_get_clients`. Do NOT call `central_get_clients` without filters; always scope by `site_id` (resolved via `central_get_summary`) at minimum.
 - For device lookups, when the user names a specific device prefer `central_find_device` with `serial_number` (most reliable). Pass exactly one of `serial_number` or `device_name`, never both.
-- For WLANs, use `central_get_ap_wlans(serial_number=...)` for AP-specific SSID questions ("what's AP X broadcasting?"); use `central_get_wlans` for site- or network-wide WLAN inventory. `wlan_name` is exact-match in both — resolve the name via `central_get_wlans` first if the user gives a partial name.
+- For WLANs, use `central_get_wlans(serial_number=...)` for AP-specific SSID questions ("what's AP X broadcasting?"); use `central_get_wlans` for site- or network-wide WLAN inventory. `wlan_name` is exact-match in both — resolve the name via `central_get_wlans` first if the user gives a partial name.
 
 ## Resolving Issues
 
