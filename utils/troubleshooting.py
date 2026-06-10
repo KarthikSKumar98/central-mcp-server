@@ -1,12 +1,13 @@
 import asyncio
+import re
 from typing import Any
 
-from pycentral.new_monitoring import MonitoringDevices
 from pycentral.new_monitoring.gateways import MonitoringGateways
 from pycentral.new_monitoring.switches import MonitoringSwitches
 from pycentral.troubleshooting import Troubleshooting
 
 from models import TroubleshootingResult
+from utils.common import lookup_inventory_device, stack_aware_serial
 
 SWITCH_OS_MAPPING = {"cx": [6, 8, 9, 1, 4], "aos-s": [2, 3, 5]}
 
@@ -77,10 +78,19 @@ def resolve_device_family(device: dict[str, Any]) -> str:
         return "gateways"
     if device_type == "SWITCH":
         model = device.get("model") or ""
-        if int(model[0]) in SWITCH_OS_MAPPING["cx"]:
-            return "cx"
-        elif int(model[0]) in SWITCH_OS_MAPPING["aos-s"]:
-            return "aos-s"
+        # Strip any leading alphabetic vendor prefix (e.g. "CX-" in "CX-6300F",
+        # "AS-" in "AS-2930M") so that bare digit comparison works regardless of
+        # whether the monitoring or inventory API returned the model string.
+        bare = re.sub(r"^[A-Za-z]+-?", "", model)
+        try:
+            leading_digit = int(bare[0]) if bare else None
+        except (ValueError, IndexError):
+            leading_digit = None
+        if leading_digit is not None:
+            if leading_digit in SWITCH_OS_MAPPING["cx"]:
+                return "cx"
+            if leading_digit in SWITCH_OS_MAPPING["aos-s"]:
+                return "aos-s"
     raise ValueError(
         f"Unrecognised deviceType '{device_type}' for serial "
         f"'{device.get('serialNumber')}'. Expected ACCESS_POINT, SWITCH, or GATEWAY."
@@ -88,43 +98,56 @@ def resolve_device_family(device: dict[str, Any]) -> str:
 
 
 def lookup_device_by_serial(conn: Any, serial_number: str) -> dict[str, Any]:
-    """Fetch a single device record by serial number from the inventory API.
+    """Fetch a single device record by serial number (or stackId) from the inventory API.
+
+    Delegates to ``lookup_inventory_device`` which first tries ``serialNumber`` and
+    falls back to ``stackId``, covering the case where a stack ID is passed directly.
 
     Args:
         conn: Active Central connection from the lifespan context.
-        serial_number: Device serial number to look up.
+        serial_number: Device serial number or stack ID to look up.
 
     Raises:
-        ValueError: If the serial is not found in the inventory.
+        ValueError: If the identifier is not found in the inventory.
 
     """
-    results = MonitoringDevices.get_all_device_inventory(
-        central_conn=conn,
-        filter_str=f"serialNumber eq '{serial_number}'",
-    )
-    if not results:
+    device = lookup_inventory_device(conn, serial_number)
+    if device is None:
         raise ValueError(
             f"Device with serial '{serial_number}' not found in the Central inventory. "
             "Verify the serial number and that the device is provisioned in Central."
         )
-    return results[0]
+    return device
 
 
-async def resolve_family_from_serial(conn: Any, serial_number: str) -> str:
-    """Return the pycentral device-family string for a given serial number.
+async def resolve_family_from_serial(conn: Any, serial_number: str) -> tuple[str, str]:
+    """Return ``(family, effective_serial)`` for a given serial number or stack ID.
+
+    For stack switches the Central Troubleshooting and monitoring APIs only accept the
+    ``stackId`` — not any member or conductor serial.  ``effective_serial`` is the
+    ``stackId`` when the device is a stack member/conductor, otherwise it equals
+    ``serial_number`` unchanged.
 
     Args:
         conn: Active Central connection from the lifespan context.
-        serial_number: Device serial number to look up.
+        serial_number: Device serial number or stack ID to look up.
+
+    Returns:
+        Tuple of (pycentral device-family string, effective serial for API calls).
+
+    Raises:
+        ValueError: If the device is not found or is currently offline.
 
     """
     device = await asyncio.to_thread(lookup_device_by_serial, conn, serial_number)
-    if device["status"] != "ONLINE":
+    if device.get("status") != "ONLINE":
         raise ValueError(
             f"Device with serial '{serial_number}' is currently offline. "
             "Troubleshooting tests require the device to be online."
         )
-    return resolve_device_family(device)
+    family = resolve_device_family(device)
+    effective_serial = stack_aware_serial(device, serial_number)
+    return family, effective_serial
 
 
 def _extract_task_id(response: Any) -> str | None:
@@ -310,7 +333,7 @@ async def fetch_device_interfaces(
         )
     elif family == "gateways":
         response = await asyncio.to_thread(
-            MonitoringGateways.get_gateway_interfaces,
+            MonitoringGateways.get_all_gateway_ports,
             central_conn=conn,
             serial_number=serial_number,
         )

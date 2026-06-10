@@ -1,20 +1,21 @@
 import asyncio
-from typing import Any, Literal
+from typing import Literal
 
 from fastmcp import Context, FastMCP
 from pycentral.new_monitoring import MonitoringAPs
 
 from constants import TIME_RANGE
-from models import WLAN, AccessPoint, AccessPointStatistics
+from models import AccessPoint, APDetail, TrendSample
 from tools import READ_ONLY
 from utils.common import (
     FilterField,
     api_context,
     build_filters,
     format_tool_error,
+    normalize_sort_direction,
 )
 from utils.events import _resolve_time_window
-from utils.wlans import clean_wlan_data
+from utils.monitoring import fetch_snapshot, fetch_trends
 
 AP_FILTER_FIELDS: dict[str, FilterField] = {
     "site_id": FilterField("siteId"),
@@ -88,7 +89,7 @@ def register(mcp: FastMCP) -> None:
                     MonitoringAPs.get_all_aps,
                     central_conn=conn,
                     filter_str=filter_str,
-                    sort=sort,
+                    sort=normalize_sort_direction(sort),
                 )
             except Exception as e:
                 return format_tool_error("fetching access points", e)
@@ -101,80 +102,134 @@ def register(mcp: FastMCP) -> None:
                 return format_tool_error("parsing access point data", e)
 
     @mcp.tool(annotations=READ_ONLY)
-    async def central_get_ap_statistics(
+    async def central_get_ap_details(
         ctx: Context,
         serial_number: str,
-        time_range: TIME_RANGE = "last_1h",
-        start_time: str | None = None,
-        end_time: str | None = None,
-    ) -> list[AccessPointStatistics] | str:
-        """Return AP statistics (CPU, memory, power) for a given AP serial number within a time window.
+        include: list[Literal["radios", "ports"]] | None = None,
+    ) -> APDetail | str:
+        """Return a detailed single-AP snapshot for the given serial number.
+
+        The base snapshot (no ``include``) already embeds summary radios, ports,
+        and WLANs inline.  Pass ``include`` to upgrade specific sub-resources to
+        the richer dedicated payloads:
+
+        - ``"radios"``: upgrades embedded radio summaries with full RF-health data
+          (channel quality/utilization, client count, noise floor, non-Wi-Fi
+          interference, tx/rx utilization, and more).
+        - ``"ports"``: upgrades embedded port summaries with additional fields
+          (port id, type).
+
+        Using ``include`` makes extra API calls; omit it when the embedded summary
+        data is sufficient to keep responses fast and token-efficient.
 
         Parameters
         ----------
-        - serial_number: Serial number of the AP.
-        - time_range: Predefined time window. Allowed values: last_1h, last_6h, last_24h,
-          last_7d, last_30d, today, yesterday. Ignored if both start_time and end_time are provided.
-        - start_time: Start of the time window in RFC 3339 format (e.g. "2026-03-21T00:00:00.000Z").
-          Overrides time_range when combined with end_time.
-        - end_time: End of the time window in RFC 3339 format (e.g. "2026-03-21T23:59:59.999Z").
-          Overrides time_range when combined with start_time.
+        - serial_number: Serial number of the AP to query. Required.
+        - include: Optional list of sub-resources to upgrade to dedicated payloads.
+          Allowed values: ``"radios"``, ``"ports"``.
+
+        """
+        async with api_context(ctx) as conn:
+            try:
+                raw = await asyncio.to_thread(
+                    fetch_snapshot, conn, serial_number, include
+                )
+            except Exception as e:
+                return format_tool_error("fetching AP details", e)
+        if not raw:
+            return f"No AP found for serial number '{serial_number}'."
+        try:
+            return APDetail.from_api(raw)
+        except Exception as e:
+            return format_tool_error("parsing AP details", e)
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def central_get_ap_trends(
+        ctx: Context,
+        serial_number: str,
+        metric: str,
+        scope: Literal["ap", "radio", "port"] = "ap",
+        radio_number: int | None = None,
+        port_index: int | None = None,
+        time_range: TIME_RANGE = "last_1h",
+        start_time: str | None = None,
+        end_time: str | None = None,
+    ) -> list[TrendSample] | str:
+        """Return time-series trend samples for an AP, radio, or wired port.
+
+        The ``scope`` parameter selects which entity to query and determines
+        which metrics are valid:
+
+        - ``scope="ap"`` (default): AP-level metrics.
+          Valid metrics: ``throughput``, ``cpu-utilization``, ``memory-utilization``,
+          ``power-consumption``.
+          No additional identifier required.
+
+        - ``scope="radio"``: Per-radio RF metrics.
+          Valid metrics: ``throughput``, ``channel-utilization``, ``channel-quality``,
+          ``noise-floor``, ``frames``.
+          Requires ``radio_number``.
+
+        - ``scope="port"``: Per-wired-port metrics.
+          Valid metrics: ``throughput``, ``frames``, ``crc``, ``collisions``.
+          Requires ``port_index``.
+
+        Each returned sample contains a ``timestamp`` (RFC 3339) plus one or more
+        metric-specific value keys (e.g. ``tx``/``rx`` for throughput,
+        ``cpu_utilization`` for cpu-utilization).
+
+        NOTE: In longer time windows (e.g. ``last_24h``, ``last_7d``) the returned
+        series may contain sparse samples that carry only a ``timestamp`` with no
+        metric value, due to gaps in Central's backend collection.  Consumers should
+        handle missing metric values rather than assume every sample has data.
+
+        NOTE: Some metrics (notably ``memory-utilization`` and ``cpu-utilization``)
+        may report flat/invariant values across many samples.  This reflects
+        Central's refresh cadence for those counters, not a data error.
+
+        Time window: ``start_time`` + ``end_time`` (RFC 3339) override
+        ``time_range`` when both are supplied.  Otherwise ``time_range`` selects a
+        named window relative to now (last_1h, last_6h, last_24h, last_7d,
+        last_30d, today, yesterday).
+
+        Parameters
+        ----------
+        - serial_number: Serial number of the AP to query. Required.
+        - metric: Metric to retrieve. Must be valid for the chosen scope (see above).
+        - scope: Entity scope: ``"ap"``, ``"radio"``, or ``"port"``. Default ``"ap"``.
+        - radio_number: Radio index (0-based). Required when ``scope="radio"``.
+        - port_index: Port index. Required when ``scope="port"``.
+        - time_range: Predefined time window. Allowed values: last_1h, last_6h,
+          last_24h, last_7d, last_30d, today, yesterday. Ignored when both
+          ``start_time`` and ``end_time`` are provided.
+        - start_time: Start of the time window in RFC 3339 format
+          (e.g. ``"2026-03-21T00:00:00.000Z"``). Overrides ``time_range`` when
+          combined with ``end_time``.
+        - end_time: End of the time window in RFC 3339 format
+          (e.g. ``"2026-03-21T23:59:59.999Z"``). Overrides ``time_range`` when
+          combined with ``start_time``.
 
         """
         start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
         async with api_context(ctx) as conn:
             try:
-                stats = await asyncio.to_thread(
-                    MonitoringAPs.get_ap_stats,
-                    central_conn=conn,
-                    serial_number=serial_number,
-                    start_time=start_at,
-                    end_time=end_at,
+                raw = await asyncio.to_thread(
+                    fetch_trends,
+                    conn,
+                    serial_number,
+                    scope,
+                    metric,
+                    (start_at, end_at),
+                    radio_number=radio_number,
+                    port_index=port_index,
                 )
+            except ValueError as e:  # validation: invalid scope/metric/missing id
+                return format_tool_error("validating AP trend request", e)
             except Exception as e:
-                return format_tool_error("fetching access point statistics", e)
-
-            if not stats:
-                return f"No AP statistics found for serial number '{serial_number}'."
-            try:
-                return [AccessPointStatistics(**stat) for stat in stats]
-            except Exception as e:
-                return format_tool_error("parsing access point statistics", e)
-
-    @mcp.tool(annotations=READ_ONLY)
-    async def central_get_ap_wlans(
-        ctx: Context,
-        serial_number: str,
-        wlan_name: str | None = None,
-    ) -> list[WLAN] | str:
-        """Return WLANs associated with a specific AP.
-
-        Retrieves all WLANs currently active on the AP identified by serial_number.
-        Use wlan_name to narrow results to a single SSID by exact name.
-
-        Parameters
-        ----------
-        - serial_number: Serial number of the AP to query. Required.
-        - wlan_name: Exact WLAN name (SSID) to filter by. Applied client-side.
-
-        """
-        async with api_context(ctx) as conn:
-            try:
-                response = await asyncio.to_thread(
-                    MonitoringAPs.get_ap_wlans,
-                    central_conn=conn,
-                    serial_number=serial_number,
-                )
-            except Exception as e:
-                return format_tool_error("fetching AP WLANs", e)
-
-        items = response.get("items", []) if isinstance(response, dict) else []
-        if wlan_name:
-            items = [w for w in items if w.get("wlanName") == wlan_name]
-
-        if not items:
-            return f"No WLANs found for AP '{serial_number}'."
+                return format_tool_error("fetching AP trends", e)
+        if not raw:
+            return f"No {scope} trend data found for serial number '{serial_number}'."
         try:
-            return clean_wlan_data(items)
+            return [TrendSample(**sample) for sample in raw]
         except Exception as e:
-            return format_tool_error("parsing AP WLANs", e)
+            return format_tool_error("parsing AP trends", e)

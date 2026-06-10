@@ -40,6 +40,25 @@ RAW_CX = {**RAW_AP, "serialNumber": "SW001", "deviceType": "SWITCH", "model": "6
 RAW_AOSS = {**RAW_AP, "serialNumber": "SW002", "deviceType": "SWITCH", "model": "2930F", "deviceName": "aoss-01"}
 RAW_GW = {**RAW_AP, "serialNumber": "GW001", "deviceType": "GATEWAY", "model": "9004", "deviceName": "gw-01"}
 
+# Stack switch records: a stack is addressable by member serial, conductor serial,
+# or the shared stackId — but the Central troubleshooting/monitoring APIs accept
+# ONLY the stackId. The inventory record carries deployment/role/stackId.
+STACK_ID = "f91f11e4-ca19-4b1a-89b7-0a7130f65ad0"
+RAW_CX_STACK_MEMBER = {
+    **RAW_CX,
+    "serialNumber": "SG39KN419Z",
+    "model": "6300",
+    "deployment": "Stack",
+    "role": "Member",
+    "stackId": STACK_ID,
+    "deviceName": "BO-MIA-EGSW01",
+}
+RAW_CX_STACK_CONDUCTOR = {
+    **RAW_CX_STACK_MEMBER,
+    "serialNumber": "SG39KN41B7",
+    "role": "Conductor",
+}
+
 COMPLETED_TASK = {"status": "COMPLETED", "result": {"output": "ping OK"}, "location": "/tasks/T001"}
 RUNNING_TASK = {"status": "RUNNING", "result": None, "location": "/tasks/T002"}
 FAILED_TASK = {"status": "FAILED", "result": None, "error": "Timeout", "location": "/tasks/T003"}
@@ -57,8 +76,10 @@ def tools():
 # ---------------------------------------------------------------------------
 
 def _patch_inventory(raw_device):
+    # Inventory resolution now lives in utils.common.lookup_inventory_device, which
+    # is what utils.troubleshooting.lookup_device_by_serial delegates to.
     return patch(
-        "utils.troubleshooting.MonitoringDevices.get_all_device_inventory",
+        "utils.common.MonitoringDevices.get_all_device_inventory",
         return_value=[raw_device],
     )
 
@@ -103,7 +124,7 @@ async def test_network_test_tcp_requires_port(tools):
 async def test_network_test_serial_not_found(tools):
     ctx = make_ctx()
     with patch(
-        "utils.troubleshooting.MonitoringDevices.get_all_device_inventory",
+        "utils.common.MonitoringDevices.get_all_device_inventory",
         return_value=[],
     ):
         result = await tools["central_run_network_test"](
@@ -590,7 +611,7 @@ async def test_bounce_port_gateway_success(tools):
     ctx = make_ctx()
     ctx.elicit = AsyncMock(return_value=AcceptedElicitation(data={}))
     with _patch_inventory(RAW_GW), \
-         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=_IFACE_RESPONSE), \
+         patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=_IFACE_RESPONSE), \
          patch("utils.troubleshooting.Troubleshooting.initiate_port_bounce_test", return_value={"location": "/tasks/T001"}) as mock_init, \
          patch("utils.troubleshooting.Troubleshooting.get_port_bounce_test_result", return_value=_BOUNCE_COMPLETED), \
          patch("asyncio.sleep"):
@@ -728,7 +749,7 @@ async def test_gateway_approval_shows_operState_and_health(tools):
     ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
     gw_response = {"ports": [_GW_IFACE_UP]}
     with _patch_inventory(RAW_GW), \
-         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+         patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
         await tools["central_bounce_port"](
             ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="port"
         )
@@ -744,7 +765,7 @@ async def test_gateway_approval_speed_auto_passes_through(tools):
     ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
     gw_response = {"ports": [_GW_IFACE_DOWN]}
     with _patch_inventory(RAW_GW), \
-         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+         patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
         await tools["central_bounce_port"](
             ctx, serial_number="GW001", ports=["GE 0/0/0"], bounce_type="port"
         )
@@ -758,7 +779,7 @@ async def test_gateway_approval_omits_neighbour_section(tools):
     ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
     gw_response = {"ports": [_GW_IFACE_UP]}
     with _patch_inventory(RAW_GW), \
-         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+         patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
         await tools["central_bounce_port"](
             ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="port"
         )
@@ -772,7 +793,7 @@ async def test_gateway_approval_omits_poe_fields_for_poe_bounce(tools):
     ctx.elicit = AsyncMock(return_value=DeclinedElicitation())
     gw_response = {"ports": [_GW_IFACE_UP]}
     with _patch_inventory(RAW_GW), \
-         patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+         patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
         await tools["central_bounce_port"](
             ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="poe"
         )
@@ -848,7 +869,7 @@ _CX_IFACE_RESPONSE = {
 #     ctx = make_ctx()
 #     gw_response = {"ports": [_GW_IFACE_UP]}
 #     with _patch_inventory(RAW_GW), \
-#          patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+#          patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
 #         result = await tools["central_get_port_details"](
 #             ctx, serial_number="GW001", ports=["GE 0/0/1"]
 #         )
@@ -986,10 +1007,133 @@ def test_normalize_port_name_edge_case_all_letters():
 #     ctx = make_ctx()
 #     gw_response = {"ports": [_GW_IFACE_UP]}  # _GW_IFACE_UP has name "GE 0/0/1"
 #     with _patch_inventory(RAW_GW), \
-#          patch("utils.troubleshooting.MonitoringGateways.get_gateway_interfaces", return_value=gw_response):
+#          patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
 #         result = await tools["central_get_port_details"](
 #             ctx, serial_number="GW001", ports=["0/0/1"]
 #         )
 #     assert isinstance(result, str)
 #     assert "GE 0/0/1" in result
 #     assert "status=Up" in result
+
+
+# ---------------------------------------------------------------------------
+# Stack switches — identifier resolution (regression for the stackId bug)
+#
+# For a stack, the Central troubleshooting/monitoring APIs reject every member
+# and conductor serial (404 Device not found) and accept only the stackId.
+# resolve_family_from_serial therefore returns the stackId as the effective
+# serial for stack devices, and the inventory lookup falls back from
+# serialNumber to stackId so a stackId passed directly also resolves.
+# ---------------------------------------------------------------------------
+
+from utils.troubleshooting import resolve_device_family, resolve_family_from_serial
+
+
+@pytest.mark.asyncio
+async def test_resolve_family_stack_member_returns_stack_id():
+    """A stack member serial resolves to (family, stackId), not its own serial."""
+    with patch(
+        "utils.common.MonitoringDevices.get_all_device_inventory",
+        return_value=[RAW_CX_STACK_MEMBER],
+    ):
+        family, effective = await resolve_family_from_serial("conn", "SG39KN419Z")
+    assert family == "cx"
+    assert effective == STACK_ID
+
+
+@pytest.mark.asyncio
+async def test_resolve_family_stack_conductor_returns_stack_id():
+    with patch(
+        "utils.common.MonitoringDevices.get_all_device_inventory",
+        return_value=[RAW_CX_STACK_CONDUCTOR],
+    ):
+        family, effective = await resolve_family_from_serial("conn", "SG39KN41B7")
+    assert family == "cx"
+    assert effective == STACK_ID
+
+
+@pytest.mark.asyncio
+async def test_resolve_family_standalone_returns_original_serial():
+    """A non-stack switch keeps its own serial as the effective identifier."""
+    with patch(
+        "utils.common.MonitoringDevices.get_all_device_inventory",
+        return_value=[RAW_CX],
+    ):
+        family, effective = await resolve_family_from_serial("conn", "SW001")
+    assert family == "cx"
+    assert effective == "SW001"
+
+
+@pytest.mark.asyncio
+async def test_resolve_family_stack_id_input_resolves_via_fallback():
+    """Passing the stackId directly resolves: serialNumber query misses, stackId
+    query hits (the second inventory call)."""
+    with patch(
+        "utils.common.MonitoringDevices.get_all_device_inventory",
+        side_effect=[[], [RAW_CX_STACK_MEMBER]],
+    ) as md:
+        family, effective = await resolve_family_from_serial("conn", STACK_ID)
+    assert family == "cx"
+    assert effective == STACK_ID
+    assert md.call_count == 2
+    assert md.call_args_list[1].kwargs["filter_str"] == f"stackId eq '{STACK_ID}'"
+
+
+@pytest.mark.asyncio
+async def test_show_commands_uses_stack_id_for_stack_device(tools):
+    """central_run_show_commands must call the Troubleshooting API with the stackId
+    (not the member serial) for a stack switch."""
+    ctx = make_ctx()
+    catalog = ["show version"]
+    with _patch_inventory(RAW_CX_STACK_MEMBER), \
+         patch("utils.troubleshooting.Troubleshooting.list_show_commands", return_value=catalog) as mock_list, \
+         patch("utils.troubleshooting.Troubleshooting.initiate_show_commands", return_value={"location": "/tasks/T001"}) as mock_init, \
+         patch("utils.troubleshooting.Troubleshooting.get_show_commands_result", return_value={"status": "COMPLETED", "result": {"output": "ok"}}), \
+         patch("asyncio.sleep"):
+        result = await tools["central_run_show_commands"](
+            ctx, serial_number="SG39KN419Z", commands=["show version"], max_attempts=1, poll_interval=1
+        )
+    assert isinstance(result, TroubleshootingResult)
+    assert mock_list.call_args.kwargs["serial_number"] == STACK_ID
+    assert mock_init.call_args.kwargs["serial_number"] == STACK_ID
+
+
+@pytest.mark.asyncio
+async def test_network_test_uses_stack_id_for_stack_device(tools):
+    """central_run_network_test must call the Troubleshooting API with the stackId."""
+    ctx = make_ctx()
+    with _patch_inventory(RAW_CX_STACK_MEMBER), \
+         patch("utils.troubleshooting.Troubleshooting.initiate_ping_cx_test", return_value={"location": "/tasks/T001"}) as mock_init, \
+         patch("utils.troubleshooting.Troubleshooting.get_ping_test_result", return_value={"status": "COMPLETED", "result": {}}), \
+         patch("asyncio.sleep"):
+        result = await tools["central_run_network_test"](
+            ctx, test_type="ping", serial_number="SG39KN419Z", destination="8.8.8.8",
+            max_attempts=1, poll_interval=1,
+        )
+    assert isinstance(result, TroubleshootingResult)
+    assert result.device_type == "cx"
+    assert mock_init.call_args.kwargs["serial_number"] == STACK_ID
+
+
+# ---------------------------------------------------------------------------
+# resolve_device_family — model-prefix robustness (latent crash guard)
+# ---------------------------------------------------------------------------
+
+def test_resolve_device_family_prefixed_cx_model():
+    """Monitoring-API style prefixed models ('CX-6300F') resolve to cx."""
+    assert resolve_device_family({**RAW_CX, "model": "CX-6300F"}) == "cx"
+
+
+def test_resolve_device_family_prefixed_aoss_model():
+    assert resolve_device_family({**RAW_AOSS, "model": "AS-2930M"}) == "aos-s"
+
+
+def test_resolve_device_family_bare_models_still_resolve():
+    assert resolve_device_family({**RAW_CX, "model": "6300"}) == "cx"
+    assert resolve_device_family({**RAW_AOSS, "model": "2930F"}) == "aos-s"
+
+
+def test_resolve_device_family_empty_model_raises_valueerror():
+    """An empty model must raise ValueError (caught by the tool), not IndexError."""
+    with pytest.raises(ValueError):
+        resolve_device_family({**RAW_CX, "model": ""})

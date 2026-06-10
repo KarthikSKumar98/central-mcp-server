@@ -15,7 +15,9 @@ from tools import (
     clients,
     devices,
     events,
+    gateway_monitoring,
     sites,
+    switch_monitoring,
     troubleshooting,
     wlans,
 )
@@ -58,6 +60,8 @@ clients.register(mcp)
 alerts.register(mcp)
 events.register(mcp)
 ap_monitoring.register(mcp)
+switch_monitoring.register(mcp)
+gateway_monitoring.register(mcp)
 wlans.register(mcp)
 troubleshooting.register(mcp)
 

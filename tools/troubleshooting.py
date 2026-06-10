@@ -243,7 +243,9 @@ def register(mcp: FastMCP) -> None:
 
         async with api_context(ctx) as conn:
             try:
-                family = await resolve_family_from_serial(conn, serial_number)
+                family, effective_serial = await resolve_family_from_serial(
+                    conn, serial_number
+                )
             except ValueError as e:
                 return format_tool_error("resolving device family", e)
 
@@ -278,7 +280,7 @@ def register(mcp: FastMCP) -> None:
                     initiate_name=initiate_name,
                     get_result_name=get_result_name,
                     device_family=family,
-                    serial_number=serial_number,
+                    serial_number=effective_serial,
                     max_attempts=max_attempts,
                     poll_interval=poll_interval,
                     **kwargs,
@@ -346,7 +348,9 @@ def register(mcp: FastMCP) -> None:
 
         async with api_context(ctx) as conn:
             try:
-                family = await resolve_family_from_serial(conn, serial_number)
+                family, effective_serial = await resolve_family_from_serial(
+                    conn, serial_number
+                )
             except ValueError as e:
                 return format_tool_error("resolving device family", e)
 
@@ -355,7 +359,7 @@ def register(mcp: FastMCP) -> None:
                     Troubleshooting.list_show_commands,
                     central_conn=conn,
                     device_type=family,
-                    serial_number=serial_number,
+                    serial_number=effective_serial,
                 )
             except Exception as e:
                 return format_tool_error("fetching supported show commands", e)
@@ -376,7 +380,7 @@ def register(mcp: FastMCP) -> None:
                     initiate_name="initiate_show_commands",
                     get_result_name="get_show_commands_result",
                     device_family=family,
-                    serial_number=serial_number,
+                    serial_number=effective_serial,
                     max_attempts=max_attempts,
                     poll_interval=poll_interval,
                     device_type=family,
@@ -437,7 +441,9 @@ def register(mcp: FastMCP) -> None:
 
         async with api_context(ctx) as conn:
             try:
-                family = await resolve_family_from_serial(conn, serial_number)
+                family, effective_serial = await resolve_family_from_serial(
+                    conn, serial_number
+                )
             except ValueError as e:
                 return format_tool_error("resolving device family", e)
 
@@ -451,7 +457,9 @@ def register(mcp: FastMCP) -> None:
                 )
 
             try:
-                interfaces = await fetch_device_interfaces(conn, family, serial_number)
+                interfaces = await fetch_device_interfaces(
+                    conn, family, effective_serial
+                )
             except Exception as e:
                 return format_tool_error("fetching interface list", e)
 
@@ -519,7 +527,7 @@ def register(mcp: FastMCP) -> None:
                     initiate_name=initiate_name,
                     get_result_name=get_result_name,
                     device_family=family,
-                    serial_number=serial_number,
+                    serial_number=effective_serial,
                     max_attempts=max_attempts,
                     poll_interval=poll_interval,
                     device_type=family,

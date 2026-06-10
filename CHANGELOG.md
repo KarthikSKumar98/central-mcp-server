@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.8] - 2026-06-10
+
+### New Tools
+- `central_get_switches` — filtered list of switches by site, model, status (title-case `Online`/`Offline`), or deployment (`Standalone`/`Stack`/`VSX`); each item embeds a current hardware-trend snapshot (CPU, memory, PoE, power, temperature, uplink ports)
+- `central_get_switch_details` — detailed single-switch (or stack conductor) snapshot by serial number; additive `include` keys for `interfaces`, `vlans`, `poe`, `lag`, `vsx`, `stack_members`, and `hardware` (each triggers a separate API call; `vsx` returns an isolated error dict on non-VSX platforms)
+- `central_get_switch_trends` — time-series trends for a switch at `scope="hardware"` (CPU/memory/temperature/PoE/power) or `scope="interface"` (throughput and error counters); all metrics returned per sample, string values coerced to numbers, trailing sentinel stripped
+- `central_get_gateways` — filtered list of gateways by site, serial number, device name, model, status (title-case `Online`/`Offline`), or cluster name
+- `central_get_gateway_details` — detailed single-gateway snapshot by serial number; additive `include` keys for `ports`, `tunnels`, `uplinks`, and `vlans`
+- `central_get_gateway_trends` — time-series trends for `scope="gateway"` (cpu-utilization, memory-utilization, wan-availability, vpn-availability, hardware-temperature), `scope="port"` (requires `port_number`), `scope="tunnel"` (requires `tunnel_name`), and `scope="uplink"` (requires `link_tag`); `hardware-temperature` normalized to per-timestamp per-sensor samples
+- `central_get_gateway_cluster` — gateway cluster snapshot with members and per-member tunnel health; additive `include` keys for `tunnels`, `vlan_mismatch`, and `connectivity`
+- `central_get_cluster_capacity_trends` — capacity trends for a cluster across `client_capacity` and `device_capacity` types (active/standby counts and percentages vs maximum capacity), returned as a flat list filterable by `capacity_type`
+
+### Bug Fixes
+- Stack switches are now usable across all troubleshooting tools — `central_run_show_commands`, `central_run_network_test`, and `central_bounce_port` resolve any stack identifier (member serial, conductor serial, or stack ID) to the stack ID the Central troubleshooting API requires; previously every stack serial returned `404 Device not found`
+- `central_get_switch_details` and `central_get_switch_trends` transparently redirect a stack member serial to its stack ID; the monitoring API returns `404` for non-conductor member serials
+- Sort direction tokens are normalized to uppercase (`ASC`/`DESC`) for the switch, AP, gateway, and WLAN list tools, so lowercase input such as `deviceName asc` works against the case-sensitive Central switch API
+- `SwitchDetail.lastConfigChange` accepts integer (epoch-ms) timestamps in addition to ISO strings, fixing a Pydantic validation crash on switches that report the field as an integer
+- Device-family resolution tolerates vendor-prefixed model strings (e.g. `CX-6300F`, `AS-2930M`) instead of crashing on the leading letter
+
+### Internal
+- Generalized `utils/monitoring.py` (`fetch_trends`, `fetch_snapshot`) to be device-agnostic across AP, switch, and gateway monitoring; added switch/gateway scope and include routing maps plus trend-normalization helpers
+- Added `lookup_inventory_device` and `stack_aware_serial` helpers in `utils/common.py` for stack-identifier resolution shared by the troubleshooting and monitoring tools
+
+---
+
+## [0.1.7] - 2026-06-02
+
+### New Tools
+- `central_get_ap_details` — detailed single-AP snapshot by serial number; summary data (radios, ports, WLANs) included by default; pass `include=["radios"]` or `include=["ports"]` (or both) to upgrade to richer dedicated data: RF health (channel quality/utilization, client count, noise floor, interference) and uplink-port details (port id/type)
+- `central_get_ap_trends` — unified time-series trends for an AP, a radio, or an uplink port over a configurable time window; supports `scope="ap"` (throughput, cpu-utilization, memory-utilization, power-consumption), `scope="radio"` (throughput, channel-utilization, channel-quality, noise-floor, frames — requires `radio_number`), and `scope="port"` (throughput, frames, crc, collisions — requires `port_index`)
+
+### Changed
+- `central_get_wlans` gains a `serial_number` filter — pass an AP serial number to list only the WLANs broadcast by that AP (replaces the removed `central_get_ap_wlans` tool)
+
+### Breaking Changes
+- **REMOVED** `central_get_ap_statistics` — use `central_get_ap_trends` with `scope="ap"` and the equivalent metric (`cpu-utilization`, `memory-utilization`, `power-consumption`) instead
+- **REMOVED** `central_get_ap_wlans` — use `central_get_wlans(serial_number=<AP serial>)` instead
+
+### Dependencies
+- Bumped `pycentral` from `2.0a19` to `2.0a20`; notable upstream changes: `get_ap_stats` removed (AP time-series now served by the new monitoring endpoint); WLAN listing moved to the `WLAN` monitoring class; gateway port fetch migrated to `get_all_gateway_ports`
+
+### Release
+- Bumped package version to `0.1.7` in `pyproject.toml` and `uv.lock`
+
+---
+
 ## [0.1.6.2] - 2026-05-14
 
 ### Bug Fixes

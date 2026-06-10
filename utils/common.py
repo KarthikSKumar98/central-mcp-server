@@ -10,6 +10,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 from fastmcp import Context
+from pycentral.new_monitoring import MonitoringDevices
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,51 @@ def build_odata_filter(pairs: list[tuple["FilterField", str]]) -> str | None:
     return " and ".join(parts)
 
 
+def lookup_inventory_device(conn, identifier: str) -> dict | None:
+    """Resolve a switch identifier to a single inventory record.
+
+    Stack switches are addressable three ways — by member serial, by conductor
+    serial, or by the shared ``stackId``. The inventory API is keyed on
+    ``serialNumber``, so this first filters by ``serialNumber`` and, on a miss,
+    retries with ``stackId`` (covering the case where a caller passed a stack ID
+    directly — which would otherwise never match a serialNumber filter).
+
+    Args:
+        conn: Active Central connection.
+        identifier: A device serial number or a stack ID.
+
+    Returns:
+        The matching inventory dict, or ``None`` if neither field matches.
+
+    """
+    for field in ("serialNumber", "stackId"):
+        results = MonitoringDevices.get_all_device_inventory(
+            central_conn=conn, filter_str=f"{field} eq '{identifier}'"
+        )
+        if results:
+            return results[0]
+    return None
+
+
+def stack_aware_serial(device: dict | None, identifier: str) -> str:
+    """Return the identifier the Central APIs accept for ``device``.
+
+    For stack switches the only universally-accepted identifier is the
+    ``stackId``: the monitoring API returns 404 for non-conductor member serials,
+    and the troubleshooting API returns 404 for *every* member and conductor
+    serial — but both accept the stack ID. For non-stack devices (or when the
+    record lacks a stack ID) ``identifier`` is returned unchanged.
+
+    Args:
+        device: Inventory record from ``lookup_inventory_device`` (or ``None``).
+        identifier: The caller-supplied serial or stack ID to fall back to.
+
+    """
+    if device and device.get("deployment") == "Stack" and device.get("stackId"):
+        return device["stackId"]
+    return identifier
+
+
 @asynccontextmanager
 async def api_context(ctx: Context):
     """Acquire the API semaphore and yield the Central connection."""
@@ -142,6 +188,50 @@ def format_tool_error(operation: str, error: object) -> str:
 def format_rfc3339(dt: datetime) -> str:
     """Format a datetime as an RFC 3339 string with millisecond precision."""
     return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
+def rfc3339_to_epoch(value: str) -> int:
+    """Convert an RFC 3339 timestamp string to epoch seconds (UTC)."""
+    return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
+
+
+def normalize_sort_direction(sort: str | None) -> str | None:
+    """Normalise sort-direction tokens in a sort expression to UPPERCASE.
+
+    The Central switch monitoring API requires direction tokens in UPPERCASE
+    (``ASC``/``DESC``).  This helper makes lowercase user input (e.g.
+    ``"deviceName asc"``) work transparently by uppercasing only the direction
+    token at the end of each comma-separated expression, leaving field names
+    untouched.
+
+    Examples::
+
+        normalize_sort_direction("deviceName asc")          → "deviceName ASC"
+        normalize_sort_direction("deviceName asc, model desc")
+                                                            → "deviceName ASC, model DESC"
+        normalize_sort_direction("deviceName")              → "deviceName"
+        normalize_sort_direction(None)                      → None
+        normalize_sort_direction("")                        → ""
+
+    Args:
+        sort: A sort expression string, or ``None``.
+
+    Returns:
+        The expression with any ``asc``/``desc`` direction tokens uppercased, or
+        the original value when it is ``None`` or empty.
+
+    """
+    if not sort:
+        return sort
+
+    normalized_parts = []
+    for expr in sort.split(","):
+        tokens = expr.strip().split()
+        if len(tokens) >= 2:
+            # Last token is the direction; uppercase it
+            tokens[-1] = tokens[-1].upper()
+        normalized_parts.append(" ".join(tokens))
+    return ", ".join(normalized_parts)
 
 
 def compute_time_window(time_range: str) -> tuple[datetime, datetime]:

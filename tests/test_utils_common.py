@@ -166,3 +166,129 @@ def test_paginated_fetch_passes_additional_params():
     paginated_fetch(conn, "some/path", limit=50, additional_params={"filter": "x eq 'y'"})
     assert conn.command.call_args.kwargs["api_params"]["filter"] == "x eq 'y'"
     assert conn.command.call_args.kwargs["api_params"]["limit"] == 50
+
+
+# ---------------------------------------------------------------------------
+# normalize_sort_direction
+# ---------------------------------------------------------------------------
+from utils.common import normalize_sort_direction
+
+
+def test_normalize_sort_direction_none_passthrough():
+    assert normalize_sort_direction(None) is None
+
+
+def test_normalize_sort_direction_empty_passthrough():
+    assert normalize_sort_direction("") == ""
+
+
+def test_normalize_sort_direction_asc_uppercased():
+    assert normalize_sort_direction("deviceName asc") == "deviceName ASC"
+
+
+def test_normalize_sort_direction_desc_uppercased():
+    assert normalize_sort_direction("model desc") == "model DESC"
+
+
+def test_normalize_sort_direction_already_uppercase():
+    assert normalize_sort_direction("deviceName ASC") == "deviceName ASC"
+
+
+def test_normalize_sort_direction_mixed_case():
+    assert normalize_sort_direction("deviceName Asc") == "deviceName ASC"
+
+
+def test_normalize_sort_direction_multiple_exprs():
+    result = normalize_sort_direction("deviceName asc, model desc")
+    assert result == "deviceName ASC, model DESC"
+
+
+def test_normalize_sort_direction_field_only_no_direction():
+    """A sort expression with no direction token is left unchanged."""
+    assert normalize_sort_direction("deviceName") == "deviceName"
+
+
+def test_normalize_sort_direction_extra_whitespace():
+    """Extra surrounding whitespace in each expression is handled."""
+    result = normalize_sort_direction("  deviceName   asc  ,  model   desc  ")
+    assert result == "deviceName ASC, model DESC"
+
+
+# ---------------------------------------------------------------------------
+# lookup_inventory_device / stack_aware_serial  (stack identifier resolution)
+# ---------------------------------------------------------------------------
+from unittest.mock import patch
+
+from utils.common import lookup_inventory_device, stack_aware_serial
+
+_STACK_MEMBER = {
+    "serialNumber": "SG39KN419Z",
+    "stackId": "f91f11e4-ca19-4b1a-89b7-0a7130f65ad0",
+    "deployment": "Stack",
+    "role": "Member",
+    "deviceType": "SWITCH",
+    "model": "6300",
+    "status": "ONLINE",
+}
+_STANDALONE = {
+    "serialNumber": "CN0000001",
+    "stackId": None,
+    "deployment": "Standalone",
+    "deviceType": "SWITCH",
+    "model": "6300",
+    "status": "ONLINE",
+}
+
+
+def test_lookup_inventory_device_found_by_serial():
+    """A serial that matches on the first (serialNumber) query returns that record
+    and never issues the stackId fallback query.
+    """
+    with patch("utils.common.MonitoringDevices") as md:
+        md.get_all_device_inventory.return_value = [_STACK_MEMBER]
+        result = lookup_inventory_device("conn", "SG39KN419Z")
+    assert result == _STACK_MEMBER
+    md.get_all_device_inventory.assert_called_once_with(
+        central_conn="conn", filter_str="serialNumber eq 'SG39KN419Z'"
+    )
+
+
+def test_lookup_inventory_device_falls_back_to_stack_id():
+    """When the serialNumber query misses, the stackId query is tried next."""
+    stack_id = "f91f11e4-ca19-4b1a-89b7-0a7130f65ad0"
+    with patch("utils.common.MonitoringDevices") as md:
+        md.get_all_device_inventory.side_effect = [[], [_STACK_MEMBER]]
+        result = lookup_inventory_device("conn", stack_id)
+    assert result == _STACK_MEMBER
+    assert md.get_all_device_inventory.call_count == 2
+    second_call = md.get_all_device_inventory.call_args_list[1]
+    assert second_call.kwargs["filter_str"] == f"stackId eq '{stack_id}'"
+
+
+def test_lookup_inventory_device_returns_none_when_unmatched():
+    with patch("utils.common.MonitoringDevices") as md:
+        md.get_all_device_inventory.return_value = []
+        result = lookup_inventory_device("conn", "NOPE")
+    assert result is None
+    assert md.get_all_device_inventory.call_count == 2
+
+
+def test_stack_aware_serial_returns_stack_id_for_stack_device():
+    assert (
+        stack_aware_serial(_STACK_MEMBER, "SG39KN419Z")
+        == "f91f11e4-ca19-4b1a-89b7-0a7130f65ad0"
+    )
+
+
+def test_stack_aware_serial_passthrough_for_standalone():
+    assert stack_aware_serial(_STANDALONE, "CN0000001") == "CN0000001"
+
+
+def test_stack_aware_serial_passthrough_when_device_none():
+    assert stack_aware_serial(None, "CN0000001") == "CN0000001"
+
+
+def test_stack_aware_serial_passthrough_when_stack_id_missing():
+    """A record flagged Stack but lacking a stackId falls back to the identifier."""
+    device = {"deployment": "Stack", "stackId": None}
+    assert stack_aware_serial(device, "SG39KN419Z") == "SG39KN419Z"

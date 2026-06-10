@@ -5,7 +5,7 @@ from fastmcp import Context, FastMCP
 from constants import TIME_RANGE
 from models import WLAN, WLANThroughputSample
 from tools import READ_ONLY
-from utils.common import api_context, format_tool_error
+from utils.common import api_context, format_tool_error, normalize_sort_direction
 from utils.events import _resolve_time_window
 from utils.wlans import clean_wlan_data, clean_wlan_stats_data, get_all_wlans
 
@@ -18,25 +18,43 @@ def register(mcp: FastMCP) -> None:
         ctx: Context,
         wlan_name: str | None = None,
         site_id: str | None = None,
+        serial_number: str | None = None,
         sort: str | None = None,
     ) -> list[WLAN] | str:
-        """Return WLANs configured in Central, with optional filtering by name or site.
+        """Return WLANs configured in Central, with optional filtering by name, site, or AP.
 
         Fetches all pages automatically. Use site_id to scope results to a specific
-        site; use wlan_name to match a single SSID by exact name.
+        site; use wlan_name to match a single SSID by exact name; use serial_number
+        to scope results to WLANs broadcast by a specific AP.
         Call central_get_summary first to resolve site IDs, if site-specific filtering is needed.
 
         Parameters
         ----------
         - wlan_name: Exact WLAN name (SSID) to look up directly.
         - site_id: Site ID to scope results to a specific site. Max 128 characters.
+        - serial_number: AP serial number. Scopes results to WLANs broadcast by this AP.
         - sort: Comma-separated sort expressions. Supported fields: wlanName, band,
           status, securityLevel, security, vlan, primaryUsage.
 
         """
         async with api_context(ctx) as conn:
             try:
-                if wlan_name:
+                if serial_number:
+                    wlans = await asyncio.to_thread(
+                        get_all_wlans,
+                        central_conn=conn,
+                        site_id=site_id,
+                        serial_number=serial_number,
+                        sort=normalize_sort_direction(sort),
+                    )
+                    if wlan_name:
+                        wlans = [
+                            w
+                            for w in wlans
+                            if w.get("wlanName") == wlan_name
+                            or w.get("wlan_name") == wlan_name
+                        ]
+                elif wlan_name:
                     api_params = {"site_id": site_id} if site_id else None
                     response = await asyncio.to_thread(
                         conn.command,
@@ -60,7 +78,7 @@ def register(mcp: FastMCP) -> None:
                         get_all_wlans,
                         central_conn=conn,
                         site_id=site_id,
-                        sort=sort,
+                        sort=normalize_sort_direction(sort),
                     )
             except Exception as e:
                 return format_tool_error("fetching WLANs", e)

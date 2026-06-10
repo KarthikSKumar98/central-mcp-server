@@ -286,7 +286,7 @@ async def test_prompt_failed_clients_investigation_live(
     if isinstance(failed, list):
         for client in failed[:5]:
             await devices_tools["central_find_device"](
-                live_ctx, serial_number=client.serial_number
+                live_ctx, serial_number=client.connected_device_serial
             )
     await alerts_tools["central_get_alerts"](
         live_ctx, site_id=live_seed_data["site_id"], category="Clients"

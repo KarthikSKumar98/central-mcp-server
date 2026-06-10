@@ -1,3 +1,4 @@
+import ast as _ast
 from enum import Enum
 from typing import Any, Literal
 
@@ -354,6 +355,348 @@ class WLANThroughputSample(BaseModel):
     )
 
 
+class APRadio(BaseModel):
+    """Access point radio data structure.
+
+    Models the union of embedded radios (from get_ap_details) and the richer
+    dedicated get_ap_radios items.  All fields are optional so both payload
+    shapes deserialise without errors.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    radio_number: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("radio_number", "radioNumber"),
+        description="Radio slot/index number.",
+    )
+    band: str | None = Field(
+        default=None, description="Wireless band (e.g. 2.4GHz, 5GHz, 6GHz)."
+    )
+    band_range: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("band_range", "bandRange"),
+        description="Band range descriptor.",
+    )
+    bandwidth: int | float | str | None = Field(
+        default=None, description="Channel bandwidth (e.g. '20 MHz' or 20)."
+    )
+    channel: int | float | str | None = Field(
+        default=None, description="Current operating channel."
+    )
+    channel_change_count: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("channel_change_count", "channelChangeCount"),
+        description="Number of channel changes since last reset.",
+    )
+    channel_quality: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("channel_quality", "channelQuality"),
+        description="Channel quality score (0–100).",
+    )
+    channel_utilization: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("channel_utilization", "channelUtilization"),
+        description="Channel utilisation percentage.",
+    )
+    client_count: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("client_count", "clientCount"),
+        description="Number of clients currently associated to this radio.",
+    )
+    drops: int | float | None = Field(default=None, description="Dropped frame count.")
+    mac_address: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("mac_address", "macAddress"),
+        description="MAC address of this radio.",
+    )
+    mode: str | None = Field(default=None, description="Radio operating mode.")
+    noise_floor: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("noise_floor", "noiseFloor"),
+        description="Noise floor in dBm.",
+    )
+    non_wifi_interference: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("non_wifi_interference", "nonWifiInterference"),
+        description="Non-Wi-Fi interference percentage.",
+    )
+    power: int | float | str | None = Field(
+        default=None, description="Transmit power (e.g. '20 dBm' or 20)."
+    )
+    power_change_count: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("power_change_count", "powerChangeCount"),
+        description="Number of transmit-power changes since last reset.",
+    )
+    radio_type: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("radio_type", "radioType"),
+        description="Radio hardware type (e.g. 802.11ax).",
+    )
+    retries: int | float | None = Field(default=None, description="Retry frame count.")
+    rx_utilization: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("rx_utilization", "rxUtilization"),
+        description="Receive utilisation percentage.",
+    )
+    tx_utilization: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("tx_utilization", "txUtilization"),
+        description="Transmit utilisation percentage.",
+    )
+    site_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("site_id", "siteId"),
+        description="Site ID reported by the dedicated radio endpoint.",
+    )
+    spatial_stream: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("spatial_stream", "spatialStream"),
+        description="Spatial stream configuration (e.g. '2x2:2').",
+    )
+    antenna: str | None = Field(default=None, description="Antenna type/model.")
+    status: str | None = Field(default=None, description="Radio operational status.")
+    id: str | None = Field(
+        default=None, description="Unique radio resource ID (dedicated endpoint)."
+    )
+    type: str | None = Field(
+        default=None, description="Resource type tag (dedicated endpoint)."
+    )
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> "APRadio":
+        """Normalise a raw radio dict from either embedded or dedicated payloads."""
+        normalized: dict[str, Any] = dict(raw)
+        # Embedded summary shape has radioStats: [{noiseFloor, channelUtilization}]
+        radio_stats = normalized.pop("radioStats", None)
+        if isinstance(radio_stats, list) and radio_stats:
+            for key, value in radio_stats[0].items():
+                normalized.setdefault(key, value)
+        return cls(**normalized)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep radio payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class APPort(BaseModel):
+    """Access point port data structure.
+
+    Models the union of embedded ports (from get_ap_details) and dedicated
+    get_ap_ports items.  All fields are optional.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    port_index: int | float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("port_index", "portIndex"),
+        description="Port index number.",
+    )
+    name: str | None = Field(default=None, description="Port name.")
+    status: str | None = Field(default=None, description="Port operational status.")
+    speed: int | float | str | None = Field(
+        default=None,
+        description="Port speed in Mbps or 'Auto'.",
+    )
+    duplex: str | None = Field(default=None, description="Duplex mode (Full, Half).")
+    connector: str | None = Field(default=None, description="Physical connector type.")
+    mac_address: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("mac_address", "macAddress"),
+        description="MAC address of the port.",
+    )
+    access_vlan: int | str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("access_vlan", "accessVlan"),
+        description="Access VLAN ID assigned to the port ('-' when unset).",
+    )
+    allowed_vlan: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("allowed_vlan", "allowedVlan"),
+        description="Allowed VLANs on the port (trunk mode).",
+    )
+    native_vlan: int | str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("native_vlan", "nativeVlan"),
+        description="Native VLAN for the port ('-' when unset).",
+    )
+    vlan_mode: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("vlan_mode", "vlanMode"),
+        description="VLAN mode (Access, Trunk).",
+    )
+    id: str | None = Field(
+        default=None, description="Unique port resource ID (dedicated endpoint)."
+    )
+    type: str | None = Field(
+        default=None, description="Resource type tag (dedicated endpoint)."
+    )
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> "APPort":
+        """Construct an APPort from a raw port dict."""
+        return cls(**raw)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep port payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class APDetail(AccessPoint):
+    """Rich single-AP detail, as returned by get_ap_details.
+
+    Subclasses AccessPoint and adds detail-only fields plus embedded
+    radios, ports, and wlans.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    # Detail-only scalar fields
+    uptime_in_millis: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("uptime_in_millis", "uptimeInMillis"),
+        description="AP uptime in milliseconds.",
+    )
+    manufacturer: str | None = Field(
+        default=None, description="AP hardware manufacturer."
+    )
+    mode: str | None = Field(
+        default=None, description="Current operating mode of the AP."
+    )
+    mesh_role: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("mesh_role", "meshRole"),
+        description="Mesh role (Portal, MeshPoint).",
+    )
+    default_gateway: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("default_gateway", "defaultGateway"),
+        description="Default gateway IP address.",
+    )
+    subnet_mask: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("subnet_mask", "subnetMask"),
+        description="Subnet mask of the AP's IP address.",
+    )
+    country_code: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("country_code", "countryCode"),
+        description="Regulatory country code.",
+    )
+    current_uplink_in_use: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("current_uplink_in_use", "currentUplinkInUse"),
+        description="Current active uplink interface.",
+    )
+    negotiated_power: int | float | str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("negotiated_power", "negotiatedPower"),
+        description="PoE negotiated power or PoE class (e.g. '802.3at').",
+    )
+    band_selection: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("band_selection", "bandSelection"),
+        description="Band steering/selection mode.",
+    )
+    notes: str | None = Field(default=None, description="Operator notes for the AP.")
+
+    # Embedded sub-entities
+    radios: list[APRadio] | None = Field(
+        default=None,
+        description="List of radio interfaces on this AP.",
+    )
+    ports: list[APPort] | None = Field(
+        default=None,
+        description="List of wired ports on this AP.",
+    )
+    wlans: list[WLAN] | None = Field(
+        default=None,
+        description="List of WLANs served by this AP.",
+    )
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> "APDetail":  # type: ignore[override]
+        """Normalise a get_ap_details payload into an APDetail instance."""
+        normalized: dict[str, Any] = dict(raw)
+
+        # --- Inherited AccessPoint normalisations ---
+        if normalized.get("status") == "ONLINE":
+            normalized["lastSeenAt"] = None
+        reason = normalized.get("lastRebootReason")
+        if reason and reason in _REBOOT_REASON_MAP:
+            normalized["lastRebootReason"] = _REBOOT_REASON_MAP[reason]
+
+        # --- Flatten apStats: [{clientCount, cpuUtilization, memoryUtilization}] ---
+        ap_stats = normalized.pop("apStats", None)
+        if isinstance(ap_stats, list) and ap_stats:
+            stats = ap_stats[0]
+            normalized.setdefault("clientCount", stats.get("clientCount"))
+            normalized.setdefault("cpuUtilization", stats.get("cpuUtilization"))
+            normalized.setdefault("memoryUtilization", stats.get("memoryUtilization"))
+
+        # --- Convert embedded sub-entities ---
+        raw_radios = normalized.pop("radios", None)
+        if isinstance(raw_radios, list):
+            normalized["radios"] = [APRadio.from_api(r) for r in raw_radios]
+
+        raw_ports = normalized.pop("ports", None)
+        if isinstance(raw_ports, list):
+            normalized["ports"] = [APPort.from_api(p) for p in raw_ports]
+
+        raw_wlans = normalized.pop("wlans", None)
+        if isinstance(raw_wlans, list):
+            normalized["wlans"] = [WLAN(**w) for w in raw_wlans]
+
+        return cls(**normalized)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(  # type: ignore[override]
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep detail payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class TrendSample(BaseModel):
+    """Generic AP/radio/port trend sample with a dynamic metric value key.
+
+    The metric value keys (e.g. ``cpu_utilization``, ``tx``, ``rx``,
+    ``non_wifi_interference``) vary per metric type and are captured via
+    ``extra="allow"``.  The sparse serializer drops any null extras.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    timestamp: str = Field(description="RFC 3339 timestamp for the trend sample.")
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields (including extras) to keep trend payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
 class Client(BaseModel):
     """Client device data structure."""
 
@@ -606,3 +949,958 @@ class TroubleshootingResult(BaseModel):
         default=None,
         description="Error detail returned by Central if the task failed, or None on success.",
     )
+
+
+# --- Switch monitoring (a20) ---
+
+
+class SwitchTrend(BaseModel):
+    """Inline switch trend snapshot embedded in get_all_switches list items."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    cpu_utilization: int | float | None = Field(
+        default=None,
+        validation_alias="cpuUtilization",
+        description="CPU utilization percentage.",
+    )
+    memory_utilization: int | float | None = Field(
+        default=None,
+        validation_alias="memoryUtilization",
+        description="Memory utilization percentage.",
+    )
+    poe_available: int | float | None = Field(
+        default=None,
+        validation_alias="poeAvailable",
+        description="Available PoE power in watts.",
+    )
+    poe_consumption: int | float | None = Field(
+        default=None,
+        validation_alias="poeConsumption",
+        description="Consumed PoE power in watts.",
+    )
+    power_consumption: int | float | None = Field(
+        default=None,
+        validation_alias="powerConsumption",
+        description="Switch power consumption in watts.",
+    )
+    system_temperature: int | float | None = Field(
+        default=None,
+        validation_alias="systemTemperature",
+        description="System temperature reading.",
+    )
+    total_power_consumption: int | float | None = Field(
+        default=None,
+        validation_alias="totalPowerConsumption",
+        description="Total power consumption in watts.",
+    )
+    up_link_ports: list[str] | None = Field(
+        default=None,
+        validation_alias="upLinkPorts",
+        description="List of uplink port identifiers.",
+    )
+    usage: int | float | None = Field(
+        default=None,
+        description="Current usage metric (bytes transferred).",
+    )
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> "SwitchTrend":
+        """Normalise a raw switchTrend dict, parsing stringified upLinkPorts."""
+        normalized = dict(raw)
+        ul = normalized.get("upLinkPorts")
+        if isinstance(ul, str):
+            try:
+                normalized["upLinkPorts"] = _ast.literal_eval(ul)
+            except (ValueError, SyntaxError):
+                pass
+        return cls(**normalized)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        data = handler(self)
+        return {k: v for k, v in data.items() if v is not None}
+
+
+class SwitchInterface(BaseModel):
+    """Switch interface/port data as returned by get_switch_interfaces."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    id: str | None = Field(
+        default=None, description="Short port name (e.g. 'Gi1/0/1')."
+    )
+    name: str | None = Field(default=None, description="Port name.")
+    alias: str | None = Field(
+        default=None,
+        description="Full IOS-style port name (e.g. 'GigabitEthernet1/0/1').",
+    )
+    status: str | None = Field(
+        default=None, description="Port status (e.g. 'Connected', 'Disconnected')."
+    )
+    admin_status: str | None = Field(
+        default=None,
+        validation_alias="adminStatus",
+        description="Administrative status (Up/Down).",
+    )
+    oper_status: str | None = Field(
+        default=None,
+        validation_alias="operStatus",
+        description="Operational status (Up/Down).",
+    )
+    speed: int | float | None = Field(default=None, description="Port speed in bps.")
+    duplex: str | None = Field(default=None, description="Duplex mode.")
+    mtu: int | None = Field(default=None, description="MTU size.")
+    vlan_mode: str | None = Field(
+        default=None,
+        validation_alias="vlanMode",
+        description="VLAN mode (Access/Trunk).",
+    )
+    native_vlan: int | str | None = Field(
+        default=None,
+        validation_alias="nativeVlan",
+        description="Native VLAN ID.",
+    )
+    allowed_vlans: list[str] | None = Field(
+        default=None,
+        validation_alias="allowedVlans",
+        description="Allowed VLAN ranges (trunk mode).",
+    )
+    allowed_vlan_ids: list[int] | None = Field(
+        default=None,
+        validation_alias="allowedVlanIds",
+        description="Expanded list of allowed VLAN IDs.",
+    )
+    uplink: bool | None = Field(
+        default=None, description="True if this is an uplink port."
+    )
+    poe_status: str | None = Field(
+        default=None,
+        validation_alias="poeStatus",
+        description="PoE status.",
+    )
+    poe_class: str | None = Field(
+        default=None,
+        validation_alias="poeClass",
+        description="PoE class.",
+    )
+    connector: str | None = Field(default=None, description="Physical connector type.")
+    serial_number: str | None = Field(
+        default=None,
+        validation_alias="serialNumber",
+        description="Serial number of the switch member hosting this port.",
+    )
+    neighbour: str | None = Field(default=None, description="Neighbouring device name.")
+    neighbour_port: str | None = Field(
+        default=None,
+        validation_alias="neighbourPort",
+        description="Neighbouring device port.",
+    )
+    neighbour_type: str | None = Field(
+        default=None,
+        validation_alias="neighbourType",
+        description="Neighbouring device type.",
+    )
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        data = handler(self)
+        return {k: v for k, v in data.items() if v is not None}
+
+
+class SwitchVlan(BaseModel):
+    """Switch VLAN data as returned by get_switch_vlans."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    id: str | None = Field(default=None, description="VLAN ID.")
+    name: str | None = Field(default=None, description="VLAN name.")
+    type: str | None = Field(default=None, description="VLAN type (e.g. 'Static').")
+    status: str | None = Field(
+        default=None, description="VLAN status (e.g. 'Not used', 'Active')."
+    )
+    ipv4: str | None = Field(
+        default=None, description="IP address assigned to this VLAN SVI."
+    )
+    voice: str | None = Field(
+        default=None, description="Voice VLAN status (Enabled/Disabled)."
+    )
+    interfaces: list[str] | None = Field(
+        default=None,
+        description="List of interface names in this VLAN.",
+    )
+    tagged_ports: list[str] | None = Field(
+        default=None,
+        validation_alias="taggedPorts",
+        description="Tagged (trunk) ports in this VLAN.",
+    )
+    untagged_ports: list[str] | None = Field(
+        default=None,
+        validation_alias="untaggedPorts",
+        description="Untagged (access) ports in this VLAN.",
+    )
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        data = handler(self)
+        return {k: v for k, v in data.items() if v is not None}
+
+
+class Switch(BaseModel):
+    """Switch monitoring data (list item from get_all_switches)."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    serial_number: str = Field(
+        validation_alias="serialNumber",
+        description="Unique serial number. Use as the primary key for all per-switch API calls.",
+    )
+    device_name: str | None = Field(
+        default=None,
+        validation_alias="deviceName",
+        description="Hostname/display name of the switch.",
+    )
+    model: str | None = Field(default=None, description="Switch model number.")
+    mac_address: str | None = Field(
+        default=None,
+        validation_alias="macAddress",
+        description="MAC address of the switch.",
+    )
+    site_id: str | None = Field(
+        default=None,
+        validation_alias="siteId",
+        description="ID of the site where the switch is located.",
+    )
+    site_name: str | None = Field(
+        default=None,
+        validation_alias="siteName",
+        description="Name of the site where the switch is located.",
+    )
+    status: Literal["Online", "Offline"] | None = Field(
+        default=None,
+        description="Current switch status. Title-case: 'Online' or 'Offline'.",
+    )
+    deployment: str | None = Field(
+        default=None,
+        description="Deployment mode: 'Standalone', 'Stack', or 'VSX'.",
+    )
+    switch_role: str | None = Field(
+        default=None,
+        validation_alias="switchRole",
+        description="Role in a stack or VSX pair: 'Standalone', 'Conductor', 'Standby', or 'Member'.",
+    )
+    switch_type: str | None = Field(
+        default=None,
+        validation_alias="switchType",
+        description="Switch OS family: 'cx' (AOS-CX), 'tpd' (Cisco Catalyst), 'pvos' (ArubaOS-Switch).",
+    )
+    stack_id: str | None = Field(
+        default=None,
+        validation_alias="stackId",
+        description="UUID of the stack this switch belongs to (null for standalone).",
+    )
+    stack_member_id: int | None = Field(
+        default=None,
+        validation_alias="stackMemberId",
+        description="Stack member slot number (0 for standalone).",
+    )
+    firmware_version: str | None = Field(
+        default=None,
+        validation_alias="firmwareVersion",
+        description="Firmware version currently running on the switch.",
+    )
+    ipv4: str | None = Field(default=None, description="IPv4 address of the switch.")
+    ipv6: str | None = Field(default=None, description="IPv6 address of the switch.")
+    public_ip: str | None = Field(
+        default=None,
+        validation_alias="publicIp",
+        description="Public IP address of the switch.",
+    )
+    last_seen_at: int | None = Field(
+        default=None,
+        validation_alias="lastSeenAt",
+        description="Unix timestamp (ms) when the switch was last seen (0 means currently online).",
+    )
+    uptime_in_millis: int | None = Field(
+        default=None,
+        validation_alias="uptimeInMillis",
+        description="Switch uptime in milliseconds.",
+    )
+    j_number: str | None = Field(
+        default=None,
+        validation_alias="jNumber",
+        description="J-number (Aruba license tracking number).",
+    )
+    switch_trends: list[SwitchTrend] | None = Field(
+        default=None,
+        validation_alias="switchTrends",
+        description="Inline current-state snapshot (list of 1 item). Contains CPU/memory/PoE/power metrics.",
+    )
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> "Switch":
+        """Normalise a raw get_all_switches list item into a Switch instance."""
+        normalized = dict(raw)
+        # Parse switchTrends items
+        raw_trends = normalized.get("switchTrends")
+        if isinstance(raw_trends, list):
+            normalized["switchTrends"] = [SwitchTrend.from_api(t) for t in raw_trends]
+        return cls(**normalized)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        data = handler(self)
+        return {k: v for k, v in data.items() if v is not None}
+
+
+class SwitchDetail(Switch):
+    """Rich single-switch detail, as returned by get_switch_details.
+
+    Subclasses Switch and adds detail-only fields plus optional include sub-resources.
+    Unlike get_ap_details, get_switch_details embeds NO sub-resources; all include
+    keys are additive (fetched via separate API calls).
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    # Detail-only scalar fields
+    health: str | None = Field(
+        default=None,
+        description="Overall health status: 'Good', 'Fair', or 'Poor'.",
+    )
+    health_reasons: dict[str, Any] | None = Field(
+        default=None,
+        validation_alias="healthReasons",
+        description="Health reason breakdown: {poorReasons: [...], fairReasons: [...]}.",
+    )
+    manufacturer: str | None = Field(
+        default=None,
+        description="Hardware manufacturer (e.g. 'Cisco', 'Aruba').",
+    )
+    last_restart_reason: str | None = Field(
+        default=None,
+        validation_alias="lastRestartReason",
+        description="Reason for the last switch restart.",
+    )
+    config_status: str | None = Field(
+        default=None,
+        validation_alias="configStatus",
+        description="Configuration sync status.",
+    )
+    switch_link_type: str | None = Field(
+        default=None,
+        validation_alias="switchLinkType",
+        description="Switch link type (null for tpd/Cisco switches).",
+    )
+    last_config_change: int | str | None = Field(
+        default=None,
+        validation_alias="lastConfigChange",
+        description="Timestamp of the last configuration change (epoch ms int or ISO string).",
+    )
+
+    # Optional sub-resource include fields
+    interfaces: dict[str, Any] | None = Field(
+        default=None,
+        description="Switch interfaces (from get_switch_interfaces). Only present when include=['interfaces'] is passed.",
+    )
+    vlans: dict[str, Any] | None = Field(
+        default=None,
+        description="Switch VLANs (from get_switch_vlans). Only present when include=['vlans'] is passed.",
+    )
+    poe: dict[str, Any] | None = Field(
+        default=None,
+        description="PoE port data (from get_switch_interface_poe). Only present when include=['poe'] is passed.",
+    )
+    lag: dict[str, Any] | None = Field(
+        default=None,
+        description="LAG group data (from get_switch_lag). Only present when include=['lag'] is passed.",
+    )
+    vsx: dict[str, Any] | None = Field(
+        default=None,
+        description="VSX peer data (from get_switch_vsx). Set to {'error': '...'} on non-VSX platforms. Only present when include=['vsx'] is passed.",
+    )
+    stack_members: dict[str, Any] | None = Field(
+        default=None,
+        validation_alias="stack_members",
+        description="Stack member details (from get_stack_members). Only present when include=['stack_members'] is passed.",
+    )
+    hardware: dict[str, Any] | None = Field(
+        default=None,
+        description="Hardware category health (from get_switch_hardware_categories). Only present when include=['hardware'] is passed.",
+    )
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> "SwitchDetail":  # type: ignore[override]
+        """Normalise a get_switch_details payload into a SwitchDetail instance."""
+        normalized = dict(raw)
+        # Parse switchTrends items
+        raw_trends = normalized.get("switchTrends")
+        if isinstance(raw_trends, list):
+            normalized["switchTrends"] = [SwitchTrend.from_api(t) for t in raw_trends]
+        return cls(**normalized)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(  # type: ignore[override]
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        data = handler(self)
+        return {k: v for k, v in data.items() if v is not None}
+
+
+# --- Gateway monitoring (a20) ---
+
+
+class GatewayPort(BaseModel):
+    """Gateway wired port data structure (from get_all_gateway_ports)."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    port_number: str = Field(
+        validation_alias="portNumber",
+        description="Port number string (e.g. '0'). Used as identifier for port trend queries.",
+    )
+    name: str | None = Field(
+        default=None,
+        description="Human-readable port label (e.g. 'GE 0/0/0').",
+    )
+    oper_state: str | None = Field(
+        default=None,
+        validation_alias="operState",
+        description="Operational state: 'Up' or 'Down'.",
+    )
+    admin_state: str | None = Field(
+        default=None,
+        validation_alias="adminState",
+        description="Administrative state: 'Enabled' or 'Disabled'.",
+    )
+    health: str | None = Field(
+        default=None,
+        description="Port health: 'Good' or 'Unknown'.",
+    )
+    speed: str | None = Field(
+        default=None,
+        description="Port speed (e.g. '1000', 'Auto').",
+    )
+    duplex: str | None = Field(
+        default=None,
+        description="Duplex mode: 'Full', 'Half', or 'Auto'.",
+    )
+    vlan: str | None = Field(
+        default=None,
+        description="VLAN assigned to this port (string).",
+    )
+    mtu: str | None = Field(
+        default=None,
+        description="MTU string (e.g. '1500 bytes').",
+    )
+    throughput: dict | None = Field(
+        default=None,
+        description="Current throughput: {received, sent} in bps.",
+    )
+    usage: dict | None = Field(
+        default=None,
+        description="Cumulative usage: {total, received, sent} in bytes.",
+    )
+    mac_address: str | None = Field(
+        default=None,
+        validation_alias="macAddress",
+        description="MAC address of the port.",
+    )
+    port_type: str | None = Field(
+        default=None,
+        validation_alias="portType",
+        description="Port type (e.g. 'Access').",
+    )
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep port payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class GatewayTunnel(BaseModel):
+    """Gateway tunnel data structure (from get_all_gateway_tunnels)."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    tunnel_name: str = Field(
+        validation_alias="tunnelName",
+        description="Tunnel name (e.g. 'GW01:inet::AP04:inet'). Used as identifier for tunnel trend queries.",
+    )
+    tunnel_type: str | None = Field(
+        default=None,
+        validation_alias="tunnelType",
+        description="Tunnel type: 'LAN' or 'WAN'.",
+    )
+    status: str | None = Field(
+        default=None,
+        description="Tunnel status: 'Up' or 'Down'.",
+    )
+    health: str | None = Field(
+        default=None,
+        description="Tunnel health: 'Good' or 'Poor'.",
+    )
+    encapsulation: str | None = Field(
+        default=None,
+        description="Encapsulation type: 'IPsec' or 'GRE'.",
+    )
+    mode: str | None = Field(
+        default=None,
+        description="Tunnel mode: 'Orchestrated' or 'Manual'.",
+    )
+    peer_type: str | None = Field(
+        default=None,
+        validation_alias="peerType",
+        description="Peer type: 'AP', 'UNKNOWN', etc.",
+    )
+    destination_ip_address: str | None = Field(
+        default=None,
+        validation_alias="destinationIpAddress",
+        description="Destination IP address of the tunnel.",
+    )
+    source_ip_address: str | None = Field(
+        default=None,
+        validation_alias="sourceIpAddress",
+        description="Source IP address of the tunnel.",
+    )
+    uptime: str | None = Field(
+        default=None,
+        description="Human-readable tunnel uptime (e.g. '1M 24d').",
+    )
+    mtu: str | None = Field(
+        default=None,
+        description="MTU of the tunnel.",
+    )
+    vlan_id: int | None = Field(
+        default=None,
+        validation_alias="vlanId",
+        description="VLAN ID associated with the tunnel.",
+    )
+    throughput: dict | None = Field(
+        default=None,
+        description="Current throughput: {received, sent} in bps.",
+    )
+    dropped_packets: int | None = Field(
+        default=None,
+        validation_alias="droppedPackets",
+        description="Number of dropped packets.",
+    )
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep tunnel payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class GatewayVlan(BaseModel):
+    """Gateway VLAN data structure (from get_all_gateway_vlans)."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    vlan_id: int = Field(
+        validation_alias="vlanId",
+        description="VLAN ID (integer).",
+    )
+    name: str | None = Field(
+        default=None,
+        description="VLAN name (may be empty string).",
+    )
+    status: str | None = Field(
+        default=None,
+        description="Operational status: 'Up' or 'Down'.",
+    )
+    admin_status: str | None = Field(
+        default=None,
+        validation_alias="adminStatus",
+        description="Administrative status: 'Up' or 'Down'.",
+    )
+    vlan_type: str | None = Field(
+        default=None,
+        validation_alias="vlanType",
+        description="VLAN type (e.g. 'Static').",
+    )
+    ipv4: str | None = Field(
+        default=None,
+        description="IPv4 address assigned to this VLAN.",
+    )
+    ipv4_subnet: str | None = Field(
+        default=None,
+        validation_alias="ipv4Subnet",
+        description="IPv4 subnet (e.g. '10.1.1.1/24'). Null when no IP is assigned.",
+    )
+    interfaces: str | None = Field(
+        default=None,
+        description="Interface(s) associated with this VLAN.",
+    )
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep VLAN payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class Gateway(BaseModel):
+    """Gateway monitoring data structure (list item or detail shape)."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    serial_number: str = Field(
+        validation_alias="serialNumber",
+        description="Unique serial number of the gateway.",
+    )
+    device_name: str | None = Field(
+        default=None,
+        validation_alias="deviceName",
+        description="Display name of the gateway.",
+    )
+    model: str | None = Field(
+        default=None,
+        description="Gateway model (e.g. 'A7240XM', 'A9004').",
+    )
+    status: str | None = Field(
+        default=None,
+        description="Operational status: 'Online' or 'Offline' (title-case).",
+    )
+    ip_address: str | None = Field(
+        default=None,
+        validation_alias="ipAddress",
+        description="IPv4 address of the gateway.",
+    )
+    site_id: str | None = Field(
+        default=None,
+        validation_alias="siteId",
+        description="ID of the site where the gateway is located.",
+    )
+    site_name: str | None = Field(
+        default=None,
+        validation_alias="siteName",
+        description="Name of the site where the gateway is located.",
+    )
+    cluster_name: str | None = Field(
+        default=None,
+        validation_alias="clusterName",
+        description="Cluster name. Empty string when gateway is not in a cluster.",
+    )
+    role: str | None = Field(
+        default=None,
+        description="Gateway role: 'Member', 'Leader', 'Isoleader', or null when not in cluster.",
+    )
+    device_function: str | None = Field(
+        default=None,
+        validation_alias="deviceFunction",
+        description="Device function: 'Unspecified', 'Mobility Gateway', etc.",
+    )
+    cpu_utilization: int | float | None = Field(
+        default=None,
+        validation_alias="cpuUtilization",
+        description="Current CPU utilization percentage.",
+    )
+    memory_utilization: int | float | None = Field(
+        default=None,
+        validation_alias="memoryUtilization",
+        description="Current memory utilization percentage.",
+    )
+    uptime_in_millis: int | None = Field(
+        default=None,
+        validation_alias="uptimeInMillis",
+        description="Gateway uptime in milliseconds.",
+    )
+    firmware_version: str | None = Field(
+        default=None,
+        validation_alias="firmwareVersion",
+        description="Current firmware version.",
+    )
+    mac_address: str | None = Field(
+        default=None,
+        validation_alias="macAddress",
+        description="MAC address of the gateway.",
+    )
+    reboot_reason: str | None = Field(
+        default=None,
+        validation_alias="rebootReason",
+        description="Reason for the last reboot.",
+    )
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> "Gateway":
+        """Normalize raw Central gateway payload into a sparse MCP-friendly shape."""
+        return cls(**raw)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep gateway payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class GatewayUplink(BaseModel):
+    """Gateway uplink data structure (from get_gateway_uplinks).
+
+    NOTE: The uplink endpoint returns ``{items: [...], total: N}`` (not a flat
+    list).  The ``link_tag`` field is the per-uplink trend identifier used with
+    ``get_gateway_uplink_trends(link_tag=...)``.
+
+    Shape is sourced from pycentral source code; no live uplinks were available
+    in the capture account (``total: 0``).
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    link_tag: str | None = Field(
+        default=None,
+        validation_alias="linkTag",
+        description="Uplink identifier used for trend queries (get_gateway_uplink_trends).",
+    )
+    name: str | None = Field(
+        default=None,
+        description="Human-readable uplink name.",
+    )
+    status: str | None = Field(
+        default=None,
+        description="Uplink operational status.",
+    )
+    uplink_type: str | None = Field(
+        default=None,
+        validation_alias="uplinkType",
+        description="Uplink type (e.g. 'wired', 'cellular').",
+    )
+    ip_address: str | None = Field(
+        default=None,
+        validation_alias="ipAddress",
+        description="IP address of the uplink.",
+    )
+    gateway: str | None = Field(
+        default=None,
+        description="Gateway device name associated with the uplink.",
+    )
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep uplink payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class GatewayDetail(Gateway):
+    """Gateway detail snapshot with optional include sub-resources.
+
+    NOTE: get_gateway_details returns the SAME shape as a list item (no
+    additional embedded sub-resources). Pass ``include`` to central_get_gateway_details
+    to add richer sub-resource data via dedicated API calls.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    # Sub-resources populated only when requested via include=
+    ports: list[GatewayPort] | None = Field(
+        default=None,
+        description="List of gateway wired ports (only when 'ports' is included).",
+    )
+    tunnels: list[GatewayTunnel] | None = Field(
+        default=None,
+        description="List of gateway tunnels (only when 'tunnels' is included).",
+    )
+    uplinks: list[GatewayUplink] | None = Field(
+        default=None,
+        description="List of gateway uplinks (only when 'uplinks' is included).",
+    )
+    vlans: list[GatewayVlan] | None = Field(
+        default=None,
+        description="List of gateway VLANs (only when 'vlans' is included).",
+    )
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> "GatewayDetail":  # type: ignore[override]
+        """Normalize a gateway detail payload into a GatewayDetail instance."""
+        normalized: dict[str, Any] = dict(raw)
+
+        raw_ports = normalized.pop("ports", None)
+        if isinstance(raw_ports, list):
+            normalized["ports"] = [GatewayPort(**p) for p in raw_ports]
+
+        raw_tunnels = normalized.pop("tunnels", None)
+        if isinstance(raw_tunnels, list):
+            normalized["tunnels"] = [GatewayTunnel(**t) for t in raw_tunnels]
+
+        raw_uplinks = normalized.pop("uplinks", None)
+        if isinstance(raw_uplinks, list):
+            normalized["uplinks"] = [GatewayUplink(**u) for u in raw_uplinks]
+
+        raw_vlans = normalized.pop("vlans", None)
+        if isinstance(raw_vlans, list):
+            normalized["vlans"] = [GatewayVlan(**v) for v in raw_vlans]
+
+        return cls(**normalized)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(  # type: ignore[override]
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep detail payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class ClusterMember(BaseModel):
+    """Cluster member data structure (from get_all_cluster_members).
+
+    NOTE: Cluster member status uses ALL-CAPS 'ONLINE'/'OFFLINE', unlike the
+    gateway list which uses title-case 'Online'/'Offline'.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    serial_number: str = Field(
+        validation_alias="serialNumber",
+        description="Serial number of the cluster member gateway.",
+    )
+    device_name: str | None = Field(
+        default=None,
+        validation_alias="deviceName",
+        description="Display name of the gateway.",
+    )
+    cluster_name: str | None = Field(
+        default=None,
+        validation_alias="clusterName",
+        description="Name of the cluster.",
+    )
+    role: str | None = Field(
+        default=None,
+        description="Role in the cluster: 'Member', 'Leader', 'Isoleader'.",
+    )
+    status: str | None = Field(
+        default=None,
+        description="Operational status: 'ONLINE' or 'OFFLINE' (all-caps — differs from gateway list).",
+    )
+    model: str | None = Field(
+        default=None,
+        description="Gateway model.",
+    )
+    ipv4: str | None = Field(
+        default=None,
+        description="IPv4 address of the gateway.",
+    )
+    site_id: str | None = Field(
+        default=None,
+        validation_alias="siteId",
+        description="Site ID.",
+    )
+    site_name: str | None = Field(
+        default=None,
+        validation_alias="siteName",
+        description="Site name.",
+    )
+    firmware_version: str | None = Field(
+        default=None,
+        validation_alias="firmwareVersion",
+        description="Firmware version.",
+    )
+    mac_address: str | None = Field(
+        default=None,
+        validation_alias="macAddress",
+        description="MAC address.",
+    )
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep member payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class GatewayCluster(BaseModel):
+    """Gateway cluster snapshot with members and tunnel health summary."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    cluster_name: str = Field(description="Name of the cluster.")
+    members: list[ClusterMember] = Field(
+        default_factory=list,
+        description="List of cluster member gateways.",
+    )
+    tunnel_health_summary: list[dict] | dict | None = Field(
+        default=None,
+        description=(
+            "Cluster tunnel health summary per member "
+            "(list of {serialNumber, deviceName, tunnelHealth: {good, fair, poor}})."
+        ),
+    )
+    # Optional include fields
+    tunnels: list[dict] | None = Field(
+        default=None,
+        description="All cluster tunnels (only when 'tunnels' is included).",
+    )
+    vlan_mismatch: dict | None = Field(
+        default=None,
+        description="VLAN mismatch summary (only when 'vlan_mismatch' is included).",
+    )
+    connectivity: dict | None = Field(
+        default=None,
+        description="Cluster connectivity graph (only when 'connectivity' is included).",
+    )
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> "GatewayCluster":
+        """Build a GatewayCluster from a fetch_cluster_snapshot result dict."""
+        normalized: dict[str, Any] = dict(raw)
+        raw_members = normalized.pop("members", [])
+        if isinstance(raw_members, list):
+            normalized["members"] = [ClusterMember(**m) for m in raw_members]
+        return cls(**normalized)
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop null fields to keep cluster payloads compact."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
