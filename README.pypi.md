@@ -19,7 +19,7 @@ Community MCP server for HPE Aruba Networking Central. This exposes your Central
 
 ## Overview
 
-`central-mcp-server` wraps Central REST APIs and exposes them as [MCP (Model Context Protocol)](https://modelcontextprotocol.io) tools. Once configured, AI assistants like Claude or GitHub Copilot can answer questions like:
+`central-mcp-server` wraps Central REST APIs and exposes them as [MCP (Model Context Protocol)](https://modelcontextprotocol.io) tools — **25 MCP tools spanning 85+ distinct Central REST API endpoints**. Once configured, AI assistants like Claude or GitHub Copilot can answer questions like:
 
 - *"Which sites have poor health scores right now?"*
 - *"Show me all failed wireless clients at HQ in the last 24 hours."*
@@ -239,6 +239,8 @@ See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-cent
 New to driving an AI assistant over your network? See **[What You Can Ask](https://developer.arubanetworks.com/new-central/docs/central-mcp-example-queries)** — a guided tour of real questions across every tool category (site health, devices, APs, switches, gateways, WLANs, clients, alerts, events, and live diagnostics), each shown with the answer it returns and a list of related questions to try.
 
 ### Tools
+
+These 25 tools reach **85+ distinct Central REST API endpoints** — a single tool such as `central_get_switch_details` fans out to as many as 9 endpoints via its `include` parameter.
 
 #### Sites
 | Tool | Description |

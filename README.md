@@ -38,7 +38,7 @@ Community MCP server for HPE Aruba Networking Central. This exposes your Central
 
 ## Overview
 
-`central-mcp-server` wraps Central REST APIs and exposes them as [MCP (Model Context Protocol)](https://modelcontextprotocol.io) tools. Once configured, AI assistants like Claude or GitHub Copilot can answer questions like:
+`central-mcp-server` wraps Central REST APIs and exposes them as [MCP (Model Context Protocol)](https://modelcontextprotocol.io) tools — **25 MCP tools spanning 85+ distinct Central REST API endpoints**. Once configured, AI assistants like Claude or GitHub Copilot can answer questions like:
 
 - *"Which sites have poor health scores right now?"*
 - *"Show me all failed wireless clients at HQ in the last 24 hours."*
@@ -265,26 +265,26 @@ New to driving an AI assistant over your network? See **[What You Can Ask](docs/
 %%{init: {'theme':'base', 'themeVariables': {'background': '#0b0f1a'}}}%%
 graph TD
     MCP["Central MCP Server"] --> Sites["Sites"]
-    MCP --> Devices["Devices"]
+    MCP --> Devices["Device Inventory"]
     MCP --> Clients["Clients"]
     MCP --> Alerts["Alerts"]
     MCP --> Events["Events"]
-    MCP --> APMon["AP Monitoring"]
-    MCP --> SwitchMon["Switch Monitoring"]
-    MCP --> GatewayMon["Gateway Monitoring"]
-    MCP--> WLAN["WLAN"]
+    MCP --> DevMon["Device Monitoring"]
+    MCP --> WLAN["WLAN"]
     MCP --> Troubleshooting["Troubleshooting"]
 
     classDef mcp fill:#05cc93,color:#001b14,stroke:#000000,stroke-width:2px;
     classDef tool fill:#0070f8,color:#ffffff,stroke:#000000,stroke-width:1.5px;
 
     class MCP mcp;
-    class Sites,Devices,APMon,SwitchMon,GatewayMon,Clients,Alerts,Events,WLAN,Troubleshooting tool;
+    class Sites,Devices,DevMon,Clients,Alerts,Events,WLAN,Troubleshooting tool;
 
     linkStyle default stroke:#ffffff,stroke-width:2px;
 ```
 
 ### Tools
+
+These 25 tools reach **85+ distinct Central REST API endpoints** — a single tool such as `central_get_switch_details` fans out to as many as 9 endpoints via its `include` parameter.
 
 #### Sites
 | Tool | Description |
