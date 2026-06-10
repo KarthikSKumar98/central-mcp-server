@@ -39,7 +39,7 @@ GATEWAY_FILTER_FIELDS: dict[str, FilterField] = {
 }
 
 
-def _normalize_temperature_trends(raw) -> list[dict]:
+def _normalize_temperature_trends(raw: list) -> list[dict]:
     """Normalize hardware-temperature trends to a flat per-timestamp format.
 
     ``hardware-temperature`` returns a *list* of sensor dicts (one per sensor),
@@ -84,7 +84,7 @@ def _normalize_temperature_trends(raw) -> list[dict]:
     return sorted(merged.values(), key=lambda s: s["timestamp"])
 
 
-def _normalize_capacity_trends(raw) -> list[dict]:
+def _normalize_capacity_trends(raw: list) -> list[dict]:
     """Normalize cluster capacity trends to an LLM-friendly flat list.
 
     ``get_cluster_capacity_trends`` returns a list of capacity-type dicts,
@@ -363,7 +363,13 @@ def register(mcp: FastMCP) -> None:
 
         # hardware-temperature raw response is a list of per-sensor dicts;
         # normalize into a merged per-timestamp structure.
-        if metric == "hardware-temperature" and isinstance(raw, list) and raw and isinstance(raw[0], dict) and "graph" in raw[0]:
+        if (
+            metric == "hardware-temperature"
+            and isinstance(raw, list)
+            and raw
+            and isinstance(raw[0], dict)
+            and "graph" in raw[0]
+        ):
             try:
                 normalized = _normalize_temperature_trends(raw)
                 return [TrendSample(**s) for s in normalized]
@@ -379,7 +385,8 @@ def register(mcp: FastMCP) -> None:
     async def central_get_gateway_cluster(
         ctx: Context,
         cluster_name: str,
-        include: list[Literal["tunnels", "vlan_mismatch", "connectivity"]] | None = None,
+        include: list[Literal["tunnels", "vlan_mismatch", "connectivity"]]
+        | None = None,
     ) -> GatewayCluster | str:
         """Return a snapshot of a gateway cluster with members and tunnel health.
 

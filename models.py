@@ -1,3 +1,4 @@
+import ast as _ast
 from enum import Enum
 from typing import Any, Literal
 
@@ -951,7 +952,6 @@ class TroubleshootingResult(BaseModel):
 
 
 # --- Switch monitoring (a20) ---
-import ast as _ast
 
 
 class SwitchTrend(BaseModel):
@@ -1031,10 +1031,17 @@ class SwitchInterface(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    id: str | None = Field(default=None, description="Short port name (e.g. 'Gi1/0/1').")
+    id: str | None = Field(
+        default=None, description="Short port name (e.g. 'Gi1/0/1')."
+    )
     name: str | None = Field(default=None, description="Port name.")
-    alias: str | None = Field(default=None, description="Full IOS-style port name (e.g. 'GigabitEthernet1/0/1').")
-    status: str | None = Field(default=None, description="Port status (e.g. 'Connected', 'Disconnected').")
+    alias: str | None = Field(
+        default=None,
+        description="Full IOS-style port name (e.g. 'GigabitEthernet1/0/1').",
+    )
+    status: str | None = Field(
+        default=None, description="Port status (e.g. 'Connected', 'Disconnected')."
+    )
     admin_status: str | None = Field(
         default=None,
         validation_alias="adminStatus",
@@ -1068,7 +1075,9 @@ class SwitchInterface(BaseModel):
         validation_alias="allowedVlanIds",
         description="Expanded list of allowed VLAN IDs.",
     )
-    uplink: bool | None = Field(default=None, description="True if this is an uplink port.")
+    uplink: bool | None = Field(
+        default=None, description="True if this is an uplink port."
+    )
     poe_status: str | None = Field(
         default=None,
         validation_alias="poeStatus",
@@ -1115,9 +1124,15 @@ class SwitchVlan(BaseModel):
     id: str | None = Field(default=None, description="VLAN ID.")
     name: str | None = Field(default=None, description="VLAN name.")
     type: str | None = Field(default=None, description="VLAN type (e.g. 'Static').")
-    status: str | None = Field(default=None, description="VLAN status (e.g. 'Not used', 'Active').")
-    ipv4: str | None = Field(default=None, description="IP address assigned to this VLAN SVI.")
-    voice: str | None = Field(default=None, description="Voice VLAN status (Enabled/Disabled).")
+    status: str | None = Field(
+        default=None, description="VLAN status (e.g. 'Not used', 'Active')."
+    )
+    ipv4: str | None = Field(
+        default=None, description="IP address assigned to this VLAN SVI."
+    )
+    voice: str | None = Field(
+        default=None, description="Voice VLAN status (Enabled/Disabled)."
+    )
     interfaces: list[str] | None = Field(
         default=None,
         description="List of interface names in this VLAN.",
@@ -1351,6 +1366,7 @@ class SwitchDetail(Switch):
 
 
 # --- Gateway monitoring (a20) ---
+
 
 class GatewayPort(BaseModel):
     """Gateway wired port data structure (from get_all_gateway_ports)."""

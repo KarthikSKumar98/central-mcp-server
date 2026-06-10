@@ -8,10 +8,12 @@ format via ``format_tool_error``.
 
 from __future__ import annotations
 
-from pycentral.new_monitoring import MonitoringAPs
+import ast
+
+from pycentral.new_monitoring import MonitoringAPs, MonitoringSwitches
 
 from constants import AP_TREND_METRICS, PORT_TREND_METRICS, RADIO_TREND_METRICS
-from utils.common import rfc3339_to_epoch
+from utils.common import lookup_inventory_device, rfc3339_to_epoch, stack_aware_serial
 
 # ---------------------------------------------------------------------------
 # Routing maps — method names stored as strings so that patches applied to
@@ -186,6 +188,7 @@ def fetch_trends(
 
     return getattr(monitor_cls, method_name)(**kwargs)
 
+
 # --- Gateway monitoring (a20) ---
 from constants import (  # noqa: E402 — mid-file import intentional (append-only rule)
     GATEWAY_PORT_TREND_METRICS,
@@ -198,7 +201,11 @@ from constants import (  # noqa: E402 — mid-file import intentional (append-on
 GATEWAY_TREND_SCOPES: dict[str, tuple[str, tuple[str, ...], str | None]] = {
     "gateway": ("get_gateway_trends", GATEWAY_TREND_METRICS, None),
     "port": ("get_gateway_port_trends", GATEWAY_PORT_TREND_METRICS, "port_number"),
-    "tunnel": ("get_gateway_tunnel_trends", GATEWAY_TUNNEL_TREND_METRICS, "tunnel_name"),
+    "tunnel": (
+        "get_gateway_tunnel_trends",
+        GATEWAY_TUNNEL_TREND_METRICS,
+        "tunnel_name",
+    ),
     "uplink": ("get_gateway_uplink_trends", GATEWAY_UPLINK_TREND_METRICS, "link_tag"),
 }
 
@@ -241,6 +248,7 @@ def fetch_cluster_snapshot(
     """
     if monitor_cls is None:
         from pycentral.new_monitoring.gateways import MonitoringGateways as _MG
+
         monitor_cls = _MG
 
     members = monitor_cls.get_all_cluster_members(
@@ -273,15 +281,8 @@ def fetch_cluster_snapshot(
 
     return result
 
+
 # --- Switch monitoring (a20) ---
-import ast
-
-from pycentral.new_monitoring import MonitoringSwitches
-
-from utils.common import (  # noqa: E402 — mid-file import intentional (append-only rule)
-    lookup_inventory_device,
-    stack_aware_serial,
-)
 
 # scope -> (method_name, valid_metrics | None, required_kwarg | None)
 # Switch trend scopes return ALL metrics per sample (valid_metrics=None)
