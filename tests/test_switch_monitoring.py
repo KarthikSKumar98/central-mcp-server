@@ -9,6 +9,7 @@ import pytest
 import tools.switch_monitoring as mod
 from models import Switch, SwitchDetail, TrendSample
 from tests.conftest import FakeMCP, make_ctx
+from utils.monitoring import resolve_switch_serial
 
 # ---------------------------------------------------------------------------
 # Representative raw payloads (from a20-switch-monitoring-payloads.md)
@@ -814,3 +815,298 @@ def test_switch_detail_health_reasons_preserved():
     dumped = detail.model_dump()
     assert dumped["health"] == "Fair"
     assert dumped["health_reasons"]["fairReasons"] == ["High CPU"]
+
+
+# ---------------------------------------------------------------------------
+# BUG-1: SwitchDetail.lastConfigChange accepts integer (epoch ms)
+# ---------------------------------------------------------------------------
+
+
+def test_switch_detail_last_config_change_int_parsed():
+    """LastConfigChange as int (epoch ms) must parse without raising."""
+    detail = SwitchDetail.from_api(
+        {
+            "serialNumber": "SG34L5002Y",
+            "status": "Online",
+            "lastConfigChange": 1780519197187,
+        }
+    )
+    assert detail.last_config_change == 1780519197187
+
+
+def test_switch_detail_last_config_change_str_still_works():
+    """LastConfigChange as str must continue to parse without raising."""
+    detail = SwitchDetail.from_api(
+        {
+            "serialNumber": "FCW2026D0KV",
+            "status": "Online",
+            "lastConfigChange": "2026-06-01T00:00:00Z",
+        }
+    )
+    assert detail.last_config_change == "2026-06-01T00:00:00Z"
+
+
+def test_switch_detail_last_config_change_none_ok():
+    """LastConfigChange absent/null must remain None."""
+    detail = SwitchDetail.from_api(
+        {
+            "serialNumber": "FCW2026D0KV",
+            "status": "Online",
+        }
+    )
+    assert detail.last_config_change is None
+
+
+# ---------------------------------------------------------------------------
+# BUG-2: central_get_switches sort direction normalised to UPPERCASE
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_switches_sort_direction_uppercased(tools):
+    """sort='deviceName asc' must reach the API as 'deviceName ASC'."""
+    ctx = make_ctx()
+    with patch(
+        "tools.switch_monitoring.MonitoringSwitches.get_all_switches", return_value=[]
+    ) as mock_api:
+        await tools["central_get_switches"](ctx, sort="deviceName asc")
+    assert mock_api.call_args.kwargs["sort"] == "deviceName ASC"
+
+
+@pytest.mark.asyncio
+async def test_get_switches_sort_desc_direction_uppercased(tools):
+    """sort='model desc' must reach the API as 'model DESC'."""
+    ctx = make_ctx()
+    with patch(
+        "tools.switch_monitoring.MonitoringSwitches.get_all_switches", return_value=[]
+    ) as mock_api:
+        await tools["central_get_switches"](ctx, sort="model desc")
+    assert mock_api.call_args.kwargs["sort"] == "model DESC"
+
+
+@pytest.mark.asyncio
+async def test_get_switches_sort_already_uppercase_unchanged(tools):
+    """sort='deviceName ASC' must pass through unchanged."""
+    ctx = make_ctx()
+    with patch(
+        "tools.switch_monitoring.MonitoringSwitches.get_all_switches", return_value=[]
+    ) as mock_api:
+        await tools["central_get_switches"](ctx, sort="deviceName ASC")
+    assert mock_api.call_args.kwargs["sort"] == "deviceName ASC"
+
+
+@pytest.mark.asyncio
+async def test_get_switches_sort_none_unchanged(tools):
+    """sort=None must pass through as None."""
+    ctx = make_ctx()
+    with patch(
+        "tools.switch_monitoring.MonitoringSwitches.get_all_switches", return_value=[]
+    ) as mock_api:
+        await tools["central_get_switches"](ctx, sort=None)
+    assert mock_api.call_args.kwargs["sort"] is None
+
+
+# ---------------------------------------------------------------------------
+# BUG-3: Stack member serial redirect (resolve_switch_serial + tool integration)
+# ---------------------------------------------------------------------------
+
+STACK_MEMBER_INVENTORY = {
+    "serialNumber": "SG39KN419Z",
+    "stackId": "f91f11e4-ca19-4b1a-89b7-0a7130f65ad0",
+    "deployment": "Stack",
+    "role": "Member",
+    "deviceType": "SWITCH",
+    "model": "6300",
+    "status": "ONLINE",
+}
+
+STANDALONE_INVENTORY = {
+    "serialNumber": "FCW2026D0KV",
+    "stackId": None,
+    "deployment": "Standalone",
+    "deviceType": "SWITCH",
+    "model": "WS-C3850-12X48U-E",
+    "status": "ONLINE",
+}
+
+STACK_ID = "f91f11e4-ca19-4b1a-89b7-0a7130f65ad0"
+MEMBER_SERIAL = "SG39KN419Z"
+STANDALONE_SERIAL = "FCW2026D0KV"
+
+
+# --- resolve_switch_serial unit tests ---
+
+
+def test_resolve_switch_serial_returns_stack_id_for_member():
+    """resolve_switch_serial returns the stackId when the device is a Stack member."""
+    conn = MagicMock()
+    with patch(
+        "utils.monitoring.lookup_inventory_device", return_value=STACK_MEMBER_INVENTORY
+    ) as mock_lookup:
+        result = resolve_switch_serial(conn, MEMBER_SERIAL)
+    mock_lookup.assert_called_once_with(conn, MEMBER_SERIAL)
+    assert result == STACK_ID
+
+
+def test_resolve_switch_serial_returns_original_for_standalone():
+    """resolve_switch_serial returns the original serial for a standalone switch."""
+    conn = MagicMock()
+    with patch(
+        "utils.monitoring.lookup_inventory_device", return_value=STANDALONE_INVENTORY
+    ):
+        result = resolve_switch_serial(conn, STANDALONE_SERIAL)
+    assert result == STANDALONE_SERIAL
+
+
+def test_resolve_switch_serial_returns_original_when_lookup_returns_none():
+    """resolve_switch_serial falls back to original serial when lookup returns None."""
+    conn = MagicMock()
+    with patch("utils.monitoring.lookup_inventory_device", return_value=None):
+        result = resolve_switch_serial(conn, MEMBER_SERIAL)
+    assert result == MEMBER_SERIAL
+
+
+def test_resolve_switch_serial_returns_original_when_lookup_raises():
+    """resolve_switch_serial is resilient — returns original serial on lookup exception."""
+    conn = MagicMock()
+    with patch(
+        "utils.monitoring.lookup_inventory_device", side_effect=RuntimeError("inventory down")
+    ):
+        result = resolve_switch_serial(conn, MEMBER_SERIAL)
+    assert result == MEMBER_SERIAL
+
+
+# --- Tool integration: central_get_switch_details forwards stackId for stack members ---
+
+
+@pytest.mark.asyncio
+async def test_get_switch_details_stack_member_serial_redirected_to_stack_id(tools):
+    """central_get_switch_details resolves a stack member serial to stackId before API call."""
+    ctx = make_ctx()
+    # Return a detail dict keyed to the stack (conductor view)
+    stack_detail = {
+        **RAW_DETAIL_BASE,
+        "serialNumber": "SG39KN41B7",
+        "deployment": "Stack",
+        "stackId": STACK_ID,
+    }
+    with (
+        patch(
+            "tools.switch_monitoring.resolve_switch_serial", return_value=STACK_ID
+        ) as mock_resolve,
+        patch(
+            "utils.monitoring.MonitoringSwitches.get_switch_details",
+            return_value=stack_detail,
+        ) as mock_details,
+    ):
+        result = await tools["central_get_switch_details"](ctx, serial_number=MEMBER_SERIAL)
+
+    # Resolver was called with the original member serial
+    mock_resolve.assert_called_once()
+    assert mock_resolve.call_args.args[1] == MEMBER_SERIAL
+    # get_switch_details received the stackId, not the member serial
+    assert mock_details.call_args.kwargs["serial_number"] == STACK_ID
+    # Result parsed OK
+    assert isinstance(result, SwitchDetail)
+
+
+@pytest.mark.asyncio
+async def test_get_switch_details_standalone_serial_unchanged(tools):
+    """central_get_switch_details passes a standalone serial through unchanged."""
+    ctx = make_ctx()
+    with (
+        patch(
+            "tools.switch_monitoring.resolve_switch_serial", return_value=STANDALONE_SERIAL
+        ) as mock_resolve,
+        patch(
+            "utils.monitoring.MonitoringSwitches.get_switch_details",
+            return_value=dict(RAW_DETAIL_BASE),
+        ) as mock_details,
+    ):
+        result = await tools["central_get_switch_details"](ctx, serial_number=STANDALONE_SERIAL)
+
+    mock_resolve.assert_called_once()
+    assert mock_details.call_args.kwargs["serial_number"] == STANDALONE_SERIAL
+    assert isinstance(result, SwitchDetail)
+
+
+@pytest.mark.asyncio
+async def test_get_switch_details_not_found_message_uses_original_serial(tools):
+    """Not-found message shows what the user typed (original serial), not the resolved one."""
+    ctx = make_ctx()
+    with (
+        patch("tools.switch_monitoring.resolve_switch_serial", return_value=STACK_ID),
+        patch(
+            "utils.monitoring.MonitoringSwitches.get_switch_details", return_value=None
+        ),
+    ):
+        result = await tools["central_get_switch_details"](ctx, serial_number=MEMBER_SERIAL)
+    assert MEMBER_SERIAL in result
+    assert "No switch found for serial number" in result
+
+
+# --- Tool integration: central_get_switch_trends forwards stackId for stack members ---
+
+
+@pytest.mark.asyncio
+async def test_get_switch_trends_stack_member_serial_redirected_to_stack_id(tools):
+    """central_get_switch_trends resolves a stack member serial to stackId before API call."""
+    ctx = make_ctx()
+    with (
+        patch(
+            "tools.switch_monitoring.resolve_switch_serial", return_value=STACK_ID
+        ) as mock_resolve,
+        patch(
+            "utils.monitoring.MonitoringSwitches.get_switch_hardware_trends",
+            return_value=RAW_HARDWARE_TRENDS,
+        ) as mock_trends,
+    ):
+        result = await tools["central_get_switch_trends"](
+            ctx, serial_number=MEMBER_SERIAL, scope="hardware"
+        )
+
+    mock_resolve.assert_called_once()
+    assert mock_resolve.call_args.args[1] == MEMBER_SERIAL
+    assert mock_trends.call_args.kwargs["serial_number"] == STACK_ID
+    assert isinstance(result, list)
+    assert len(result) == 2  # 3 raw - 1 sentinel
+
+
+@pytest.mark.asyncio
+async def test_get_switch_trends_standalone_serial_unchanged(tools):
+    """central_get_switch_trends passes a standalone serial through unchanged."""
+    ctx = make_ctx()
+    with (
+        patch(
+            "tools.switch_monitoring.resolve_switch_serial", return_value=STANDALONE_SERIAL
+        ) as mock_resolve,
+        patch(
+            "utils.monitoring.MonitoringSwitches.get_switch_hardware_trends",
+            return_value=RAW_HARDWARE_TRENDS,
+        ) as mock_trends,
+    ):
+        result = await tools["central_get_switch_trends"](
+            ctx, serial_number=STANDALONE_SERIAL, scope="hardware"
+        )
+
+    mock_resolve.assert_called_once()
+    assert mock_trends.call_args.kwargs["serial_number"] == STANDALONE_SERIAL
+    assert isinstance(result, list)
+
+
+@pytest.mark.asyncio
+async def test_get_switch_trends_not_found_message_uses_original_serial(tools):
+    """Not-found message shows the user-supplied serial (not the resolved stackId)."""
+    ctx = make_ctx()
+    with (
+        patch("tools.switch_monitoring.resolve_switch_serial", return_value=STACK_ID),
+        patch(
+            "utils.monitoring.MonitoringSwitches.get_switch_hardware_trends",
+            return_value=[],
+        ),
+    ):
+        result = await tools["central_get_switch_trends"](
+            ctx, serial_number=MEMBER_SERIAL, scope="hardware"
+        )
+    assert MEMBER_SERIAL in result
+    assert "No hardware trend data found for serial number" in result

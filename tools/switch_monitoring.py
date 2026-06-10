@@ -20,6 +20,7 @@ from utils.monitoring import (
     fetch_switch_snapshot,
     fetch_trends,
     normalize_switch_trends,
+    resolve_switch_serial,
 )
 
 SWITCH_FILTER_FIELDS: dict[str, FilterField] = {
@@ -161,8 +162,11 @@ def register(mcp: FastMCP) -> None:
         """
         async with api_context(ctx) as conn:
             try:
+                effective_serial = await asyncio.to_thread(
+                    resolve_switch_serial, conn, serial_number
+                )
                 raw = await asyncio.to_thread(
-                    fetch_switch_snapshot, conn, serial_number, include
+                    fetch_switch_snapshot, conn, effective_serial, include
                 )
             except Exception as e:
                 return format_tool_error("fetching switch details", e)
@@ -259,10 +263,13 @@ def register(mcp: FastMCP) -> None:
         start_at, end_at = _resolve_time_window(time_range, start_time, end_time)
         async with api_context(ctx) as conn:
             try:
+                effective_serial = await asyncio.to_thread(
+                    resolve_switch_serial, conn, serial_number
+                )
                 raw = await asyncio.to_thread(
                     fetch_trends,
                     conn,
-                    serial_number,
+                    effective_serial,
                     scope,
                     None,
                     (start_at, end_at),

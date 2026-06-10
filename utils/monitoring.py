@@ -237,6 +237,7 @@ def fetch_cluster_snapshot(
     Returns:
         Dict with keys: cluster_name, members, tunnel_health_summary, and any
         requested includes. Returns None if cluster_name resolves to no members.
+
     """
     if monitor_cls is None:
         from pycentral.new_monitoring.gateways import MonitoringGateways as _MG
@@ -274,7 +275,13 @@ def fetch_cluster_snapshot(
 
 # --- Switch monitoring (a20) ---
 import ast
+
 from pycentral.new_monitoring import MonitoringSwitches
+
+from utils.common import (  # noqa: E402 — mid-file import intentional (append-only rule)
+    lookup_inventory_device,
+    stack_aware_serial,
+)
 
 # scope -> (method_name, valid_metrics | None, required_kwarg | None)
 # Switch trend scopes return ALL metrics per sample (valid_metrics=None)
@@ -338,6 +345,21 @@ def normalize_switch_trends(samples: list[dict]) -> list[dict]:
     return [_coerce_trend_values(s) for s in _strip_sentinel(samples)]
 
 
+def resolve_switch_serial(conn, serial_number: str) -> str:
+    """Resolve a switch serial to the identifier the monitoring API accepts.
+
+    Stack member serials 404 on the monitoring API; the conductor serial and the
+    stackId work. This transparently redirects any stack identifier to its
+    stackId. On any lookup failure it returns the original serial unchanged so
+    the caller's own error handling still applies.
+    """
+    try:
+        device = lookup_inventory_device(conn, serial_number)
+    except Exception:
+        return serial_number
+    return stack_aware_serial(device, serial_number)
+
+
 def fetch_switch_snapshot(
     conn,
     serial_number: str,
@@ -368,6 +390,7 @@ def fetch_switch_snapshot(
 
     Returns:
         Enriched dict from ``get_switch_details``, or falsy/non-dict if not found.
+
     """
     base: dict = monitor_cls.get_switch_details(
         central_conn=conn, serial_number=serial_number
