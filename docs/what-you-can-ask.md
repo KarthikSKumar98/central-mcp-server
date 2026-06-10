@@ -59,17 +59,13 @@ You can then sharpen the focus:
 
 > ### 🗨️ "Which sites have the most critical alerts right now?"
 
-![Sites ranked by number of critical alerts](images/guide-6-01b-critical-alerts.png)
-<!-- SCREENSHOT: summary re-ranked by critical_alerts. Caption the insight: high health score still had 9 criticals. -->
-
+![Sites ranked by number of critical alerts](images/critical-alerts.png)
 *A useful gut-check: a site can have a high health score and still carry critical alerts. This
 question surfaces exactly those cases.*
 
 > ### 🗨️ "Show me detailed health for the London and Miami sites."
 
-![Side-by-side health breakdown for two sites by device type](images/guide-6-01c-site-detail.png)
-<!-- SCREENSHOT: central_get_sites for London + Miami, device-type poor/fair/good breakdown. -->
-
+![Side-by-side health breakdown for two sites by device type](images/site-detail.png)
 *Drill into specific sites and you get a device-type breakdown — for example, which switches or
 APs are dragging a site's score down.*
 
