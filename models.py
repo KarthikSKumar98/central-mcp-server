@@ -1293,10 +1293,10 @@ class SwitchDetail(Switch):
         validation_alias="switchLinkType",
         description="Switch link type (null for tpd/Cisco switches).",
     )
-    last_config_change: str | None = Field(
+    last_config_change: int | str | None = Field(
         default=None,
         validation_alias="lastConfigChange",
-        description="Timestamp of the last configuration change.",
+        description="Timestamp of the last configuration change (epoch ms int or ISO string).",
     )
 
     # Optional sub-resource include fields
