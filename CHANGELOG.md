@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.8] - 2026-06-06
+## [0.1.8] - 2026-06-10
 
 ### New Tools
 - `central_get_switches` — filtered list of switches by site, model, status (title-case `Online`/`Offline`), or deployment (`Standalone`/`Stack`/`VSX`); each item embeds a current hardware-trend snapshot (CPU, memory, PoE, power, temperature, uplink ports)
@@ -14,8 +14,16 @@ All notable changes to this project will be documented in this file.
 - `central_get_gateway_cluster` — gateway cluster snapshot with members and per-member tunnel health; additive `include` keys for `tunnels`, `vlan_mismatch`, and `connectivity`
 - `central_get_cluster_capacity_trends` — capacity trends for a cluster across `client_capacity` and `device_capacity` types (active/standby counts and percentages vs maximum capacity), returned as a flat list filterable by `capacity_type`
 
+### Bug Fixes
+- Stack switches are now usable across all troubleshooting tools — `central_run_show_commands`, `central_run_network_test`, and `central_bounce_port` resolve any stack identifier (member serial, conductor serial, or stack ID) to the stack ID the Central troubleshooting API requires; previously every stack serial returned `404 Device not found`
+- `central_get_switch_details` and `central_get_switch_trends` transparently redirect a stack member serial to its stack ID; the monitoring API returns `404` for non-conductor member serials
+- Sort direction tokens are normalized to uppercase (`ASC`/`DESC`) for the switch, AP, gateway, and WLAN list tools, so lowercase input such as `deviceName asc` works against the case-sensitive Central switch API
+- `SwitchDetail.lastConfigChange` accepts integer (epoch-ms) timestamps in addition to ISO strings, fixing a Pydantic validation crash on switches that report the field as an integer
+- Device-family resolution tolerates vendor-prefixed model strings (e.g. `CX-6300F`, `AS-2930M`) instead of crashing on the leading letter
+
 ### Internal
 - Generalized `utils/monitoring.py` (`fetch_trends`, `fetch_snapshot`) to be device-agnostic across AP, switch, and gateway monitoring; added switch/gateway scope and include routing maps plus trend-normalization helpers
+- Added `lookup_inventory_device` and `stack_aware_serial` helpers in `utils/common.py` for stack-identifier resolution shared by the troubleshooting and monitoring tools
 
 ---
 

@@ -234,6 +234,10 @@ Once connected, you can ask your AI assistant questions like:
 
 See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-central/docs/central-mcp-in-action)) for real query examples across all supported clients.
 
+## Example Queries
+
+New to driving an AI assistant over your network? See **[What You Can Ask](docs/guide-6-what-you-can-ask.md)** — a guided tour of real questions across every tool category (site health, devices, APs, switches, gateways, WLANs, clients, alerts, events, and live diagnostics), each shown with the answer it returns and a list of related questions to try.
+
 ### Tools
 
 #### Sites

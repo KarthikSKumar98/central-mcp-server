@@ -31,6 +31,7 @@ Community MCP server for HPE Aruba Networking Central. This exposes your Central
     - [GitHub Copilot (VS Code)](#github-copilot-vs-code)
     - [HTTP Transport (Streamable HTTP)](#http-transport-streamable-http)
 - [What You Can Ask](#what-you-can-ask)
+- [Example Queries](#example-queries)
 - [Dev Setup](#dev-setup)
 
 ---
@@ -253,6 +254,10 @@ Once connected, you can ask your AI assistant questions like:
 - *"Bounce PoE on port 1/1/6 of switch SG43KN5017."*
 
 See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-central/docs/central-mcp-in-action)) for real query examples across all supported clients.
+
+## Example Queries
+
+New to driving an AI assistant over your network? See **[What You Can Ask](docs/guide-6-what-you-can-ask.md)** — a guided tour of real questions across every tool category (site health, devices, APs, switches, gateways, WLANs, clients, alerts, events, and live diagnostics), each shown with the answer it returns and a list of related questions to try.
 
 ### Tool Categories
 
