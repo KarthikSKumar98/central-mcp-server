@@ -159,27 +159,24 @@ From a campus switch list down to per-port PoE and per-member hardware health on
 
 > ### 🗨️ "Show me full details for switch SG34L5002Y — interfaces, PoE, and hardware health."
 
-![Switch detail showing interface summary, per-port PoE draw, and per-stack-member hardware health](images/guide-6-04-switch-details.png)
-<!-- SCREENSHOT: central_get_switch_details(... include=["interfaces","poe","hardware"]). Richest single output. See reference §4. -->
+![Switch detail showing interface summary, per-port PoE draw, and per-stack-member hardware health](images/switch-details-1.png)
+![Switch detail showing interface summary, per-port PoE draw, and per-stack-member hardware health](images/switch-details-2.png)
 
-*The richest single answer in the toolset: interface summary with the uplink port and its neighbor,
-per-port PoE draw, and per-stack-member hardware health (CPU, memory, temperature, fans, PSUs) —
-all from one question.*
+*The richest single answer in the toolset: interface summary with the uplink port and its neighbor, per-port PoE draw, and per-stack-member hardware health (CPU, memory, temperature, fans, PSUs) — all from one question.*
 
 > ### 🗨️ "List the switches at the London campus."
 
-![Campus switch list with model, deployment type, role, CPU, memory, and PoE](images/guide-6-04b-switch-list.png)
-<!-- SCREENSHOT: central_get_switches(site_name="London (LHR) - Campus"). Shows Standalone/Stack/VSX mix. -->
+![Campus switch list with model, deployment type, role, CPU, memory, and PoE](images/switch-list.png)
 
 *A site list that mixes standalone, stack, and VSX switches, each with a live hardware snapshot.*
 
 > ### 🗨️ "Show CPU, memory and PoE trends for SG34L5002Y over the last 6 hours."
 
-![Hardware trend samples for a switch over six hours](images/guide-6-04c-switch-trend.png)
-<!-- SCREENSHOT: central_get_switch_trends scope=hardware last_6h. -->
+![Hardware trend samples for a switch over six hours](images/switch-trend-1.png)
 
-*Hardware trends over time — CPU, memory, temperature, and PoE consumption — for capacity and
-heat troubleshooting. For a stack, every member is reported together.*
+![Hardware trend samples for a switch over six hours](images/switch-trend-2.png)
+
+*Hardware trends over time, CPU, memory, temperature, and PoE consumption, for capacity and heat troubleshooting. For a stack, every member is reported together.*
 
 **More you can ask:**
 - "List all the stack switches in the network."
