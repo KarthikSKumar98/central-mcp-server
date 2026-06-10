@@ -49,7 +49,7 @@ look first.
 
 > ### 🗨️ "Give me a health overview of all sites."
 
-![Health overview of all sites, ranked worst to best with device, client, and alert counts](images/guide-6-01-health-overview.png)
+![Health overview of all sites, ranked worst to best with device, client, and alert counts](images/health-overview.png)
 <!-- SCREENSHOT: central_get_summary — full site table ranked by health. See docs/dev/screenshot-reference.md §1. -->
 
 *The assistant returns every site ranked from worst to best health, with device, client, and alert
