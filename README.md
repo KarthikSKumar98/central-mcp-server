@@ -257,7 +257,7 @@ See [Central MCP Server in Action]((https://developer.arubanetworks.com/new-cent
 
 ## Example Queries
 
-New to driving an AI assistant over your network? See **[What You Can Ask](docs/guide-6-what-you-can-ask.md)** — a guided tour of real questions across every tool category (site health, devices, APs, switches, gateways, WLANs, clients, alerts, events, and live diagnostics), each shown with the answer it returns and a list of related questions to try.
+New to driving an AI assistant over your network? See **[What You Can Ask](docs/what-you-can-ask.md)** — a guided tour of real questions across every tool category (site health, devices, APs, switches, gateways, WLANs, clients, alerts, events, and live diagnostics), each shown with the answer it returns and a list of related questions to try.
 
 ### Tool Categories
 

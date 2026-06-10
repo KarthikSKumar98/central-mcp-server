@@ -2,7 +2,7 @@
 *.pyc
 .vscode/
 content/*
-docs/*
+doc/*
 *.mcp.json
 AGENTS.md
 CLAUDE.md
