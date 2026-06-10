@@ -120,8 +120,7 @@ area feels slow.
 
 > ### 🗨️ "What's the RF health on AP PHSXM52079?"
 
-![Per-radio RF table for one AP showing band, channel, client count, channel quality, and noise floor](images/guide-6-03-ap-rf-health.png)
-<!-- SCREENSHOT: central_get_ap_details(serial_number="PHSXM52079", include=["radios"]). Tri-band table. See reference §3. -->
+![Per-radio RF table for one AP showing band, channel, client count, channel quality, and noise floor](images/ap-rf-health.png)
 
 *A per-radio breakdown for a single AP — band, channel, client count, channel quality, channel
 utilization, and noise floor across 2.4 / 5 / 6 GHz. Here all the clients sit on 5 GHz while the
@@ -129,18 +128,15 @@ utilization, and noise floor across 2.4 / 5 / 6 GHz. Here all the clients sit on
 
 > ### 🗨️ "Show me all access points at the London campus."
 
-![Site AP inventory with model, client count, CPU, memory, and power per AP](images/guide-6-03b-ap-list.png)
-<!-- SCREENSHOT: central_get_aps(site_name="London (LHR) - Campus"). -->
+![Site AP inventory with model, client count, CPU, memory, and power per AP](images/ap-list.png)
 
 *A site-scoped AP list with live load per AP — model, client count, CPU, memory, and PoE draw.*
 
 > ### 🗨️ "Show channel utilization on radio 0 of PHSXM52079 for the last hour."
 
-![Time-series channel utilization samples for one radio over the last hour](images/guide-6-03c-ap-trend.png)
-<!-- SCREENSHOT: central_get_ap_trends radio channel-utilization last_1h. -->
+![Time-series channel utilization samples for one radio over the last hour](images/ap-trend.png)
 
-*Trends turn a snapshot into a story — here, 5-minute samples of transmit/receive utilization and
-non-Wi-Fi interference, so you can see whether a radio is congested or quiet.*
+*Trends turn a snapshot into a story — here, 5-minute samples of transmit/receive utilization and non-Wi-Fi interference, so you can see whether a radio is congested or quiet.*
 
 **More you can ask:**
 - "How many APs do we have across the network, by model?"
