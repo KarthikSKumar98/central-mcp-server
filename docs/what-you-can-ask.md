@@ -50,24 +50,22 @@ look first.
 > ### 🗨️ "Give me a health overview of all sites."
 
 ![Health overview of all sites, ranked worst to best with device, client, and alert counts](images/health-overview.png)
-<!-- SCREENSHOT: central_get_summary — full site table ranked by health. See docs/dev/screenshot-reference.md §1. -->
 
-*The assistant returns every site ranked from worst to best health, with device, client, and alert
-counts beside each — a fleet-wide status board in one answer.*
+*The assistant returns every site ranked from worst to best health, with device, client, and alert counts beside each — a fleet-wide status board in one answer.*
 
 You can then sharpen the focus:
 
 > ### 🗨️ "Which sites have the most critical alerts right now?"
 
 ![Sites ranked by number of critical alerts](images/critical-alerts.png)
-*A useful gut-check: a site can have a high health score and still carry critical alerts. This
-question surfaces exactly those cases.*
+
+*A useful gut-check: a site can have a high health score and still carry critical alerts. This question surfaces exactly those cases.*
 
 > ### 🗨️ "Show me detailed health for the London and Miami sites."
 
 ![Side-by-side health breakdown for two sites by device type](images/site-detail.png)
-*Drill into specific sites and you get a device-type breakdown — for example, which switches or
-APs are dragging a site's score down.*
+
+*Drill into specific sites and you get a device-type breakdown — for example, which switches or APs are dragging a site's score down.*
 
 **More you can ask:**
 - "Are there any sites in poor or fair health?"
@@ -80,35 +78,27 @@ APs are dragging a site's score down.*
 
 ## 2. Finding Devices
 
-Locate any device — or sweep the whole network for the ones that need attention — without knowing
-serial numbers in advance.
+Locate any device — or sweep the whole network for the ones that need attention — without knowing serial numbers in advance.
 
 *Powered by the Devices tools (`central_get_devices`, `central_find_device`).*
 
 > ### 🗨️ "Are there any offline devices in the network?"
 
-![A short list of offline devices across all sites with their type and location](images/guide-6-02-offline-devices.png)
-<!-- SCREENSHOT: central_get_devices(device_status="OFFLINE"). Short, punchy answer. See reference §2. -->
+![A short list of offline devices across all sites with their type and location](images/offline-devices.png)
 
-*A short, actionable answer: which devices are down, what type they are, and where. In this
-environment it's one switch in Bengaluru and one access point (CP-LHR-AP09) in London — an AP
-we'll see again in two later sections.*
+*A short, actionable answer: which devices are down, what type they are, and where. In this environment it's one switch in Bengaluru and one switch with no site assigned.*
 
 > ### 🗨️ "Find the switch SG34L5002Y."
 
-![A single device profile card with model, status, role, site, and firmware](images/guide-6-02b-find-device.png)
-<!-- SCREENSHOT: central_find_device(serial_number="SG34L5002Y"). -->
+![A single device profile card with model, status, role, site, and firmware](images/find-device.png)
 
-*Look up one device by serial number (or name) and get its full profile — model, status, role,
-site, IP, and firmware.*
+*Look up one device by serial number (or name) and get its full profile — model, status, role, site, IP, and firmware.*
 
 > ### 🗨️ "List all devices at the London campus, broken down by type."
 
-![Full London inventory grouped into access points, switches, and gateways](images/guide-6-02c-site-inventory.png)
-<!-- SCREENSHOT: central_get_devices(site_id="1154314671") grouped by type. -->
+![Full London inventory grouped into access points, switches, and gateways](images/site-inventory.png)
 
-*Scope to a site and the assistant returns a clean inventory grouped into access points, switches,
-and gateways.*
+*Scope to a site and the assistant returns a clean inventory grouped into access points, switches, and gateways.*
 
 **More you can ask:**
 - "Show me all offline switches across the network."
