@@ -1,3 +1,5 @@
+import datetime
+
 import pytest
 
 import tools.wlans as mod
@@ -82,11 +84,15 @@ async def test_get_wlan_stats_explicit_time_window(tools, live_ctx):
         pytest.skip("No WLANs available to test stats")
 
     wlan_name = all_wlans[0].wlan_name
+    # Use a date 7 days ago to stay within the API's 30-day rolling window
+    seven_days_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)
+    start_time = seven_days_ago.strftime("%Y-%m-%dT00:00:00.000Z")
+    end_time = seven_days_ago.strftime("%Y-%m-%dT23:59:59.999Z")
     result = await tools["central_get_wlan_stats"](
         live_ctx,
         wlan_name=wlan_name,
-        start_time="2026-04-07T00:00:00.000Z",
-        end_time="2026-04-07T23:59:59.999Z",
+        start_time=start_time,
+        end_time=end_time,
     )
     assert isinstance(result, list)
     assert all(sample.timestamp for sample in result)
