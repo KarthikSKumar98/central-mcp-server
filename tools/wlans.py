@@ -5,7 +5,7 @@ from fastmcp import Context, FastMCP
 from constants import TIME_RANGE
 from models import WLAN, WLANThroughputSample
 from tools import READ_ONLY
-from utils.common import api_context, format_tool_error
+from utils.common import api_context, format_tool_error, normalize_sort_direction
 from utils.events import _resolve_time_window
 from utils.wlans import clean_wlan_data, clean_wlan_stats_data, get_all_wlans
 
@@ -45,7 +45,7 @@ def register(mcp: FastMCP) -> None:
                         central_conn=conn,
                         site_id=site_id,
                         serial_number=serial_number,
-                        sort=sort,
+                        sort=normalize_sort_direction(sort),
                     )
                     if wlan_name:
                         wlans = [
@@ -78,7 +78,7 @@ def register(mcp: FastMCP) -> None:
                         get_all_wlans,
                         central_conn=conn,
                         site_id=site_id,
-                        sort=sort,
+                        sort=normalize_sort_direction(sort),
                     )
             except Exception as e:
                 return format_tool_error("fetching WLANs", e)

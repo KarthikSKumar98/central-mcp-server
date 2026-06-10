@@ -242,7 +242,7 @@ async def test_get_switches_combined_filters(tools):
     assert "status eq 'Online'" in filter_str
     assert "deployment eq 'Stack'" in filter_str
     assert " and " in filter_str
-    assert mock_api.call_args.kwargs["sort"] == "deviceName asc"
+    assert mock_api.call_args.kwargs["sort"] == "deviceName ASC"
 
 
 @pytest.mark.asyncio

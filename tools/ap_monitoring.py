@@ -12,6 +12,7 @@ from utils.common import (
     api_context,
     build_filters,
     format_tool_error,
+    normalize_sort_direction,
 )
 from utils.events import _resolve_time_window
 from utils.monitoring import fetch_snapshot, fetch_trends
@@ -88,7 +89,7 @@ def register(mcp: FastMCP) -> None:
                     MonitoringAPs.get_all_aps,
                     central_conn=conn,
                     filter_str=filter_str,
-                    sort=sort,
+                    sort=normalize_sort_direction(sort),
                 )
             except Exception as e:
                 return format_tool_error("fetching access points", e)
@@ -176,6 +177,15 @@ def register(mcp: FastMCP) -> None:
         Each returned sample contains a ``timestamp`` (RFC 3339) plus one or more
         metric-specific value keys (e.g. ``tx``/``rx`` for throughput,
         ``cpu_utilization`` for cpu-utilization).
+
+        NOTE: In longer time windows (e.g. ``last_24h``, ``last_7d``) the returned
+        series may contain sparse samples that carry only a ``timestamp`` with no
+        metric value, due to gaps in Central's backend collection.  Consumers should
+        handle missing metric values rather than assume every sample has data.
+
+        NOTE: Some metrics (notably ``memory-utilization`` and ``cpu-utilization``)
+        may report flat/invariant values across many samples.  This reflects
+        Central's refresh cadence for those counters, not a data error.
 
         Time window: ``start_time`` + ``end_time`` (RFC 3339) override
         ``time_range`` when both are supplied.  Otherwise ``time_range`` selects a

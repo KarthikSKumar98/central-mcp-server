@@ -149,6 +149,45 @@ def rfc3339_to_epoch(value: str) -> int:
     return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
 
 
+def normalize_sort_direction(sort: str | None) -> str | None:
+    """Normalise sort-direction tokens in a sort expression to UPPERCASE.
+
+    The Central switch monitoring API requires direction tokens in UPPERCASE
+    (``ASC``/``DESC``).  This helper makes lowercase user input (e.g.
+    ``"deviceName asc"``) work transparently by uppercasing only the direction
+    token at the end of each comma-separated expression, leaving field names
+    untouched.
+
+    Examples::
+
+        normalize_sort_direction("deviceName asc")          → "deviceName ASC"
+        normalize_sort_direction("deviceName asc, model desc")
+                                                            → "deviceName ASC, model DESC"
+        normalize_sort_direction("deviceName")              → "deviceName"
+        normalize_sort_direction(None)                      → None
+        normalize_sort_direction("")                        → ""
+
+    Args:
+        sort: A sort expression string, or ``None``.
+
+    Returns:
+        The expression with any ``asc``/``desc`` direction tokens uppercased, or
+        the original value when it is ``None`` or empty.
+
+    """
+    if not sort:
+        return sort
+
+    normalized_parts = []
+    for expr in sort.split(","):
+        tokens = expr.strip().split()
+        if len(tokens) >= 2:
+            # Last token is the direction; uppercase it
+            tokens[-1] = tokens[-1].upper()
+        normalized_parts.append(" ".join(tokens))
+    return ", ".join(normalized_parts)
+
+
 def compute_time_window(time_range: str) -> tuple[datetime, datetime]:
     now = datetime.now(timezone.utc)
 

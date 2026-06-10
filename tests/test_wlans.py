@@ -184,7 +184,7 @@ async def test_get_wlans_sort_passed_to_api(tools):
     ctx = make_ctx()
     with patch("tools.wlans.get_all_wlans", return_value=[]) as mock_fn:
         await tools["central_get_wlans"](ctx, sort="wlanName asc")
-    assert mock_fn.call_args.kwargs["sort"] == "wlanName asc"
+    assert mock_fn.call_args.kwargs["sort"] == "wlanName ASC"
 
 
 @pytest.mark.asyncio

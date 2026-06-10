@@ -17,6 +17,7 @@ from utils.common import (
     api_context,
     build_filters,
     format_tool_error,
+    normalize_sort_direction,
 )
 from utils.events import _resolve_time_window
 from utils.monitoring import (
@@ -183,7 +184,7 @@ def register(mcp: FastMCP) -> None:
                     MonitoringGateways.get_all_gateways,
                     central_conn=conn,
                     filter_str=filter_str,
-                    sort=sort,
+                    sort=normalize_sort_direction(sort),
                 )
             except Exception as e:
                 return format_tool_error("fetching gateways", e)
@@ -217,6 +218,9 @@ def register(mcp: FastMCP) -> None:
           Use the ``tunnel_name`` field from tunnels to query tunnel trends.
         - ``"uplinks"``: Uplink list (``{items, total}`` envelope unwrapped).
           Use the ``link_tag`` field from uplinks to query uplink trends.
+          NOTE: Uplink data is only present on gateways with configured WAN uplinks
+          (typically branch/VPNC gateways); campus Mobility Gateways commonly
+          return an empty uplinks list.
         - ``"vlans"``: VLAN list with IP, subnet, and status.
 
         Using ``include`` makes extra API calls; omit it when the base data
@@ -271,9 +275,14 @@ def register(mcp: FastMCP) -> None:
           Valid metrics: ``cpu-utilization``, ``memory-utilization``,
           ``wan-availability``, ``vpn-availability``, ``hardware-temperature``.
           No additional identifier required.
-          NOTE: ``wan-availability`` and ``vpn-availability`` return ``-1`` when
-          no WAN/VPN probes are configured on the gateway (typical for branch
-          gateways).
+          NOTE: ``wan-availability`` and ``vpn-availability`` return ``-1`` for
+          every sample when no WAN/VPN probes are configured on the gateway.
+          This is typical for campus Mobility Gateways; branch and VPNC gateways
+          with WAN policies return real percentage values.
+          NOTE: Some metrics (notably ``memory-utilization`` and
+          ``cpu-utilization``) may report flat/invariant values across many
+          samples.  This reflects Central's refresh cadence for those counters,
+          not a data error.
 
         - ``scope="port"``: Per-port metrics.
           Valid metrics: ``throughput``, ``frames``, ``frames-errors``,
@@ -291,6 +300,12 @@ def register(mcp: FastMCP) -> None:
           Valid metrics: ``throughput``, ``wan-compression``, ``wan-availability``.
           Requires ``link_tag``. Retrieve link tags via
           ``central_get_gateway_details`` with ``include=["uplinks"]``.
+          NOTE: ``wan-availability`` returns ``-1`` for every sample when no WAN
+          probes are configured (same caveat as gateway-scope ``wan-availability``).
+          NOTE: Uplink data is only present on gateways with configured WAN uplinks
+          (typically branch/VPNC gateways); campus Mobility Gateways commonly
+          return an empty uplinks list, in which case uplink-scope trends have
+          nothing to report.
 
         **hardware-temperature normalization**: returns a list of samples where
         each sample contains a ``timestamp`` plus one key per sensor (e.g.
@@ -452,6 +467,12 @@ def register(mcp: FastMCP) -> None:
 
         Time window: ``start_time`` + ``end_time`` (RFC 3339) override
         ``time_range`` when both are supplied.
+
+        NOTE: When ``serial_number`` is provided (per-member drill-down), the API
+        response uses the field name ``device_max_capacity`` for the max-capacity
+        value, whereas the cluster-level response (no ``serial_number``) uses
+        ``cluster_client_max_capacity`` / ``cluster_device_max_capacity``.  Parse
+        the correct field based on whether a ``serial_number`` was supplied.
 
         Parameters
         ----------

@@ -218,7 +218,7 @@ async def test_get_aps_combined_filters(tools):
     assert "status eq 'ONLINE'" in filter_str
     assert "clusterName eq 'hq-cluster'" in filter_str
     assert " and " in filter_str
-    assert mock_api.call_args.kwargs["sort"] == "deviceName asc"
+    assert mock_api.call_args.kwargs["sort"] == "deviceName ASC"
 
 
 @pytest.mark.asyncio

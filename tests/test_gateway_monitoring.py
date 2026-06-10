@@ -370,7 +370,7 @@ async def test_get_gateways_sort_passed_through(tools):
         return_value=[RAW_GATEWAY],
     ) as mock_api:
         await tools["central_get_gateways"](ctx, sort="deviceName asc")
-    assert mock_api.call_args.kwargs["sort"] == "deviceName asc"
+    assert mock_api.call_args.kwargs["sort"] == "deviceName ASC"
 
 
 # ---------------------------------------------------------------------------

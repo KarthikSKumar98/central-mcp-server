@@ -12,6 +12,7 @@ from utils.common import (
     api_context,
     build_filters,
     format_tool_error,
+    normalize_sort_direction,
 )
 from utils.events import _resolve_time_window
 from utils.monitoring import (
@@ -89,7 +90,7 @@ def register(mcp: FastMCP) -> None:
                     MonitoringSwitches.get_all_switches,
                     central_conn=conn,
                     filter_str=filter_str,
-                    sort=sort,
+                    sort=normalize_sort_direction(sort),
                 )
             except Exception as e:
                 return format_tool_error("fetching switches", e)
@@ -226,6 +227,11 @@ def register(mcp: FastMCP) -> None:
         The ``interface_id`` must match the ``id`` field from ``central_get_switch_details``
         with ``include=["interfaces"]`` (e.g. ``"Gi1/0/1"``), **not** the ``alias``
         (e.g. ``"GigabitEthernet1/0/1"``).
+
+        NOTE (``scope="interface"``): Always specify either ``interface_id`` or
+        ``uplink=True``.  If neither is provided, the API returns an all-interfaces
+        aggregate whose behavior is not guaranteed and may show anomalous values.
+        Specify one for deterministic per-port or uplink results.
 
         Time window: ``start_time`` + ``end_time`` (RFC 3339) override ``time_range``
         when both are supplied.  Otherwise ``time_range`` selects a named window
