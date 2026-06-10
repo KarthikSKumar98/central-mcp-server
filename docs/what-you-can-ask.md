@@ -96,7 +96,9 @@ Locate any device — or sweep the whole network for the ones that need attentio
 
 > ### 🗨️ "List all devices at the London campus, broken down by type."
 
-![Full London inventory grouped into access points, switches, and gateways](images/site-inventory.png)
+![Full London inventory grouped into access points, switches, and gateways - 1](images/site-inventory-1.png)
+
+![Full London inventory grouped into access points, switches, and gateways - 2](images/site-inventory-2.png)
 
 *Scope to a site and the assistant returns a clean inventory grouped into access points, switches, and gateways.*
 
