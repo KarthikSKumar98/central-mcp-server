@@ -10,6 +10,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 from fastmcp import Context
+from pycentral.new_monitoring import MonitoringDevices
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,51 @@ def build_odata_filter(pairs: list[tuple["FilterField", str]]) -> str | None:
             parts.append(f"{ff.api_field} eq '{value}'")
 
     return " and ".join(parts)
+
+
+def lookup_inventory_device(conn, identifier: str) -> dict | None:
+    """Resolve a switch identifier to a single inventory record.
+
+    Stack switches are addressable three ways — by member serial, by conductor
+    serial, or by the shared ``stackId``. The inventory API is keyed on
+    ``serialNumber``, so this first filters by ``serialNumber`` and, on a miss,
+    retries with ``stackId`` (covering the case where a caller passed a stack ID
+    directly — which would otherwise never match a serialNumber filter).
+
+    Args:
+        conn: Active Central connection.
+        identifier: A device serial number or a stack ID.
+
+    Returns:
+        The matching inventory dict, or ``None`` if neither field matches.
+
+    """
+    for field in ("serialNumber", "stackId"):
+        results = MonitoringDevices.get_all_device_inventory(
+            central_conn=conn, filter_str=f"{field} eq '{identifier}'"
+        )
+        if results:
+            return results[0]
+    return None
+
+
+def stack_aware_serial(device: dict | None, identifier: str) -> str:
+    """Return the identifier the Central APIs accept for ``device``.
+
+    For stack switches the only universally-accepted identifier is the
+    ``stackId``: the monitoring API returns 404 for non-conductor member serials,
+    and the troubleshooting API returns 404 for *every* member and conductor
+    serial — but both accept the stack ID. For non-stack devices (or when the
+    record lacks a stack ID) ``identifier`` is returned unchanged.
+
+    Args:
+        device: Inventory record from ``lookup_inventory_device`` (or ``None``).
+        identifier: The caller-supplied serial or stack ID to fall back to.
+
+    """
+    if device and device.get("deployment") == "Stack" and device.get("stackId"):
+        return device["stackId"]
+    return identifier
 
 
 @asynccontextmanager
