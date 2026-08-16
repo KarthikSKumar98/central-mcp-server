@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.9] - 2026-08-16
+
+### Bug Fixes
+- Bounded the `fastmcp` dependency to `<4` so fresh installs keep resolving FastMCP 3.x; FastMCP 4 introduces breaking changes the server does not yet support (fixes #59)
+
 ## [0.1.8] - 2026-06-11
 
 ### New Tools
