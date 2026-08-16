@@ -179,3 +179,32 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  verify-pypi:
+    needs: [tag-and-release, publish-pypi]
+    if: needs.publish-pypi.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag-and-release.outputs.release_sha }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.10"
+      - name: Fresh uvx install of the published version
+        run: |
+          VERSION=$(sed -nE 's/^version = "([^"]+)"/\1/p' pyproject.toml)
+          # PyPI index propagation can lag the upload by a few minutes
+          for attempt in 1 2 3 4 5; do
+            if uvx --refresh --prerelease=allow \
+              --from "central-mcp-server==$VERSION" \
+              python -c "import server; print('uvx install of $VERSION OK')"; then
+              exit 0
+            fi
+            if [[ "$attempt" == 5 ]]; then
+              echo "PyPI version $VERSION not installable via uvx after 5 attempts"
+              exit 1
+            fi
+            echo "Attempt $attempt failed; waiting 60s for PyPI index propagation"
+            sleep 60
+          done
