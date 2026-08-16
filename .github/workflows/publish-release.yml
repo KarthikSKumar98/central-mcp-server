@@ -75,9 +75,24 @@ jobs:
           name: dist
           path: dist/
 
-  publish-test-pypi:
+  release-rehearsal:
     needs: build
     if: needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.10"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - run: scripts/release_rehearsal.sh --reuse-dist
+
+  publish-test-pypi:
+    needs: release-rehearsal
+    if: needs.release-rehearsal.result == 'success'
     runs-on: ubuntu-latest
     environment: test-pypi
     steps:
@@ -89,9 +104,40 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
 
-  publish-pypi:
+  verify-test-pypi:
     needs: publish-test-pypi
     if: needs.publish-test-pypi.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.10"
+      - name: Install the published TestPyPI version
+        run: |
+          VERSION=$(grep '^version' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          uv venv .venv-test-pypi
+          # TestPyPI index propagation can lag the upload by a few minutes
+          for attempt in 1 2 3 4 5; do
+            if uv pip install --python .venv-test-pypi/bin/python \
+              --index-url https://test.pypi.org/simple/ \
+              --extra-index-url https://pypi.org/simple \
+              "central-mcp-server==$VERSION"; then
+              break
+            fi
+            if [[ "$attempt" == 5 ]]; then
+              echo "TestPyPI version $VERSION not installable after 5 attempts"
+              exit 1
+            fi
+            echo "Attempt $attempt failed; waiting 60s for TestPyPI index propagation"
+            sleep 60
+          done
+          .venv-test-pypi/bin/python -c "import server"
+          PATH="$PWD/.venv-test-pypi/bin:$PATH" command -v central-mcp-server
+
+  publish-pypi:
+    needs: verify-test-pypi
+    if: needs.verify-test-pypi.result == 'success'
     runs-on: ubuntu-latest
     environment: pypi
     steps:
