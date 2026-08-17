@@ -30,6 +30,7 @@ Community MCP server for HPE Aruba Networking Central. This exposes your Central
     - [Claude Code](#claude-code)
     - [GitHub Copilot (VS Code)](#github-copilot-vs-code)
     - [HTTP Transport (Streamable HTTP)](#http-transport-streamable-http)
+- [Supported Capabilities](#supported-capabilities)
 - [What You Can Ask](#what-you-can-ask)
 - [Example Queries](#example-queries)
 - [Dev Setup](#dev-setup)
@@ -236,6 +237,27 @@ Or add it to your MCP client config:
 > **Note:** Credentials must be set in the server's environment (via `.env` or OS env vars) before starting it. They are not passed through the HTTP client config.
 
 ---
+
+## Supported Capabilities
+
+The server covers ten capability categories across the new Central REST API families
+(Network Monitoring, Network Notifications, Network Troubleshooting):
+
+| Category | What you can ask about |
+|---|---|
+| Sites & network health | Fleet-wide health overview, per-site metrics |
+| Device inventory | All devices, find one by serial/MAC/name |
+| Access points | AP lists, per-AP detail, radio/port trends |
+| Switches | Switch lists, per-switch detail, hardware/interface trends |
+| Gateways | Gateway lists, detail, clusters, capacity trends |
+| WLANs | Configured WLANs, per-WLAN throughput |
+| Clients | Connected/failed clients, find one by MAC |
+| Alerts | Active alerts per site, by severity/category |
+| Events | Event history and counts for a site, device, or client |
+| Live troubleshooting | Ping-style tests, show commands, port bounce (with confirmation) |
+
+See the **[Capability Reference](docs/capabilities.md)** for every tool in each category, the
+Central API family it uses, and scope/limitations.
 
 ## What You Can Ask
 
