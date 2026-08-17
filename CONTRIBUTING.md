@@ -169,3 +169,11 @@ When opening a PR on GitHub, select the matching template (New Tool, Bug Fix, or
 - **Reference the API**: include the Central v1 API endpoint your tool wraps in the PR description
 - **APIs from the same category only, max 3 per PR**: tools must wrap APIs from the same category (e.g. Sites, Devices, Clients, Alerts, Events). Do not mix categories or submit more than 3 tools in one PR.
 - **AI-generated contributions**: if your PR or issue was created by an AI agent, include 🤖 at the bottom of the description.
+
+---
+
+## Releases
+
+`main` is the only permanent branch. Add the matching `CHANGELOG.md` entry to `main` in a normal PR before a release cut. Run **Generate Release PR** from `main` with the target `X.Y.Z` version; it creates `release/vX.Y.Z`, bumps `pyproject.toml`, and opens the mechanical PR back to `main`.
+
+For a hotfix, branch `hotfix/vX.Y.Z` from the affected release tag, add the version and changelog entry, then run **Publish Release** from that hotfix branch. After publishing, cherry-pick the hotfix forward to `main`.

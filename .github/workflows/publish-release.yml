@@ -4,6 +4,7 @@ on:
   pull_request:
     types: [closed]
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -12,36 +13,62 @@ permissions:
 jobs:
   tag-and-release:
     if: >
+      (github.event_name == 'pull_request' &&
       github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.head.ref, 'release/v')
+      startsWith(github.event.pull_request.head.ref, 'release/v')) ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    outputs:
+      release_sha: ${{ steps.release.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Read version
-        id: version
+      - name: Validate hotfix branch
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          VERSION=$(grep '^version' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-          if [[ -z "$VERSION" ]]; then
-            echo "Unable to read version from pyproject.toml"
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^hotfix/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Hotfix publishing must be run from a hotfix/vX.Y.Z branch."
+            echo "Current ref: ${GITHUB_REF_NAME}"
             exit 1
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Read and verify version
+        id: version
+        run: |
+          VERSION=$(sed -nE 's/^version = "([^"]+)"/\1/p' pyproject.toml)
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unable to read an X.Y.Z version from pyproject.toml"
+            exit 1
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${GITHUB_REF_NAME}" != "hotfix/v${VERSION}" ]]; then
+            echo "Hotfix branch ${GITHUB_REF_NAME} does not match pyproject.toml version ${VERSION}."
+            exit 1
+          fi
+          if ! grep -q "^## \[${VERSION}\]" CHANGELOG.md; then
+            echo "CHANGELOG.md is missing entry for version ${VERSION}."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create and push git tag
+        id: release
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch --tags
-          if git tag | grep -q "^v${{ steps.version.outputs.version }}$"; then
-            echo "Tag v${{ steps.version.outputs.version }} already exists."
+          VERSION="${{ steps.version.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+            echo "Tag v${VERSION} already exists."
             exit 1
           fi
-          git tag "v${{ steps.version.outputs.version }}"
-          git push origin "v${{ steps.version.outputs.version }}"
+          RELEASE_SHA=$(git rev-parse HEAD)
+          git tag "v${VERSION}" "$RELEASE_SHA"
+          git push origin "v${VERSION}"
+          echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Extract changelog entry for release notes
         run: |
@@ -66,6 +93,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag-and-release.outputs.release_sha }}
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.10"
@@ -75,9 +104,26 @@ jobs:
           name: dist
           path: dist/
 
-  publish-test-pypi:
-    needs: build
+  release-rehearsal:
+    needs: [tag-and-release, build]
     if: needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag-and-release.outputs.release_sha }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.10"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - run: scripts/release_rehearsal.sh --reuse-dist
+
+  publish-test-pypi:
+    needs: release-rehearsal
+    if: needs.release-rehearsal.result == 'success'
     runs-on: ubuntu-latest
     environment: test-pypi
     steps:
@@ -89,9 +135,42 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
 
-  publish-pypi:
-    needs: publish-test-pypi
+  verify-test-pypi:
+    needs: [tag-and-release, publish-test-pypi]
     if: needs.publish-test-pypi.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag-and-release.outputs.release_sha }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.10"
+      - name: Install the published TestPyPI version
+        run: |
+          VERSION=$(sed -nE 's/^version = "([^"]+)"/\1/p' pyproject.toml)
+          uv venv .venv-test-pypi
+          # TestPyPI index propagation can lag the upload by a few minutes
+          for attempt in 1 2 3 4 5; do
+            if uv pip install --python .venv-test-pypi/bin/python \
+              --index-url https://test.pypi.org/simple/ \
+              --extra-index-url https://pypi.org/simple \
+              "central-mcp-server==$VERSION"; then
+              break
+            fi
+            if [[ "$attempt" == 5 ]]; then
+              echo "TestPyPI version $VERSION not installable after 5 attempts"
+              exit 1
+            fi
+            echo "Attempt $attempt failed; waiting 60s for TestPyPI index propagation"
+            sleep 60
+          done
+          .venv-test-pypi/bin/python -c "import server"
+          PATH="$PWD/.venv-test-pypi/bin:$PATH" command -v central-mcp-server
+
+  publish-pypi:
+    needs: verify-test-pypi
+    if: needs.verify-test-pypi.result == 'success'
     runs-on: ubuntu-latest
     environment: pypi
     steps:
@@ -100,3 +179,32 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  verify-pypi:
+    needs: [tag-and-release, publish-pypi]
+    if: needs.publish-pypi.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag-and-release.outputs.release_sha }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.10"
+      - name: Fresh uvx install of the published version
+        run: |
+          VERSION=$(sed -nE 's/^version = "([^"]+)"/\1/p' pyproject.toml)
+          # PyPI index propagation can lag the upload by a few minutes
+          for attempt in 1 2 3 4 5; do
+            if uvx --refresh --prerelease=allow \
+              --from "central-mcp-server==$VERSION" \
+              python -c "import server; print('uvx install of $VERSION OK')"; then
+              exit 0
+            fi
+            if [[ "$attempt" == 5 ]]; then
+              echo "PyPI version $VERSION not installable via uvx after 5 attempts"
+              exit 1
+            fi
+            echo "Attempt $attempt failed; waiting 60s for PyPI index propagation"
+            sleep 60
+          done
