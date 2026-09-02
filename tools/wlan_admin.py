@@ -212,10 +212,14 @@ def register(mcp: FastMCP) -> None:
                 ValueError("At least one field to update must be provided."),
             )
 
+        display_updates = updates.copy()
+        if "personal-security" in display_updates:
+            display_updates["personal-security"] = {"wpa-passphrase": "<redacted>"}
+
         lines = [
             f"Confirm UPDATE WLAN '{wlan_name}'"
             + (f" scoped to site {site_id}" if site_id else " (library profile)"),
-            f"  changes: {updates}",
+            f"  changes: {display_updates}",
             "\nAccept to proceed. Decline or cancel to abort.",
         ]
         error = await _confirm(ctx, lines)
