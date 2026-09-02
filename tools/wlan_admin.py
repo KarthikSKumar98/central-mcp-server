@@ -68,18 +68,24 @@ def _build_wlan_payload(
     return payload
 
 
-async def _confirm(ctx: Context, lines: list[str]) -> str | None:
-    """Show an elicitation prompt. Returns an error string on decline/no-support, else None."""
+async def _confirm(ctx: Context, lines: list[str], confirm: bool) -> str | None:
+    """Confirm the pending change.
+
+    Uses interactive elicitation when the client supports it. Otherwise falls
+    back to requiring an explicit ``confirm=True`` re-call, showing the same
+    preview so the caller can review it first. Returns an error/preview
+    string when the caller should NOT proceed yet, else None.
+    """
     approval_msg = "\n".join(lines)
     try:
         elicit_result = await ctx.elicit(approval_msg, response_type=None)
     except McpError:
-        return format_tool_error(
-            "modifying WLAN",
-            ValueError(
-                "This MCP client does not support elicitation. "
-                "WLAN write operations require a client that declares elicitation capability."
-            ),
+        if confirm:
+            return None
+        return (
+            approval_msg
+            + "\n\nThis MCP client does not support interactive confirmation. "
+            "Review the change above, then re-run this tool with confirm=true to proceed."
         )
     if not isinstance(elicit_result, AcceptedElicitation):
         return format_tool_error(
@@ -105,6 +111,7 @@ def register(mcp: FastMCP) -> None:
         forward_mode: Literal[
             "FORWARD_MODE_BRIDGE", "FORWARD_MODE_L2", "FORWARD_MODE_L3", "FORWARD_MODE_MIXED"
         ] = "FORWARD_MODE_BRIDGE",
+        confirm: bool = False,
     ) -> str:
         """Create a new WLAN SSID profile, after user confirmation.
 
@@ -127,6 +134,9 @@ def register(mcp: FastMCP) -> None:
         - device_function: Device function for site scoping (only used when
           site_id is set). Defaults to "CAMPUS_AP".
         - forward_mode: SSID forward mode. Defaults to "FORWARD_MODE_BRIDGE".
+        - confirm: Only needed on clients without interactive confirmation
+          support. Leave false on the first call to see a preview; re-run
+          with confirm=true after reviewing it to actually create the WLAN.
 
         """
         if security_type in ("wpa2-personal", "wpa3-personal") and not passphrase:
@@ -141,7 +151,7 @@ def register(mcp: FastMCP) -> None:
             f"  security={security_type}  vlan={vlan}  hidden={bool(hidden)}  forward_mode={forward_mode}",
             "\nAccept to proceed. Decline or cancel to abort.",
         ]
-        error = await _confirm(ctx, lines)
+        error = await _confirm(ctx, lines, confirm)
         if error:
             return error
 
@@ -176,6 +186,7 @@ def register(mcp: FastMCP) -> None:
         hidden: bool | None = None,
         site_id: str | None = None,
         device_function: DEVICE_FUNCTION = "CAMPUS_AP",
+        confirm: bool = False,
     ) -> str:
         """Update an existing WLAN SSID profile's configuration, after user confirmation.
 
@@ -193,6 +204,9 @@ def register(mcp: FastMCP) -> None:
           updating it in that scope; omit for a SHARED/library profile.
         - device_function: Device function for site scoping (only used when
           site_id is set). Defaults to "CAMPUS_AP".
+        - confirm: Only needed on clients without interactive confirmation
+          support. Leave false on the first call to see a preview; re-run
+          with confirm=true after reviewing it to actually apply the update.
 
         """
         updates: dict = {}
@@ -222,7 +236,7 @@ def register(mcp: FastMCP) -> None:
             f"  changes: {display_updates}",
             "\nAccept to proceed. Decline or cancel to abort.",
         ]
-        error = await _confirm(ctx, lines)
+        error = await _confirm(ctx, lines, confirm)
         if error:
             return error
 
@@ -252,6 +266,7 @@ def register(mcp: FastMCP) -> None:
         wlan_name: str,
         site_id: str | None = None,
         device_function: DEVICE_FUNCTION = "CAMPUS_AP",
+        confirm: bool = False,
     ) -> str:
         """Delete a WLAN SSID profile. Cannot be undone.
 
@@ -262,6 +277,9 @@ def register(mcp: FastMCP) -> None:
           SHARED/library profile.
         - device_function: Device function for site scoping (only used when
           site_id is set). Defaults to "CAMPUS_AP".
+        - confirm: Only needed on clients without interactive confirmation
+          support. Leave false on the first call to see a preview; re-run
+          with confirm=true after reviewing it to actually delete the WLAN.
 
         """
         lines = [
@@ -271,7 +289,7 @@ def register(mcp: FastMCP) -> None:
             "This action cannot be undone.",
             "\nAccept to proceed. Decline or cancel to abort.",
         ]
-        error = await _confirm(ctx, lines)
+        error = await _confirm(ctx, lines, confirm)
         if error:
             return error
 
