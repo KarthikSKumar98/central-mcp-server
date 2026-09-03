@@ -19,6 +19,7 @@ from tools import (
     sites,
     switch_monitoring,
     troubleshooting,
+    wlan_admin,
     wlans,
 )
 
@@ -63,6 +64,7 @@ ap_monitoring.register(mcp)
 switch_monitoring.register(mcp)
 gateway_monitoring.register(mcp)
 wlans.register(mcp)
+wlan_admin.register(mcp)
 troubleshooting.register(mcp)
 
 # Register prompts with the MCP server

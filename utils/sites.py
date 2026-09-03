@@ -1,8 +1,45 @@
 import re
 
+from pycentral.new_monitoring import MonitoringSites
+from pycentral.utils import SCOPE_URLS, generate_url
+
 from constants import SITE_LIMIT
 from models import SiteData, SiteMetrics
 from utils.common import paginated_fetch
+
+
+def fetch_site_name_id_map(central_conn) -> dict[str, str]:
+    """Fetch a mapping of every site name to its id."""
+    sites = MonitoringSites.get_all_sites(central_conn=central_conn)
+    return {site["siteName"]: site["id"] for site in sites if site.get("siteName")}
+
+
+def resolve_global_scope_id(central_conn) -> str | None:
+    """Look up the account's Global scope id via any site's hierarchy chain.
+
+    Central has no direct "get global scope id" endpoint; the global (org-level)
+    scope id is the top entry in any site's hierarchy chain.
+    """
+    name_map = fetch_site_name_id_map(central_conn)
+    if not name_map:
+        return None
+    any_site_id = next(iter(name_map.values()))
+    resp = central_conn.command(
+        api_method="GET",
+        api_path=generate_url(SCOPE_URLS["HIERARCHY"]),
+        api_params={"scope-id": any_site_id, "scope-type": "site"},
+    )
+    if resp["code"] != 200 or not resp["msg"].get("items"):
+        return None
+    for item in resp["msg"]["items"][0].get("hierarchy", []):
+        if item.get("scopeType") == "org":
+            return item.get("scopeId")
+    return None
+
+
+def resolve_site_id(central_conn, site_name: str) -> str | None:
+    """Look up a site's id by exact site name. Returns None if not found."""
+    return fetch_site_name_id_map(central_conn).get(site_name)
 
 
 def fetch_site_data(

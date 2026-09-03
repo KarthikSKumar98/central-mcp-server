@@ -125,7 +125,7 @@ wheels = [
 
 [[package]]
 name = "central-mcp-server"
-version = "0.1.8"
+version = "0.1.9"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp", extra = ["code-mode"] },
@@ -143,7 +143,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastmcp", extras = ["code-mode"], specifier = ">=3.1.1" },
+    { name = "fastmcp", extras = ["code-mode"], specifier = ">=3.1.1,<4" },
     { name = "pycentral", specifier = "==2.0a20" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
 ]
