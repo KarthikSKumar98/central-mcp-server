@@ -896,7 +896,6 @@ class Client(ConciseProjectable):
 
     concise_omit: ClassVar[frozenset[str]] = frozenset(
         {
-            "ipv4",
             "ipv6",
             "hostname",
             "vendor",
@@ -905,10 +904,7 @@ class Client(ConciseProjectable):
             "function",
             "os",
             "capabilities",
-            "connected_at",
             "last_seen_at",
-            "port",
-            "vlan_id",
             "tunnel_type",
             "tunnel_id",
             "wireless_band",
@@ -917,7 +913,6 @@ class Client(ConciseProjectable):
             "key_management",
             "bssid",
             "radio_mac",
-            "user_name",
             "authentication",
             "role",
             "tags",
@@ -1135,7 +1130,6 @@ class EventAttribute(BaseModel):
 class Event(ConciseProjectable):
     concise_omit: ClassVar[frozenset[str]] = frozenset(
         {
-            "description",
             "client_mac_address",
             "device_mac_address",
             "stack_id",

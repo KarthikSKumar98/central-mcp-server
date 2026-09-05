@@ -57,11 +57,21 @@ def test_every_envelope_tool_declares_response_format_enum_and_default() -> None
 CASES = [
     (DeviceEnvelope, Device, "part_number", {"serial_number", "mac_address", "device_type", "status", "site_id"}),
     (DeviceTrendsEnvelope, TrendSample, None, {"timestamp"}),
-    (ClientEnvelope, Client, "hostname", {"mac", "status", "site_id"}),
+    (
+        ClientEnvelope,
+        Client,
+        "hostname",
+        {"mac", "status", "site_id", "ipv4", "user_name"},
+    ),
     (SiteEnvelope, SiteData, "location", {"site_id"}),
     (WlanEnvelope, WLAN, None, {"wlan_name", "status"}),
     (GatewayClusterEnvelope, GatewayCluster, "capacity", {"cluster_name"}),
-    (EventEnvelope, Event, "description", {"event_id", "event_identifier", "serial_number", "source_type"}),
+    (
+        EventEnvelope,
+        Event,
+        "attributes",
+        {"event_id", "event_identifier", "serial_number", "source_type", "description"},
+    ),
     (AlertEnvelope, Alert, "updated_by", {"device_type", "status"}),
 ]
 
@@ -72,7 +82,7 @@ def test_concise_projection_is_visible_and_preserves_identifiers(
 ) -> None:
     values = {field: f"value-{field}" for field in identifiers}
     if dropped is not None:
-        values[dropped] = [] if dropped == "capacity" else f"value-{dropped}"
+        values[dropped] = [] if dropped in {"attributes", "capacity"} else f"value-{dropped}"
     if item_cls is SiteData:
         values["location"] = {}
         values["name"] = "HQ"
