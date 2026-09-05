@@ -1,7 +1,8 @@
 import pytest
+from fastmcp.exceptions import ToolError
 
-import tools.ap_monitoring as mod
-from models import AccessPoint, APDetail, TrendSample
+import tools.devices as mod
+from models import APDetail, Device, DeviceEnvelope, DeviceTrendsEnvelope, TrendSample
 from tests.conftest import FakeMCP
 
 pytestmark = pytest.mark.integration
@@ -20,75 +21,74 @@ async def ap_with_details(tools, live_ctx):
 
     Skips if no online APs are available.
     """
-    aps = await tools["central_get_aps"](live_ctx, status="ONLINE")
-    if isinstance(aps, str) or not aps:
+    aps = await tools["central_get_devices"](
+        live_ctx, device_type="ap", device_status="ONLINE"
+    )
+    if not aps.items:
         pytest.skip("No online APs available")
-    return aps[0].serial_number
+    return aps.items[0].serial_number
 
 
 # ---------------------------------------------------------------------------
-# central_get_aps tests
+# central_get_devices AP tests
 # ---------------------------------------------------------------------------
 
 
 async def test_get_aps_no_filter(tools, live_ctx):
-    result = await tools["central_get_aps"](live_ctx)
-    if isinstance(result, str):
-        assert "No access points found" in result
-        return
-    assert isinstance(result, list)
-    assert all(isinstance(ap, AccessPoint) for ap in result)
-    assert all(ap.serial_number for ap in result)
+    result = await tools["central_get_devices"](live_ctx, device_type="ap")
+    assert isinstance(result, DeviceEnvelope)
+    assert all(isinstance(ap, Device) for ap in result.items)
+    assert all(ap.serial_number for ap in result.items)
 
 
 async def test_get_aps_online_filter(tools, live_ctx):
-    result = await tools["central_get_aps"](live_ctx, status="ONLINE")
-    if isinstance(result, str):
-        assert "No access points found" in result
-        return
-    assert isinstance(result, list)
-    assert all(ap.status == "ONLINE" for ap in result)
+    result = await tools["central_get_devices"](
+        live_ctx, device_type="ap", device_status="ONLINE"
+    )
+    assert isinstance(result, DeviceEnvelope)
+    assert all(ap.status == "ONLINE" for ap in result.items)
 
 
 async def test_get_aps_offline_filter(tools, live_ctx):
-    result = await tools["central_get_aps"](live_ctx, status="OFFLINE")
-    if isinstance(result, str):
-        assert "No access points found" in result
-        return
-    assert isinstance(result, list)
-    assert all(ap.status == "OFFLINE" for ap in result)
+    result = await tools["central_get_devices"](
+        live_ctx, device_type="ap", device_status="OFFLINE"
+    )
+    assert isinstance(result, DeviceEnvelope)
+    assert all(ap.status == "OFFLINE" for ap in result.items)
 
 
 async def test_get_aps_by_serial_filter(tools, live_ctx):
-    aps = await tools["central_get_aps"](live_ctx)
-    if isinstance(aps, str) or not aps:
+    aps = await tools["central_get_devices"](live_ctx, device_type="ap")
+    if not aps.items:
         pytest.skip("No APs available")
-    serial = aps[0].serial_number
-    result = await tools["central_get_aps"](live_ctx, serial_number=serial)
-    assert isinstance(result, list)
-    assert len(result) >= 1
-    assert all(ap.serial_number == serial for ap in result)
+    serial = aps.items[0].serial_number
+    result = await tools["central_get_devices"](
+        live_ctx, device_type="ap", serial_number=serial
+    )
+    assert isinstance(result, DeviceEnvelope)
+    assert result.items
+    assert all(ap.serial_number == serial for ap in result.items)
 
 
 async def test_get_aps_by_model_filter(tools, live_ctx):
-    aps = await tools["central_get_aps"](live_ctx)
-    if isinstance(aps, str) or not aps:
+    aps = await tools["central_get_devices"](live_ctx, device_type="ap")
+    if not aps.items:
         pytest.skip("No APs available")
-    model = aps[0].model
+    model = aps.items[0].model
     if not model:
         pytest.skip("First AP has no model field")
-    result = await tools["central_get_aps"](live_ctx, model=model)
-    assert isinstance(result, list)
-    assert all(ap.model == model for ap in result)
+    result = await tools["central_get_devices"](live_ctx, device_type="ap", model=model)
+    assert isinstance(result, DeviceEnvelope)
+    assert all(ap.model == model for ap in result.items)
 
 
 # ---------------------------------------------------------------------------
-# central_get_ap_details tests
+# central_get_device_details AP tests
 # ---------------------------------------------------------------------------
 
 
 async def test_get_ap_details_base(tools, live_ctx, ap_with_details):
-    result = await tools["central_get_ap_details"](
+    result = await tools["central_get_device_details"](
         live_ctx, serial_number=ap_with_details
     )
     assert isinstance(result, APDetail)
@@ -97,7 +97,7 @@ async def test_get_ap_details_base(tools, live_ctx, ap_with_details):
 
 
 async def test_get_ap_details_with_radios(tools, live_ctx, ap_with_details):
-    result = await tools["central_get_ap_details"](
+    result = await tools["central_get_device_details"](
         live_ctx, serial_number=ap_with_details, include=["radios"]
     )
     assert isinstance(result, APDetail)
@@ -107,7 +107,7 @@ async def test_get_ap_details_with_radios(tools, live_ctx, ap_with_details):
 
 
 async def test_get_ap_details_with_radios_and_ports(tools, live_ctx, ap_with_details):
-    result = await tools["central_get_ap_details"](
+    result = await tools["central_get_device_details"](
         live_ctx, serial_number=ap_with_details, include=["radios", "ports"]
     )
     assert isinstance(result, APDetail)
@@ -117,42 +117,38 @@ async def test_get_ap_details_with_radios_and_ports(tools, live_ctx, ap_with_det
 
 
 async def test_get_ap_details_not_found(tools, live_ctx):
-    result = await tools["central_get_ap_details"](
-        live_ctx, serial_number="__nonexistent_serial_xyz__"
-    )
-    # Known bug B4: not-found case returns an error string rather than a clean
-    # "No AP found..." message, but it must still be a string (not an exception).
-    assert isinstance(result, str)
+    with pytest.raises(ToolError):
+        await tools["central_get_device_details"](
+            live_ctx, serial_number="__nonexistent_serial_xyz__"
+        )
 
 
 # ---------------------------------------------------------------------------
-# central_get_ap_trends tests
+# central_get_device_trends AP tests
 # ---------------------------------------------------------------------------
 
 
 async def test_get_ap_trends_cpu(tools, live_ctx, ap_with_details):
-    result = await tools["central_get_ap_trends"](
+    result = await tools["central_get_device_trends"](
         live_ctx, serial_number=ap_with_details, metric="cpu-utilization"
     )
-    assert isinstance(result, (list, str))
-    if isinstance(result, list):
-        assert all(isinstance(sample, TrendSample) for sample in result)
-        assert all(sample.timestamp for sample in result)
+    assert isinstance(result, DeviceTrendsEnvelope)
+    assert all(isinstance(sample, TrendSample) for sample in result.items)
+    assert all(sample.timestamp for sample in result.items)
 
 
 async def test_get_ap_trends_throughput(tools, live_ctx, ap_with_details):
-    result = await tools["central_get_ap_trends"](
+    result = await tools["central_get_device_trends"](
         live_ctx, serial_number=ap_with_details, metric="throughput"
     )
-    assert isinstance(result, (list, str))
-    if isinstance(result, list):
-        assert all(isinstance(sample, TrendSample) for sample in result)
-        assert all(sample.timestamp for sample in result)
+    assert isinstance(result, DeviceTrendsEnvelope)
+    assert all(isinstance(sample, TrendSample) for sample in result.items)
+    assert all(sample.timestamp for sample in result.items)
 
 
 async def test_get_ap_trends_radio_scope(tools, live_ctx, ap_with_details):
     # Discover a valid radio_number from AP details first
-    details = await tools["central_get_ap_details"](
+    details = await tools["central_get_device_details"](
         live_ctx, serial_number=ap_with_details, include=["radios"]
     )
     if not isinstance(details, APDetail) or not details.radios:
@@ -160,19 +156,19 @@ async def test_get_ap_trends_radio_scope(tools, live_ctx, ap_with_details):
     radio_number = details.radios[0].radio_number
     if radio_number is None:
         pytest.skip("Radio has no radio_number field")
-    result = await tools["central_get_ap_trends"](
+    result = await tools["central_get_device_trends"](
         live_ctx,
         serial_number=ap_with_details,
         scope="radio",
         metric="channel-utilization",
         radio_number=int(radio_number),
     )
-    assert isinstance(result, (list, str))
+    assert isinstance(result, DeviceTrendsEnvelope)
 
 
 async def test_get_ap_trends_port_scope(tools, live_ctx, ap_with_details):
     # Discover a valid port_index from AP details first
-    details = await tools["central_get_ap_details"](
+    details = await tools["central_get_device_details"](
         live_ctx, serial_number=ap_with_details, include=["ports"]
     )
     if not isinstance(details, APDetail) or not details.ports:
@@ -180,46 +176,45 @@ async def test_get_ap_trends_port_scope(tools, live_ctx, ap_with_details):
     port_index = details.ports[0].port_index
     if port_index is None:
         pytest.skip("Port has no port_index field")
-    result = await tools["central_get_ap_trends"](
+    result = await tools["central_get_device_trends"](
         live_ctx,
         serial_number=ap_with_details,
         scope="port",
         metric="throughput",
         port_index=int(port_index),
     )
-    assert isinstance(result, (list, str))
+    assert isinstance(result, DeviceTrendsEnvelope)
 
 
-async def test_get_ap_trends_radio_scope_missing_radio_number(tools, live_ctx):
-    result = await tools["central_get_ap_trends"](
-        live_ctx,
-        serial_number="DUMMY0000001",
-        scope="radio",
-        metric="channel-utilization",
-        # radio_number intentionally omitted
-    )
-    assert isinstance(result, str)
-    assert "radio_number" in result
+async def test_get_ap_trends_radio_scope_missing_radio_number(
+    tools, live_ctx, ap_with_details
+):
+    with pytest.raises(ToolError, match="radio_number"):
+        await tools["central_get_device_trends"](
+            live_ctx,
+            serial_number=ap_with_details,
+            scope="radio",
+            metric="channel-utilization",
+        )
 
 
-async def test_get_ap_trends_port_scope_missing_port_index(tools, live_ctx):
-    result = await tools["central_get_ap_trends"](
-        live_ctx,
-        serial_number="DUMMY0000001",
-        scope="port",
-        metric="throughput",
-        # port_index intentionally omitted
-    )
-    assert isinstance(result, str)
-    assert "port_index" in result
+async def test_get_ap_trends_port_scope_missing_port_index(
+    tools, live_ctx, ap_with_details
+):
+    with pytest.raises(ToolError, match="port_index"):
+        await tools["central_get_device_trends"](
+            live_ctx,
+            serial_number=ap_with_details,
+            scope="port",
+            metric="throughput",
+        )
 
 
-async def test_get_ap_trends_invalid_metric_for_scope(tools, live_ctx):
-    result = await tools["central_get_ap_trends"](
-        live_ctx,
-        serial_number="DUMMY0000001",
-        scope="ap",
-        metric="channel-quality",  # only valid for radio scope, not ap
-    )
-    assert isinstance(result, str)
-    assert "invalid metric" in result.lower() or "valid metrics" in result.lower()
+async def test_get_ap_trends_invalid_metric_for_scope(tools, live_ctx, ap_with_details):
+    with pytest.raises(ToolError, match="Invalid metric"):
+        await tools["central_get_device_trends"](
+            live_ctx,
+            serial_number=ap_with_details,
+            scope="ap",
+            metric="channel-quality",
+        )

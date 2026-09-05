@@ -11,13 +11,11 @@ from constants import API_CONCURRENCY_LIMIT
 from services.central_service import get_conn, verify_connection
 from tools import (
     alerts,
-    ap_monitoring,
     clients,
     devices,
     events,
     gateway_monitoring,
     sites,
-    switch_monitoring,
     troubleshooting,
     wlans,
 )
@@ -59,8 +57,6 @@ devices.register(mcp)
 clients.register(mcp)
 alerts.register(mcp)
 events.register(mcp)
-ap_monitoring.register(mcp)
-switch_monitoring.register(mcp)
 gateway_monitoring.register(mcp)
 wlans.register(mcp)
 troubleshooting.register(mcp)

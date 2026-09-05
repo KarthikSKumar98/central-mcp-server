@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -86,6 +87,30 @@ def build_odata_filter(pairs: list[tuple["FilterField", str]]) -> str | None:
     return " and ".join(parts)
 
 
+def _is_unsupported_stack_id_filter(exc: Exception) -> bool:
+    """Return whether Central rejected only the optional ``stackId`` filter."""
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    body_parts = [str(exc)]
+    response_text = getattr(response, "text", None)
+    if isinstance(response_text, str):
+        body_parts.append(response_text)
+
+    if not isinstance(status_code, int):
+        status_match = re.search(r"\b(?:HTTP|API(?: error)?)\s*(4\d{2})\b", str(exc))
+        status_code = int(status_match.group(1)) if status_match else None
+
+    body = " ".join(body_parts).lower()
+    return (
+        isinstance(status_code, int)
+        and 400 <= status_code < 500
+        and status_code not in {401, 403, 408, 429}
+        and "stackid" in body
+        and "filter" in body
+        and ("not supported" in body or "unsupported" in body)
+    )
+
+
 def lookup_inventory_device(conn, identifier: str) -> dict | None:
     """Resolve a switch identifier to a single inventory record.
 
@@ -104,9 +129,14 @@ def lookup_inventory_device(conn, identifier: str) -> dict | None:
 
     """
     for field in ("serialNumber", "stackId"):
-        results = MonitoringDevices.get_all_device_inventory(
-            central_conn=conn, filter_str=f"{field} eq '{identifier}'"
-        )
+        try:
+            results = MonitoringDevices.get_all_device_inventory(
+                central_conn=conn, filter_str=f"{field} eq '{identifier}'"
+            )
+        except Exception as exc:
+            if field == "stackId" and _is_unsupported_stack_id_filter(exc):
+                continue
+            raise
         if results:
             return results[0]
     return None
@@ -178,6 +208,38 @@ def paginated_fetch(
         items.extend(response["msg"].get("items", []))
         next_cursor = response["msg"].get("next")
     return items
+
+
+def offset_paginated_fetch(
+    central_conn,
+    api_path: str,
+    limit: int,
+    additional_params: dict = None,
+):
+    """Fetch all pages from an offset-based Central API endpoint."""
+    base_params = additional_params.copy() if additional_params else {}
+    items = []
+    offset = 0
+
+    while True:
+        params = {**base_params, "limit": limit, "offset": offset}
+        response = central_conn.command(
+            api_method="GET", api_path=api_path, api_params=params
+        )
+        if response["code"] != 200:
+            raise Exception(f"API error {response['code']}: {response['msg']}")
+
+        page_items = response["msg"].get("items", [])
+        if not page_items:
+            return items
+
+        items.extend(page_items)
+        total = response["msg"].get("total")
+        if total is not None and len(items) >= total:
+            return items
+        if len(page_items) < limit:
+            return items
+        offset += limit
 
 
 def format_tool_error(operation: str, error: object) -> str:

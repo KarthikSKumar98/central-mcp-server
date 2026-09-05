@@ -116,7 +116,7 @@ def test_compute_time_window_invalid_raises():
 # ---------------------------------------------------------------------------
 from unittest.mock import MagicMock
 
-from utils.common import paginated_fetch
+from utils.common import offset_paginated_fetch, paginated_fetch
 
 
 def _page(items, next_cursor=None, total=None):
@@ -166,6 +166,99 @@ def test_paginated_fetch_passes_additional_params():
     paginated_fetch(conn, "some/path", limit=50, additional_params={"filter": "x eq 'y'"})
     assert conn.command.call_args.kwargs["api_params"]["filter"] == "x eq 'y'"
     assert conn.command.call_args.kwargs["api_params"]["limit"] == 50
+
+
+# ---------------------------------------------------------------------------
+# offset_paginated_fetch
+# ---------------------------------------------------------------------------
+
+
+def test_offset_paginated_fetch_single_page():
+    conn = MagicMock()
+    conn.command.return_value = _page([{"id": 1}])
+
+    result = offset_paginated_fetch(conn, "some/path", limit=100)
+
+    assert result == [{"id": 1}]
+    conn.command.assert_called_once_with(
+        api_method="GET",
+        api_path="some/path",
+        api_params={"limit": 100, "offset": 0},
+    )
+
+
+def test_offset_paginated_fetch_multi_page_accumulates_items():
+    conn = MagicMock()
+    conn.command.side_effect = [
+        _page([{"id": 1}, {"id": 2}], total=3),
+        _page([{"id": 3}], total=3),
+    ]
+
+    result = offset_paginated_fetch(conn, "some/path", limit=2)
+
+    assert result == [{"id": 1}, {"id": 2}, {"id": 3}]
+    assert [
+        call.kwargs["api_params"]["offset"] for call in conn.command.call_args_list
+    ] == [0, 2]
+
+
+def test_offset_paginated_fetch_empty_result():
+    conn = MagicMock()
+    conn.command.return_value = _page([], total=0)
+
+    assert offset_paginated_fetch(conn, "some/path", limit=100) == []
+
+
+def test_offset_paginated_fetch_raises_on_non_200():
+    conn = MagicMock()
+    conn.command.return_value = {"code": 400, "msg": "Invalid query parameter"}
+
+    with pytest.raises(Exception, match="API error 400: Invalid query parameter"):
+        offset_paginated_fetch(conn, "some/path", limit=10)
+
+
+def test_offset_paginated_fetch_passes_additional_params():
+    conn = MagicMock()
+    conn.command.return_value = _page([], total=0)
+
+    offset_paginated_fetch(
+        conn,
+        "some/path",
+        limit=50,
+        additional_params={"filter": "siteName eq 'HQ'"},
+    )
+
+    assert conn.command.call_args.kwargs["api_params"] == {
+        "filter": "siteName eq 'HQ'",
+        "limit": 50,
+        "offset": 0,
+    }
+
+
+def test_offset_paginated_fetch_stops_when_page_has_no_items():
+    conn = MagicMock()
+    conn.command.side_effect = [
+        _page([{"id": 1}], total=3),
+        _page([], total=3),
+    ]
+
+    result = offset_paginated_fetch(conn, "some/path", limit=1)
+
+    assert result == [{"id": 1}]
+    assert conn.command.call_count == 2
+
+
+def test_offset_paginated_fetch_missing_total_pages_until_short_page():
+    conn = MagicMock()
+    conn.command.side_effect = [
+        {"code": 200, "msg": {"items": [{"id": 1}, {"id": 2}]}},
+        {"code": 200, "msg": {"items": [{"id": 3}]}},
+    ]
+
+    result = offset_paginated_fetch(conn, "some/path", limit=2)
+
+    assert result == [{"id": 1}, {"id": 2}, {"id": 3}]
+    assert conn.command.call_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -271,6 +364,36 @@ def test_lookup_inventory_device_returns_none_when_unmatched():
         result = lookup_inventory_device("conn", "NOPE")
     assert result is None
     assert md.get_all_device_inventory.call_count == 2
+
+
+def test_lookup_inventory_device_ignores_unsupported_stack_id_filter():
+    with patch("utils.common.MonitoringDevices") as md:
+        md.get_all_device_inventory.side_effect = [
+            [],
+            RuntimeError('HTTP 400: Filtering on field "stackId" is not supported'),
+        ]
+        result = lookup_inventory_device("conn", "FCW2026D0KV")
+    assert result is None
+    assert md.get_all_device_inventory.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("HTTP 500: inventory unavailable"),
+        TimeoutError("inventory request timed out"),
+        RuntimeError("HTTP 429: Too Many Requests"),
+    ],
+)
+def test_lookup_inventory_device_propagates_primary_lookup_failures(error):
+    with patch("utils.common.MonitoringDevices") as md:
+        md.get_all_device_inventory.side_effect = error
+        with pytest.raises(type(error), match=str(error)):
+            lookup_inventory_device("conn", "FCW2026D0KV")
+
+    md.get_all_device_inventory.assert_called_once_with(
+        central_conn="conn", filter_str="serialNumber eq 'FCW2026D0KV'"
+    )
 
 
 def test_stack_aware_serial_returns_stack_id_for_stack_device():

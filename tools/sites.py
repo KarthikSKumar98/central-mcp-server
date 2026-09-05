@@ -1,107 +1,239 @@
 import asyncio
+from typing import Annotated, Literal
 
 from fastmcp import Context, FastMCP
 from pycentral.new_monitoring import MonitoringSites
+from pydantic import Field
 
-from models import SiteData
+from constants import MAX_PAGE_SIZE, SITE_LIMIT
+from models import SiteEnvelope, SiteSummary
 from tools import READ_ONLY
-from utils.common import api_context, format_tool_error
-from utils.sites import compute_health_score, fetch_site_data, groups_to_map
+from utils.common import api_context
+from utils.cursor import (
+    INVALID_CURSOR_MESSAGE,
+    decode_cursor,
+    encode_cursor,
+    hash_query,
+)
+from utils.envelope import build_envelope, raise_central_error
+from utils.sites import (
+    _build_site_name_filter,
+    compute_health_score,
+    groups_to_map,
+    process_site_health_data,
+)
+
+DEFAULT_SITE_LIMIT = SITE_LIMIT
+SITE_TOOL_NAME = "central_get_sites"
+SITE_HEALTH_PATH = "network-monitoring/v1/sites-health"
+SITE_DEVICE_HEALTH_PATH = "network-monitoring/v1/sites-device-health"
+SITE_CLIENT_HEALTH_PATH = "network-monitoring/v1/sites-client-health"
+
+# View -> supported view-specific parameters. Limit applies to both views.
+SITE_VIEW_PARAMS: dict[str, frozenset[str]] = {
+    "detail": frozenset({"site_names"}),
+    "summary": frozenset(),
+}
+
+
+def _validate_site_params(view: str, site_names: list[str] | None) -> None:
+    """Reject detail-only filters that the summary route would ignore."""
+    if view == "summary" and site_names is not None:
+        raise ValueError("Parameter 'site_names' is supported only when view='detail'.")
+
+
+def _site_summary(raw: dict) -> SiteSummary:
+    """Normalize one raw get_sites item to the lightweight summary model."""
+    health_obj = groups_to_map(raw.get("health", {}))
+    alerts_obj = groups_to_map(raw.get("alerts", {}))
+    return SiteSummary(
+        name=raw["siteName"],
+        site_id=raw.get("id"),
+        health=compute_health_score(health_obj),
+        total_devices=raw.get("devices", {}).get("count", 0),
+        total_clients=raw.get("clients", {}).get("count", 0),
+        critical_alerts=alerts_obj.get("critical", 0),
+        total_alerts=alerts_obj.get("total", 0),
+    )
+
+
+def _site_offset(position: dict[str, str | int]) -> int:
+    """Extract an offset cursor position for a sites request."""
+    upstream_offset = position.get("upstream_offset")
+    if (
+        isinstance(upstream_offset, bool)
+        or not isinstance(upstream_offset, int)
+        or upstream_offset < 0
+    ):
+        raise ValueError(INVALID_CURSOR_MESSAGE)
+    return upstream_offset
+
+
+def _site_page(response: object) -> tuple[list[dict], int]:
+    """Validate and unpack a single upstream sites page."""
+    if not isinstance(response, dict):
+        raise ValueError("Unexpected sites response; expected an object.")
+    items = response.get("items", [])
+    if not isinstance(items, list):
+        raise ValueError("Unexpected sites response; expected an items list.")
+    total = response.get("total")
+    if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+        raise ValueError(
+            "Unexpected sites response; expected a non-negative integer total."
+        )
+    return items, total
+
+
+def _fetch_site_health_page(
+    central_conn: object,
+    api_path: str,
+    *,
+    limit: int,
+    offset: int,
+    site_names: list[str] | None = None,
+) -> tuple[list[dict], int]:
+    """Fetch one page from an offset-based site-health endpoint."""
+    site_filter = _build_site_name_filter(site_names)
+    params: dict[str, object] = {}
+    if site_filter:
+        params["filter"] = site_filter
+    params.update({"limit": limit, "offset": offset})
+
+    response = central_conn.command(
+        api_method="GET",
+        api_path=api_path,
+        api_params=params,
+    )
+    if response["code"] != 200:
+        raise Exception(f"API error {response['code']}: {response['msg']}")
+    return _site_page(response["msg"])
+
+
+def _fetch_detail_site_page(
+    central_conn: object,
+    *,
+    site_names: list[str] | None,
+    limit: int,
+    offset: int,
+) -> tuple[list, int, int]:
+    """Fetch one master site page and enrich only the sites on that page."""
+    master_items, total = _fetch_site_health_page(
+        central_conn,
+        SITE_HEALTH_PATH,
+        limit=limit,
+        offset=offset,
+        site_names=site_names,
+    )
+    if not master_items:
+        return [], total, 0
+
+    master_site_names = [site["siteName"] for site in master_items]
+    enrichment_limit = len(master_site_names)
+    device_items, _ = _fetch_site_health_page(
+        central_conn,
+        SITE_DEVICE_HEALTH_PATH,
+        limit=enrichment_limit,
+        offset=0,
+        site_names=master_site_names,
+    )
+    client_items, _ = _fetch_site_health_page(
+        central_conn,
+        SITE_CLIENT_HEALTH_PATH,
+        limit=enrichment_limit,
+        offset=0,
+        site_names=master_site_names,
+    )
+    sites_data = process_site_health_data(
+        master_items,
+        device_items,
+        client_items,
+    )
+    items = [
+        sites_data[site_name]
+        for site_name in master_site_names
+        if site_name in sites_data
+    ]
+    return items, total, len(master_items)
 
 
 def register(mcp: FastMCP) -> None:
-    """Register site tools with the MCP server."""
+    """Register the folded site tool with the MCP server."""
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_sites(
-        ctx: Context, site_names: list[str] | None = None
-    ) -> list[SiteData] | str:
-        """Return detailed metrics for one or more sites.
+        ctx: Context,
+        view: Literal["summary", "detail"] = "detail",
+        site_names: list[str] | None = None,
+        limit: Annotated[int | None, Field(ge=1, le=MAX_PAGE_SIZE)] = None,
+        cursor: str | None = None,
+        response_format: Literal["concise", "detailed"] = "concise",
+    ) -> SiteEnvelope:
+        """Retrieve site summaries or detailed health records.
 
-        `site_names` must be a list of exact site-name strings.
-        If you need multiple sites, pass them all in one call (batch) instead of
-        making separate calls per site.
-
-        Prefer calling with a site_names filter targeting only the sites you care about.
-        Do NOT call without a filter unless the user explicitly requests data for all sites —
-        returning all sites is expensive and consumes significant context.
-
-        Recommended workflow: Call central_get_summary first to get a lightweight
-        overview of all sites (names, IDs, health scores). Use health scores and alert counts to
-        decide which sites warrant further investigation, then call this tool with those specific
-        site names.
-
-        Parameters
-        ----------
-        - site_names: List of one or more exact site names.
-          For a single site, pass `["<site name>"]` (not a plain string).
-          For multiple sites, pass them together in one list:
-          `["<site A>", "<site B>", "<site C>"]`.
-          This filter is applied server-side to all upstream site-health API calls.
-          If omitted, all sites are returned (use sparingly or when explicitly requested).
-
+        Use view to choose the upstream summary/detail fetch; response_format separately shapes fetched items as concise or detailed.
+        Cross-field rule: site_names applies only to view='detail'; cursor requires the identical view and filters.
+        Returns SiteEnvelope. Replay next_cursor as cursor with the original limit.
         """
-        async with api_context(ctx) as conn:
-            try:
-                sites_data = await asyncio.to_thread(
-                    fetch_site_data, conn, site_names=site_names
+        try:
+            _validate_site_params(view, site_names)
+            query_filters = {
+                "view": view,
+                "site_names": site_names,
+            }
+            query_hash = hash_query(query_filters)
+            page_size = limit if limit is not None else DEFAULT_SITE_LIMIT
+            offset = 0
+            if cursor is not None:
+                decoded_cursor = decode_cursor(
+                    cursor,
+                    expected_tool=SITE_TOOL_NAME,
+                    expected_query_hash=query_hash,
                 )
-                if site_names:
-                    return [
-                        sites_data[name] for name in site_names if name in sites_data
-                    ]
-                return list(sites_data.values())
-            except Exception as e:
-                return format_tool_error("fetching sites", e)
+                if decoded_cursor.page_size > MAX_PAGE_SIZE:
+                    raise ValueError(INVALID_CURSOR_MESSAGE)
+                if limit is not None and limit != decoded_cursor.page_size:
+                    raise ValueError("limit conflicts with the cursor page_size")
+                page_size = decoded_cursor.page_size
+                offset = _site_offset(decoded_cursor.position)
 
-    @mcp.tool(annotations=READ_ONLY)
-    async def central_get_summary(ctx: Context) -> dict | str:
-        """Return a lightweight mapping of all site names to their IDs, health score, devices, client & alert counts.
-
-        The list is sorted by health score (lowest to highest — worst to best) to help quickly
-        identify sites that may need attention. Sites with unknown/None health values are placed last.
-
-        Use this before calling central_get_sites or any endpoint that requires a site_id. It is
-        especially useful when the user provides a partial or ambiguous site name — verify
-        the correct name here, then pass it to the appropriate tool. The health score also
-        helps identify sites with issues before drilling down further.
-
-        Returns a dict where each key is a site name and the value contains:
-        - site_id: Unique identifier used in other API calls.
-        - health: Overall health score (0–100, weighted average: Good=100, Fair=50, Poor=0).
-        - total_devices: Total number of devices at the site.
-        - total_clients: Total number of clients at the site.
-        - critical_alerts: Number of critical alerts at the site.
-        - total_alerts: Total number of alerts at the site.
-        """
-        async with api_context(ctx) as conn:
-            try:
-                sites = await asyncio.to_thread(
-                    MonitoringSites.get_all_sites, central_conn=conn
-                )
-                mapping = {}
-                for site in sites:
-                    health_obj = groups_to_map(site.get("health", {}))
-                    summary = compute_health_score(health_obj)
-                    mapping[site["siteName"]] = {
-                        "site_id": site.get("id"),
-                        "health": summary,
-                        "total_devices": site.get("devices", {}).get("count", 0),
-                        "total_clients": site.get("clients", {}).get("count", 0),
-                        "critical_alerts": site.get("alerts", {}).get("critical", 0),
-                        "total_alerts": site.get("alerts", {}).get("total", 0),
-                    }
-                mapping = dict(
-                    sorted(
-                        mapping.items(),
-                        key=lambda item: (
-                            item[1]["health"]
-                            if item[1]["health"] is not None
-                            else float("inf")
-                        ),
-                        reverse=False,
+            async with api_context(ctx) as conn:
+                if view == "summary":
+                    response = await asyncio.to_thread(
+                        MonitoringSites.get_sites,
+                        central_conn=conn,
+                        limit=page_size,
+                        offset=offset,
                     )
+                    raw_sites, total = _site_page(response)
+                    items = [_site_summary(site) for site in raw_sites]
+                    upstream_count = len(raw_sites)
+                else:
+                    items, total, upstream_count = await asyncio.to_thread(
+                        _fetch_detail_site_page,
+                        conn,
+                        site_names=site_names,
+                        limit=page_size,
+                        offset=offset,
+                    )
+
+            next_offset = offset + upstream_count
+            next_cursor = None
+            if next_offset < total:
+                next_cursor = encode_cursor(
+                    SITE_TOOL_NAME,
+                    page_size,
+                    {"upstream_offset": next_offset},
+                    query_hash,
                 )
-                return mapping
-            except Exception as e:
-                return format_tool_error("fetching site summary", e)
+
+            return build_envelope(
+                SiteEnvelope,
+                items,
+                total=total,
+                total_available=total,
+                next_cursor=next_cursor,
+                ceiling=page_size,
+                response_format=response_format,
+            )
+        except Exception as exc:
+            raise_central_error(exc, "retrieving sites")

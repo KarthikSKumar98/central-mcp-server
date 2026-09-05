@@ -56,6 +56,9 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+markers = [
+    "integration: live API tests requiring Central credentials (.env or MCP env block); run via `make verify-live`",
+]
 asyncio_mode = "auto"
 
 [tool.ruff]
@@ -95,3 +98,4 @@ ignore = [
 "server.py"     = ["D103", "ANN001", "ANN201", "ANN202"]
 ".github/scripts/*.py" = ["T201", "ANN", "D"]
 "scripts/fetch_fastmcp_docs.py" = ["ALL"]
+"scripts/measure_tool_tokens.py" = ["T201"]

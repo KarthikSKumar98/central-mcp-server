@@ -71,7 +71,6 @@ _RAW_SITE = {
     "devices": {"total": 10},
     "clients": {"total": 50},
     "alerts": {"total": 3},
-    "address": {},
     "location": {"latitude": "37.7749", "longitude": "-122.4194"},
 }
 
@@ -116,6 +115,23 @@ def test_transform_to_site_data_null_location():
     assert result.location["lng"] is None
 
 
+def test_transform_to_site_data_drops_non_output_fields():
+    raw = {
+        **_RAW_SITE,
+        "address": {"city": "San Francisco"},
+        "type": "CAMPUS",
+        "reasons": [{"reason": "example"}],
+        "count": 1,
+        "offset": 0,
+        "total": 1,
+        "response": {"status": "success"},
+    }
+
+    result = transform_to_site_data(raw).model_dump()
+
+    assert set(result) == {"site_id", "name", "location", "metrics"}
+
+
 # ---------------------------------------------------------------------------
 # process_site_health_data
 # ---------------------------------------------------------------------------
@@ -129,7 +145,6 @@ _SITE_HEALTH = [
         "devices": {},
         "clients": {},
         "alerts": {},
-        "address": {},
         "location": None,
     }
 ]
@@ -160,7 +175,7 @@ _CLIENT_HEALTH = [
 def test_fetch_site_data_applies_odata_site_filter_to_all_endpoints():
     conn = MagicMock()
     with patch(
-        "utils.sites.paginated_fetch",
+        "utils.sites.offset_paginated_fetch",
         side_effect=[_SITE_HEALTH, _DEVICE_HEALTH, _CLIENT_HEALTH],
     ) as mock_fetch:
         result = fetch_site_data(conn, site_names=["HQ", "Branch"])
@@ -176,7 +191,7 @@ def test_fetch_site_data_applies_odata_site_filter_to_all_endpoints():
 def test_fetch_site_data_without_site_names_sends_no_filter(site_names):
     conn = MagicMock()
     with patch(
-        "utils.sites.paginated_fetch",
+        "utils.sites.offset_paginated_fetch",
         side_effect=[_SITE_HEALTH, _DEVICE_HEALTH, _CLIENT_HEALTH],
     ) as mock_fetch:
         result = fetch_site_data(conn, site_names=site_names)
@@ -204,6 +219,32 @@ def test_process_site_health_data_merges_client_details():
     assert result["HQ"].metrics.clients["details"]["wireless"]["good"] == 10
 
 
+def test_process_site_health_data_drops_join_only_fields():
+    device_health = [
+        {
+            **_DEVICE_HEALTH[0],
+            "id": "device-health-id",
+            "type": "CAMPUS",
+        }
+    ]
+    client_health = [
+        {
+            **_CLIENT_HEALTH[0],
+            "id": "client-health-id",
+            "type": "CAMPUS",
+        }
+    ]
+
+    result = process_site_health_data(_SITE_HEALTH, device_health, client_health)
+    serialized = result["HQ"].model_dump()
+
+    assert "id" not in serialized
+    assert "siteName" not in serialized
+    assert "type" not in serialized
+    assert "device-health-id" not in str(serialized)
+    assert "client-health-id" not in str(serialized)
+
+
 def test_process_site_health_data_unknown_site_in_device_health_skipped():
     result = process_site_health_data(
         _SITE_HEALTH, [{"siteName": "Unknown", "deviceTypes": []}], []
@@ -221,7 +262,6 @@ def test_process_site_health_data_multiple_sites():
             "devices": {},
             "clients": {},
             "alerts": {},
-            "address": {},
             "location": None,
         },
         {
@@ -231,7 +271,6 @@ def test_process_site_health_data_multiple_sites():
             "devices": {},
             "clients": {},
             "alerts": {},
-            "address": {},
             "location": None,
         },
     ]
