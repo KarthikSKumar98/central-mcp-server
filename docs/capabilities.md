@@ -11,24 +11,22 @@ individual API endpoints. Each category names the MCP tools that power it and th
 family they call. For real example questions per area, see
 [What You Can Ask](what-you-can-ask.md).
 
-**Current as of v0.1.9.** This reference is updated with every release.
+**Current as of v0.2.0.** This reference is updated with every release.
 
 ## At a glance
 
 | Category | What you can ask about | Tools | Central API family |
 |---|---|---|---|
-| [Sites & network health](#sites--network-health) | Fleet-wide health overview, per-site metrics | 2 | Network Monitoring |
-| [Device inventory](#device-inventory) | All devices, find one by serial/MAC/name | 2 | Network Monitoring |
-| [Access points](#access-points) | AP lists, per-AP detail, radio/port trends | 3 | Network Monitoring |
-| [Switches](#switches) | Switch lists, per-switch detail, hardware/interface trends | 3 | Network Monitoring |
-| [Gateways](#gateways) | Gateway lists, detail, clusters, capacity trends | 5 | Network Monitoring |
-| [WLANs](#wlans) | Configured WLANs, per-WLAN throughput | 2 | Network Monitoring |
-| [Clients](#clients) | Connected/failed clients, find one by MAC | 2 | Network Monitoring |
+| [Sites & network health](#sites--network-health) | Fleet-wide health overview, per-site metrics | 1 | Network Monitoring |
+| [Devices](#devices) | Inventory, family detail, and trends | 3 | Network Monitoring |
+| [WLANs](#wlans) | Configured WLANs, per-WLAN throughput | 1 | Network Monitoring |
+| [Clients](#clients) | Connected/failed clients, exact MAC lookup | 1 | Network Monitoring |
 | [Alerts](#alerts) | Active alerts per site, by severity/category | 1 | Network Notifications |
-| [Events](#events) | Event history and counts for a site, device, or client | 2 | Network Troubleshooting |
+| [Events](#events) | Event records and facets for a site, device, or client | 1 | Network Troubleshooting |
+| [Gateway clusters](#gateway-clusters) | Cluster health, resources, and capacity | 1 | Network Monitoring |
 | [Live troubleshooting](#live-troubleshooting) | Ping/traceroute-style tests, show commands, port bounce | 3 | Network Troubleshooting |
 
-**25 tools total.** All tools are read-only except `central_bounce_port`, which changes device
+**12 tools total.** All tools are read-only except `central_bounce_port`, which changes device
 state and always asks for your confirmation first.
 
 ## Categories
@@ -37,45 +35,23 @@ state and always asks for your confirmation first.
 
 Fleet-wide status and per-site drill-down. The usual entry point for any investigation.
 
-- `central_get_summary` — lightweight overview of every site: health score, device, client, and alert counts.
-- `central_get_sites` — detailed metrics for one or more named sites.
+- `central_get_sites` — paginated summary or detailed health views; `view` selects the upstream view and `response_format` shapes returned fields.
 
-### Device inventory
+### Devices
 
 Cross-type device queries when you don't yet know whether something is an AP, switch, or gateway.
 
-- `central_get_devices` — filtered device list (OData v4.0 filter syntax).
-- `central_find_device` — locate a single device by serial, MAC, or name.
-
-### Access points
-
-- `central_get_aps` — filtered AP list.
-- `central_get_ap_details` — single-AP snapshot including radios and ports.
-- `central_get_ap_trends` — time-series trends for an AP, radio, or wired port (throughput, CPU, memory, channel utilization/quality, noise floor, and more).
-
-### Switches
-
-- `central_get_switches` — filtered switch list.
-- `central_get_switch_details` — single-switch snapshot.
-- `central_get_switch_trends` — time-series trends at hardware or interface scope (CPU, memory, PoE, port throughput, and more).
-
-### Gateways
-
-- `central_get_gateways` — filtered gateway list.
-- `central_get_gateway_details` — single-gateway snapshot.
-- `central_get_gateway_trends` — time-series trends for a gateway, port, tunnel, or uplink.
-- `central_get_gateway_cluster` — cluster snapshot with members and tunnel health.
-- `central_get_cluster_capacity_trends` — cluster capacity trends over time.
+- `central_get_devices` — unified inventory and AP/switch/gateway monitoring lists, plus exact serial/name lookup.
+- `central_get_device_details` — typed AP, switch, or gateway snapshots with family-specific includes.
+- `central_get_device_trends` — bounded family-specific time-series samples.
 
 ### WLANs
 
-- `central_get_wlans` — WLANs configured in Central, filterable by name, site, or AP.
-- `central_get_wlan_stats` — throughput trends for a specific WLAN.
+- `central_get_wlans` — WLAN inventory and optional throughput for an exact WLAN name.
 
 ### Clients
 
-- `central_get_clients` — filtered client list (OData v4.0 filter syntax), including failed clients.
-- `central_find_client` — locate a single client by MAC address.
+- `central_get_clients` — filtered client lists or one exact MAC-address lookup.
 
 ### Alerts
 
@@ -83,8 +59,11 @@ Cross-type device queries when you don't yet know whether something is an AP, sw
 
 ### Events
 
-- `central_get_events` — events for a site, device, or client within a time range.
-- `central_get_events_count` — event count breakdown for a context without fetching full details.
+- `central_get_events` — `mode="records"` returns events; `mode="facets"` returns count/filter breakdowns.
+
+### Gateway clusters
+
+- `central_get_gateway_cluster` — cluster members and tunnel health with optional resources and capacity trends.
 
 ### Live troubleshooting
 

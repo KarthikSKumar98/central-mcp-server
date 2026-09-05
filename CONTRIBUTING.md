@@ -47,7 +47,8 @@ Follow these steps for every new tool:
 4. **Define return types** as Pydantic `BaseModel` subclasses in `models.py`
 5. **Add mock tests** to `tests/test_<domain>.py` (see [Tests](#tests) below)
 6. **Lint**: `ruff check . && ruff format .`
-7. **Test**: `uv run pytest tests/ -v` — all tests must pass
+7. **Test**: `make test` — all mock/unit tests must pass
+8. **Check description cost**: `make tool-budget` — every description must remain at or below 200 estimated tokens
 
 ---
 
@@ -63,18 +64,23 @@ async def central_get_sites(ctx: Context, site_names: list[str] | None = None) -
 
 ### Docstrings
 
-Use **prose paragraphs** followed by a `Parameters:` bullet list. Do not use Google-style `Args:`/`Returns:` sections. These docstrings are surfaced directly as MCP tool descriptions and should be readable by an AI client.
+Tool docstrings are MCP descriptions. Keep each at or below 200 estimated tokens and use this order:
+
+1. Imperative one-line summary.
+2. A blank line.
+3. A concise “Use after/for …” sequencing hint.
+4. “Cross-field rule:” or “Cross-field rules:” for coupled inputs and safety constraints.
+5. “Returns <Type> with …”; paginated tools also explain how to replay `next_cursor`.
+
+Put parameter documentation in `Field(description=...)`, never in `Args:` or `Parameters:` sections. Run `make tool-budget` to print the catalog cost table.
 
 ```python
-async def central_get_sites(ctx: Context, site_names: list[str] | None = None) -> list[SiteData]:
-    """
-    Returns detailed metrics for one or more sites.
+async def central_get_sites(...) -> SiteEnvelope:
+    """Retrieve site summaries or detailed health records.
 
-    Prefer calling with a site_names filter targeting only the sites you care about.
-    Do NOT call without a filter unless the user explicitly requests all sites.
-
-    Parameters:
-    - site_names: One or more site names to filter by. If omitted, all sites are returned (use sparingly).
+    Use for site selection and health review.
+    Cross-field rule: site_names applies only to view='detail'.
+    Returns SiteEnvelope. Replay next_cursor as cursor to continue.
     """
 ```
 
@@ -148,15 +154,31 @@ async def test_get_sites_returns_list(tools, mock_ctx):
     assert isinstance(result, list)
 ```
 
-### Integration tests (optional)
+### Integration tests (optional for PRs)
 
-`tests/integration/` contains live tests that hit the real Central API. These are **optional** — they auto-skip if no `.env` credentials are found. You're welcome to add integration tests alongside your mock tests, but they are not required for a PR to be accepted.
+`tests/integration/` contains live tests that hit the real Central API, marked with `@pytest.mark.integration`. For a PR they are **optional** — they auto-skip if no credentials are found, so a PR does not need them to pass.
 
-Run all tests:
+Run mock tests only (default for contributors, no credentials needed):
 
 ```bash
-uv run pytest tests/ -v
+make test          # uv run pytest tests/ -v -m "not integration"
 ```
+
+### Release verification gate (required before each release)
+
+The map's standing constraint: **every release is validated against the live Central environment the published server runs against, before it ships.** The live integration suite is that gate.
+
+```bash
+make verify-live   # live integration suite against the real tenant
+make verify        # mock suite + live suite (full pre-release gate)
+```
+
+- **Credentials** flow the same path as the deployed v0.1.8 server: OS env vars (the MCP client env block) or a root `.env` file — `CENTRAL_BASE_URL`, `CENTRAL_CLIENT_ID`, `CENTRAL_CLIENT_SECRET` (see `config.py`).
+- **Pass criteria**: the live suite runs green against the real tenant. `verify-live` sets `CENTRAL_LIVE_REQUIRED=1`, so **missing credentials fail the gate rather than silently skipping** — an un-credentialed run cannot pass as green.
+- **Coverage today**: ~24 of the active tools across sites, devices, clients, APs, switches, gateways, alerts, events, WLANs, troubleshooting, plus prompt/server smoke tests.
+- Tests reference tools by name (e.g. `tools["central_get_sites"]`), so the **test bodies** track tool renames — expect churn at the 0.2.0 consolidation. The **gate itself** (`make verify-live`, the `integration` marker) is taxonomy-agnostic and stays put.
+
+Add live tests alongside your mock tests where a tool's real-API behavior is worth guarding.
 
 ---
 
@@ -169,11 +191,3 @@ When opening a PR on GitHub, select the matching template (New Tool, Bug Fix, or
 - **Reference the API**: include the Central v1 API endpoint your tool wraps in the PR description
 - **APIs from the same category only, max 3 per PR**: tools must wrap APIs from the same category (e.g. Sites, Devices, Clients, Alerts, Events). Do not mix categories or submit more than 3 tools in one PR.
 - **AI-generated contributions**: if your PR or issue was created by an AI agent, include 🤖 at the bottom of the description.
-
----
-
-## Releases
-
-`main` is the only permanent branch. Add the matching `CHANGELOG.md` entry to `main` in a normal PR before a release cut. Run **Generate Release PR** from `main` with the target `X.Y.Z` version; it creates `release/vX.Y.Z`, bumps `pyproject.toml`, and opens the mechanical PR back to `main`.
-
-For a hotfix, branch `hotfix/vX.Y.Z` from the affected release tag, add the version and changelog entry, then run **Publish Release** from that hotfix branch. After publishing, cherry-pick the hotfix forward to `main`.
