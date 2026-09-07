@@ -1,12 +1,28 @@
 """Tests for tools/gateway_monitoring.py."""
 
+import json
 from unittest.mock import patch
 
 import pytest
+from fastmcp.exceptions import ToolError
 
+import tools.devices as devices_mod
 import tools.gateway_monitoring as mod
-from models import Gateway, GatewayCluster, GatewayDetail, GatewayUplink, TrendSample
+from constants import GATEWAY_MAX_PAGE_SIZE
+from models import (
+    CapacityTrendSample,
+    DeviceEnvelope,
+    DeviceTrendsEnvelope,
+    GatewayCluster,
+    GatewayClusterEnvelope,
+    GatewayDetail,
+    GatewayDHCPLease,
+    GatewayDHCPPool,
+    GatewayUplink,
+    TrendSample,
+)
 from tests.conftest import FakeMCP, make_ctx
+from utils.cursor import decode_cursor, encode_cursor, hash_query
 
 # ---------------------------------------------------------------------------
 # Shared realistic payloads (from a20-gateway-monitoring-payloads.md)
@@ -120,6 +136,33 @@ RAW_UPLINK = {
     "gateway": "BO-BLR-GTW01",
 }
 
+RAW_DHCP_POOL = {
+    "poolName": "pool-1",
+    "vlanId": 33,
+    "vlanName": "Client-Vlan 1",
+    "subnet": "192.168.3.0/24",
+    "leaseDuration": 90061,
+    "poolSize": 100,
+    "currentLeases": 4,
+    "utilization": 4,
+    "availableAddresses": 96,
+}
+
+RAW_DHCP_LEASE = {
+    "poolName": "pool-1",
+    "ipAddress": "192.168.3.4",
+    "macAddress": "70:cd:0d:0b:40:d2",
+    "clientSiteId": "12345",
+    "clientSerial": "CG0021253",
+    "infraType": None,
+    "hostName": "pc76",
+    "clientDeviceType": "MSFT 5.0",
+    "startTime": 1756136958062,
+    "expirationTime": 1756137138062,
+    "remainingTime": "172800",
+    "reservation": "No",
+}
+
 RAW_CLUSTER_MEMBER = {
     "macAddress": "00:1a:1e:06:55:70",
     "siteName": "Bengaluru (BLR) - Branch",
@@ -185,7 +228,9 @@ RAW_CAPACITY_TRENDS = [
     {
         "type": "network-monitoring/gateway-monitoring",
         "graph": {
-            "samples": [{"data": [0, 0, 65536, 0, 0], "timestamp": "2026-06-05T19:00:00Z"}],
+            "samples": [
+                {"data": [0, 0, 65536, 0, 0], "timestamp": "2026-06-05T19:00:00Z"}
+            ],
             "keys": [
                 "active_client_count",
                 "standby_client_count",
@@ -224,11 +269,65 @@ RAW_CAPACITY_TRENDS = [
 ]
 
 
+def gateway_page(
+    items: list[dict] | None = None,
+    *,
+    total: int | None = None,
+    next_cursor: str | None = None,
+) -> dict:
+    page_items = items or []
+    return {
+        "items": page_items,
+        "count": len(page_items),
+        "total": len(page_items) if total is None else total,
+        "next": next_cursor,
+    }
+
+
+def device_family_query_hash(device_type: str) -> str:
+    return hash_query(
+        {
+            "device_type": device_type,
+            "site_id": None,
+            "site_name": None,
+            "device_name": None,
+            "serial_number": None,
+            "device_status": None,
+            "model": None,
+            "device_function": None,
+            "is_provisioned": None,
+            "site_assigned": None,
+            "firmware_version": None,
+            "deployment": None,
+            "cluster_id": None,
+            "cluster_name": None,
+            "sort": None,
+        }
+    )
+
+
 @pytest.fixture
 def tools():
     fake = FakeMCP()
+    devices_mod.register(fake)
     mod.register(fake)
+
+    get_devices = fake._tools["central_get_devices"]
+
+    async def get_gateway_devices(ctx, **kwargs):
+        return await get_devices(ctx, device_type="gateway", **kwargs)
+
+    fake._tools["central_get_devices"] = get_gateway_devices
     return fake._tools
+
+
+@pytest.fixture(autouse=True)
+def resolve_as_gateway():
+    with patch(
+        "tools.devices._resolve_monitoring_family",
+        side_effect=lambda _conn, serial: ("gateway", serial),
+    ):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -237,33 +336,201 @@ def tools():
 
 
 def test_registers_gateway_tools(tools):
-    assert "central_get_gateways" in tools
-    assert "central_get_gateway_details" in tools
-    assert "central_get_gateway_trends" in tools
+    assert "central_get_devices" in tools
+    assert "central_get_device_details" in tools
+    assert "central_get_device_trends" in tools
     assert "central_get_gateway_cluster" in tools
-    assert "central_get_cluster_capacity_trends" in tools
+
+
+def test_gateway_module_itself_keeps_only_cluster_tools():
+    fake = FakeMCP()
+    mod.register(fake)
+    assert list(fake._tools) == ["central_get_gateway_cluster"]
 
 
 # ---------------------------------------------------------------------------
-# central_get_gateways — filters
+# central_get_devices — filters
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_gateways_no_filters(tools):
+async def test_get_gateways_page_one_uses_single_page_api_and_emits_cursor(tools):
     ctx = make_ctx()
-    with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_all_gateways",
-        return_value=[RAW_GATEWAY],
-    ) as mock_api:
-        result = await tools["central_get_gateways"](ctx)
-    assert isinstance(result, list)
-    assert isinstance(result[0], Gateway)
-    assert result[0].serial_number == "DL0006948"
-    assert result[0].status == "Online"
+    with (
+        patch(
+            "tools.devices.MonitoringGateways.get_gateways",
+            return_value=gateway_page(
+                [RAW_GATEWAY],
+                total=150,
+                next_cursor="2",
+            ),
+        ) as mock_api,
+        patch(
+            "tools.devices.MonitoringGateways.get_all_gateways",
+            side_effect=AssertionError("aggregation API called"),
+        ) as mock_all,
+    ):
+        result = await tools["central_get_devices"](ctx)
+
+    decoded = decode_cursor(
+        result.next_cursor,
+        expected_tool="central_get_devices:gateway",
+        expected_query_hash=device_family_query_hash("gateway"),
+    )
+
+    assert isinstance(result, DeviceEnvelope)
+    assert result.total == 150
+    assert result.meta.total_available == 150
+    assert result.items[0].serial_number == "DL0006948"
+    assert result.items[0].device_type == "GATEWAY"
+    assert result.items[0].status == "ONLINE"
+    assert result.items[0].name == "BO-BLR-GTW01"
+    assert result.items[0].model == "A7240XM"
+    assert result.items[0].function == "Unspecified"
+    assert result.items[0].role == "Member"
+    assert result.items[0].firmware_version == "10.5.0.0_87691"
+    assert result.items[0].site_id == "62201157617"
+    assert result.items[0].site_name == "Bengaluru (BLR) - Branch"
+    assert result.items[0].ipv4 == "10.97.55.248"
     call_kwargs = mock_api.call_args.kwargs
     assert call_kwargs["filter_str"] is None
     assert call_kwargs["sort"] is None
+    assert call_kwargs["limit"] == devices_mod.DEFAULT_DEVICE_LIMIT
+    assert call_kwargs["next_page"] == 1
+    assert decoded.page_size == devices_mod.DEFAULT_DEVICE_LIMIT
+    assert decoded.position == {"upstream_next": "2"}
+    mock_api.assert_called_once()
+    mock_all.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_gateways_last_page_is_terminal(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.devices.MonitoringGateways.get_gateways",
+        return_value=gateway_page([RAW_GATEWAY], total=101, next_cursor=None),
+    ):
+        result = await tools["central_get_devices"](ctx, limit=50)
+
+    assert result.next_cursor is None
+    assert result.total == 101
+    assert result.meta.total_available == 101
+    assert result.truncated is False
+
+
+@pytest.mark.asyncio
+async def test_get_gateways_cursor_replay_fetches_next_upstream_page(tools):
+    ctx = make_ctx()
+    second_gateway = {
+        **RAW_GATEWAY,
+        "serialNumber": "DL0006949",
+        "deviceName": "BO-BLR-GTW02",
+    }
+    with patch(
+        "tools.devices.MonitoringGateways.get_gateways",
+        side_effect=[
+            gateway_page([RAW_GATEWAY], total=2, next_cursor="2"),
+            gateway_page([second_gateway], total=2, next_cursor=None),
+        ],
+    ) as mock_api:
+        first_page = await tools["central_get_devices"](ctx, limit=50)
+        second_page = await tools["central_get_devices"](
+            ctx,
+            cursor=first_page.next_cursor,
+        )
+
+    second_call = mock_api.call_args_list[1].kwargs
+    assert second_call["next_page"] == 2
+    assert second_call["limit"] == 50
+    assert [item.serial_number for item in second_page.items] == ["DL0006949"]
+
+
+@pytest.mark.asyncio
+async def test_get_gateways_rejects_limit_above_upstream_max(tools):
+    ctx = make_ctx()
+    with (
+        patch(
+            "tools.devices.api_context",
+            side_effect=AssertionError("connection opened"),
+        ) as mock_context,
+        pytest.raises(ToolError) as exc_info,
+    ):
+        await tools["central_get_devices"](
+            ctx,
+            limit=GATEWAY_MAX_PAGE_SIZE + 1,
+        )
+
+    error = json.loads(str(exc_info.value))
+    assert error["code"] == "validation_error"
+    assert error["retryable"] is False
+    assert "gateway page size max is 100" in error["message"]
+    mock_context.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_gateways_rejects_cursor_page_size_above_upstream_max(tools):
+    ctx = make_ctx()
+    cursor = encode_cursor(
+        "central_get_devices:gateway",
+        GATEWAY_MAX_PAGE_SIZE + 1,
+        {"upstream_next": "2"},
+        device_family_query_hash("gateway"),
+    )
+    with (
+        patch(
+            "tools.devices.api_context",
+            side_effect=AssertionError("connection opened"),
+        ) as mock_context,
+        pytest.raises(ToolError) as exc_info,
+    ):
+        await tools["central_get_devices"](ctx, cursor=cursor)
+
+    error = json.loads(str(exc_info.value))
+    assert error["code"] == "validation_error"
+    assert error["retryable"] is False
+    assert "gateway page size max is 100" in error["message"]
+    mock_context.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_gateways_accepts_upstream_max_page_size(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.devices.MonitoringGateways.get_gateways",
+        return_value=gateway_page(),
+    ) as mock_api:
+        result = await tools["central_get_devices"](
+            ctx,
+            limit=GATEWAY_MAX_PAGE_SIZE,
+        )
+
+    assert result.items == []
+    assert mock_api.call_args.kwargs["limit"] == GATEWAY_MAX_PAGE_SIZE
+
+
+@pytest.mark.asyncio
+async def test_get_gateways_rejects_ap_family_cursor(tools):
+    ctx = make_ctx()
+    ap_cursor = encode_cursor(
+        "central_get_devices:ap",
+        50,
+        {"upstream_next": "2"},
+        device_family_query_hash("ap"),
+    )
+    with (
+        patch(
+            "tools.devices.api_context",
+            side_effect=AssertionError("connection opened"),
+        ) as mock_context,
+        pytest.raises(ToolError) as exc_info,
+    ):
+        await tools["central_get_devices"](ctx, cursor=ap_cursor)
+
+    error = json.loads(str(exc_info.value))
+    assert error["code"] == "validation_error"
+    assert error["retryable"] is False
+    assert "invalid or stale cursor" in error["message"]
+    mock_context.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -271,20 +538,25 @@ async def test_get_gateways_no_filters(tools):
     "tool_arg,tool_value,expected_filter",
     [
         ("site_id", "62201157617", "siteId eq '62201157617'"),
-        ("site_name", "Bengaluru (BLR) - Branch", "siteName eq 'Bengaluru (BLR) - Branch'"),
-        ("serial_number", "DL0006948", "serialNumber eq 'DL0006948'"),
-        ("device_name", "BO-BLR-GTW01", "deviceName eq 'BO-BLR-GTW01'"),
+        (
+            "site_name",
+            "Bengaluru (BLR) - Branch",
+            "siteName eq 'Bengaluru (BLR) - Branch'",
+        ),
         ("model", "A7240XM", "model eq 'A7240XM'"),
-        ("status", "Online", "status eq 'Online'"),
+        ("device_status", "ONLINE", "status eq 'Online'"),
         ("cluster_name", "auto_group_168", "clusterName eq 'auto_group_168'"),
     ],
 )
-async def test_get_gateways_filter_field_mappings(tools, tool_arg, tool_value, expected_filter):
+async def test_get_gateways_filter_field_mappings(
+    tools, tool_arg, tool_value, expected_filter
+):
     ctx = make_ctx()
     with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_all_gateways", return_value=[]
+        "tools.devices.MonitoringGateways.get_gateways",
+        return_value=gateway_page(),
     ) as mock_api:
-        await tools["central_get_gateways"](ctx, **{tool_arg: tool_value})
+        await tools["central_get_devices"](ctx, **{tool_arg: tool_value})
     assert mock_api.call_args.kwargs["filter_str"] == expected_filter
 
 
@@ -293,21 +565,22 @@ async def test_get_gateways_status_title_case_online(tools):
     """status='Online' (title-case) produces the correct filter — not ONLINE."""
     ctx = make_ctx()
     with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_all_gateways",
-        return_value=[RAW_GATEWAY],
+        "tools.devices.MonitoringGateways.get_gateways",
+        return_value=gateway_page([RAW_GATEWAY]),
     ) as mock_api:
-        result = await tools["central_get_gateways"](ctx, status="Online")
+        result = await tools["central_get_devices"](ctx, device_status="ONLINE")
     assert mock_api.call_args.kwargs["filter_str"] == "status eq 'Online'"
-    assert isinstance(result, list)
+    assert isinstance(result, DeviceEnvelope)
 
 
 @pytest.mark.asyncio
 async def test_get_gateways_status_title_case_offline(tools):
     ctx = make_ctx()
     with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_all_gateways", return_value=[]
+        "tools.devices.MonitoringGateways.get_gateways",
+        return_value=gateway_page(),
     ) as mock_api:
-        await tools["central_get_gateways"](ctx, status="Offline")
+        await tools["central_get_devices"](ctx, device_status="OFFLINE")
     assert mock_api.call_args.kwargs["filter_str"] == "status eq 'Offline'"
 
 
@@ -315,21 +588,24 @@ async def test_get_gateways_status_title_case_offline(tools):
 async def test_get_gateways_empty_returns_string(tools):
     ctx = make_ctx()
     with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_all_gateways", return_value=[]
+        "tools.devices.MonitoringGateways.get_gateways",
+        return_value=gateway_page(),
     ):
-        result = await tools["central_get_gateways"](ctx, site_id="missing")
-    assert result == "No gateways found matching the specified criteria."
+        result = await tools["central_get_devices"](ctx, site_id="missing")
+    assert result.items == []
 
 
 @pytest.mark.asyncio
 async def test_get_gateways_api_error_returns_formatted_error(tools):
     ctx = make_ctx()
-    with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_all_gateways",
-        side_effect=Exception("boom"),
+    with (
+        patch(
+            "tools.devices.MonitoringGateways.get_gateways",
+            side_effect=Exception("boom"),
+        ),
+        pytest.raises(ToolError, match="boom"),
     ):
-        result = await tools["central_get_gateways"](ctx)
-    assert result == "Error fetching gateways: boom"
+        await tools["central_get_devices"](ctx)
 
 
 @pytest.mark.asyncio
@@ -338,13 +614,14 @@ async def test_get_gateways_parse_error_returns_formatted_error(tools):
     ctx = make_ctx()
     # serialNumber is required; omitting it triggers a Pydantic ValidationError
     bad_payload = [{"model": "A7240XM", "status": "Online"}]
-    with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_all_gateways",
-        return_value=bad_payload,
+    with (
+        patch(
+            "tools.devices.MonitoringGateways.get_gateways",
+            return_value=gateway_page(bad_payload),
+        ),
+        pytest.raises(ToolError, match="serialNumber"),
     ):
-        result = await tools["central_get_gateways"](ctx)
-    assert isinstance(result, str)
-    assert "parsing gateway data" in result
+        await tools["central_get_devices"](ctx)
 
 
 @pytest.mark.asyncio
@@ -352,29 +629,29 @@ async def test_get_gateways_null_optional_fields_excluded(tools):
     ctx = make_ctx()
     sparse = {"serialNumber": "GW001", "status": "Online"}
     with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_all_gateways",
-        return_value=[sparse],
+        "tools.devices.MonitoringGateways.get_gateways",
+        return_value=gateway_page([sparse]),
     ):
-        result = await tools["central_get_gateways"](ctx)
-    serialized = result[0].model_dump()
-    assert serialized == {"serial_number": "GW001", "status": "Online"}
-    assert "cluster_name" not in serialized
-    assert "model" not in serialized
+        result = await tools["central_get_devices"](ctx)
+    serialized = result.items[0].model_dump()
+    assert serialized["serial_number"] == "GW001"
+    assert serialized["status"] == "ONLINE"
+    assert serialized["device_type"] == "GATEWAY"
 
 
 @pytest.mark.asyncio
 async def test_get_gateways_sort_passed_through(tools):
     ctx = make_ctx()
     with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_all_gateways",
-        return_value=[RAW_GATEWAY],
+        "tools.devices.MonitoringGateways.get_gateways",
+        return_value=gateway_page([RAW_GATEWAY]),
     ) as mock_api:
-        await tools["central_get_gateways"](ctx, sort="deviceName asc")
+        await tools["central_get_devices"](ctx, sort="deviceName asc")
     assert mock_api.call_args.kwargs["sort"] == "deviceName ASC"
 
 
 # ---------------------------------------------------------------------------
-# central_get_gateway_details
+# central_get_device_details
 # ---------------------------------------------------------------------------
 
 
@@ -386,12 +663,22 @@ async def test_get_gateway_details_base_only(tools):
             "tools.gateway_monitoring.MonitoringGateways.get_gateway_details",
             return_value=dict(RAW_GATEWAY),
         ) as mock_details,
-        patch("tools.gateway_monitoring.MonitoringGateways.get_all_gateway_ports") as mock_ports,
-        patch("tools.gateway_monitoring.MonitoringGateways.get_all_gateway_tunnels") as mock_tunnels,
-        patch("tools.gateway_monitoring.MonitoringGateways.get_gateway_uplinks") as mock_uplinks,
-        patch("tools.gateway_monitoring.MonitoringGateways.get_all_gateway_vlans") as mock_vlans,
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_all_gateway_ports"
+        ) as mock_ports,
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_all_gateway_tunnels"
+        ) as mock_tunnels,
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_gateway_uplinks"
+        ) as mock_uplinks,
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_all_gateway_vlans"
+        ) as mock_vlans,
     ):
-        result = await tools["central_get_gateway_details"](ctx, serial_number="DL0006948")
+        result = await tools["central_get_device_details"](
+            ctx, serial_number="DL0006948"
+        )
 
     assert isinstance(result, GatewayDetail)
     assert result.serial_number == "DL0006948"
@@ -399,7 +686,9 @@ async def test_get_gateway_details_base_only(tools):
     assert result.tunnels is None
     assert result.uplinks is None
     assert result.vlans is None
-    mock_details.assert_called_once()
+    mock_details.assert_called_once_with(
+        central_conn=ctx.lifespan_context["conn"], serial_number="DL0006948"
+    )
     mock_ports.assert_not_called()
     mock_tunnels.assert_not_called()
     mock_uplinks.assert_not_called()
@@ -407,7 +696,7 @@ async def test_get_gateway_details_base_only(tools):
 
 
 @pytest.mark.asyncio
-async def test_get_gateway_details_include_ports(tools):
+async def test_get_gateway_details_include_dhcp_fetches_pools_and_leases(tools):
     ctx = make_ctx()
     with (
         patch(
@@ -415,20 +704,25 @@ async def test_get_gateway_details_include_ports(tools):
             return_value=dict(RAW_GATEWAY),
         ),
         patch(
-            "tools.gateway_monitoring.MonitoringGateways.get_all_gateway_ports",
-            return_value=[RAW_PORT],
-        ) as mock_ports,
+            "tools.gateway_monitoring.MonitoringGateways.get_all_gateway_dhcp_pools",
+            return_value=[RAW_DHCP_POOL],
+        ) as mock_pools,
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_all_gateway_dhcp_clients",
+            return_value=[RAW_DHCP_LEASE],
+        ) as mock_leases,
     ):
-        result = await tools["central_get_gateway_details"](
-            ctx, serial_number="DL0006948", include=["ports"]
+        result = await tools["central_get_device_details"](
+            ctx, serial_number="DL0006948", include=["dhcp"]
         )
 
     assert isinstance(result, GatewayDetail)
-    mock_ports.assert_called_once()
-    assert result.ports is not None
-    assert len(result.ports) == 1
-    assert result.ports[0].port_number == "0"
-    assert result.ports[0].name == "GE 0/0/0"
+    mock_pools.assert_called_once()
+    mock_leases.assert_called_once()
+    assert result.dhcp_pools[0].pool_name == "pool-1"
+    assert result.dhcp_pools[0].available_addresses == 96
+    assert result.dhcp_leases[0].ip_address == "192.168.3.4"
+    assert result.dhcp_leases[0].reservation == "No"
 
 
 @pytest.mark.asyncio
@@ -444,7 +738,7 @@ async def test_get_gateway_details_include_tunnels(tools):
             return_value=[RAW_TUNNEL],
         ) as mock_tunnels,
     ):
-        result = await tools["central_get_gateway_details"](
+        result = await tools["central_get_device_details"](
             ctx, serial_number="DL0006948", include=["tunnels"]
         )
 
@@ -469,7 +763,7 @@ async def test_get_gateway_details_include_uplinks_envelope_unwrapped(tools):
             return_value={"items": [RAW_UPLINK], "total": 1},
         ) as mock_uplinks,
     ):
-        result = await tools["central_get_gateway_details"](
+        result = await tools["central_get_device_details"](
             ctx, serial_number="DL0006948", include=["uplinks"]
         )
 
@@ -494,7 +788,7 @@ async def test_get_gateway_details_include_uplinks_empty_envelope(tools):
             return_value={"items": [], "total": 0},
         ),
     ):
-        result = await tools["central_get_gateway_details"](
+        result = await tools["central_get_device_details"](
             ctx, serial_number="DL0006948", include=["uplinks"]
         )
 
@@ -505,7 +799,7 @@ async def test_get_gateway_details_include_uplinks_empty_envelope(tools):
 
 
 @pytest.mark.asyncio
-async def test_get_gateway_details_include_vlans(tools):
+async def test_get_gateway_details_dhcp_empty_lists_are_preserved(tools):
     ctx = make_ctx()
     with (
         patch(
@@ -513,55 +807,115 @@ async def test_get_gateway_details_include_vlans(tools):
             return_value=dict(RAW_GATEWAY),
         ),
         patch(
-            "tools.gateway_monitoring.MonitoringGateways.get_all_gateway_vlans",
-            return_value=[RAW_VLAN],
-        ) as mock_vlans,
+            "tools.gateway_monitoring.MonitoringGateways.get_all_gateway_dhcp_pools",
+            return_value=[],
+        ),
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_all_gateway_dhcp_clients",
+            return_value=[],
+        ),
     ):
-        result = await tools["central_get_gateway_details"](
-            ctx, serial_number="DL0006948", include=["vlans"]
+        result = await tools["central_get_device_details"](
+            ctx, serial_number="DL0006948", include=["dhcp"]
         )
 
     assert isinstance(result, GatewayDetail)
-    mock_vlans.assert_called_once()
-    assert result.vlans is not None
-    assert result.vlans[0].vlan_id == 1330
-    assert result.vlans[0].ipv4_subnet == "10.97.55.248/24"
+    assert result.dhcp_pools == []
+    assert result.dhcp_leases == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "include,method_name,response,attribute,expected",
+    [
+        ("ports", "get_all_gateway_ports", [RAW_PORT], "port_number", "0"),
+        ("vlans", "get_all_gateway_vlans", [RAW_VLAN], "vlan_id", 1330),
+    ],
+)
+async def test_get_gateway_details_restored_ports_and_vlans_includes(
+    tools, include, method_name, response, attribute, expected
+):
+    ctx = make_ctx()
+    with (
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_gateway_details",
+            return_value=dict(RAW_GATEWAY),
+        ),
+        patch(
+            f"tools.gateway_monitoring.MonitoringGateways.{method_name}",
+            return_value=response,
+        ) as mock_include,
+    ):
+        result = await tools["central_get_device_details"](
+            ctx, serial_number="DL0006948", include=[include]
+        )
+    mock_include.assert_called_once()
+    included = getattr(result, include)
+    assert included and getattr(included[0], attribute) == expected
+
+
+@pytest.mark.asyncio
+async def test_get_gateway_details_rejects_switch_include_before_detail_fetch(tools):
+    ctx = make_ctx()
+    with (
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_gateway_details",
+            side_effect=AssertionError("detail fetch opened"),
+        ) as mock_details,
+        pytest.raises(ToolError, match=r"interfaces.*device_type='gateway'"),
+    ):
+        await tools["central_get_device_details"](
+            ctx, serial_number="DL0006948", include=["interfaces"]
+        )
+    mock_details.assert_not_called()
+
+
+def test_gateway_dhcp_model_fields_all_have_descriptions():
+    for model in (GatewayDHCPPool, GatewayDHCPLease):
+        assert all(field.description for field in model.model_fields.values())
 
 
 @pytest.mark.asyncio
 async def test_get_gateway_details_not_found(tools):
     ctx = make_ctx()
-    with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_gateway_details", return_value=None
+    with (
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_gateway_details",
+            return_value=None,
+        ),
+        pytest.raises(ToolError, match="No gateway found"),
     ):
-        result = await tools["central_get_gateway_details"](ctx, serial_number="MISSING")
-    assert "No gateway found for serial number 'MISSING'" in result
+        await tools["central_get_device_details"](ctx, serial_number="MISSING")
 
 
 @pytest.mark.asyncio
 async def test_get_gateway_details_empty_dict_not_found(tools):
     ctx = make_ctx()
-    with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_gateway_details", return_value={}
+    with (
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_gateway_details",
+            return_value={},
+        ),
+        pytest.raises(ToolError, match="No gateway found"),
     ):
-        result = await tools["central_get_gateway_details"](ctx, serial_number="MISSING2")
-    assert "No gateway found for serial number 'MISSING2'" in result
+        await tools["central_get_device_details"](ctx, serial_number="MISSING2")
 
 
 @pytest.mark.asyncio
 async def test_get_gateway_details_fetch_error(tools):
     ctx = make_ctx()
-    with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_gateway_details",
-        side_effect=Exception("connection refused"),
+    with (
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_gateway_details",
+            side_effect=Exception("connection refused"),
+        ),
+        pytest.raises(ToolError, match="connection refused"),
     ):
-        result = await tools["central_get_gateway_details"](ctx, serial_number="DL0006948")
-    assert "Error fetching gateway details" in result
-    assert "connection refused" in result
+        await tools["central_get_device_details"](ctx, serial_number="DL0006948")
 
 
 # ---------------------------------------------------------------------------
-# central_get_gateway_trends — scope validation
+# central_get_device_trends — scope validation
 # ---------------------------------------------------------------------------
 
 
@@ -573,16 +927,16 @@ async def test_get_gateway_trends_gateway_cpu(tools):
         "tools.gateway_monitoring.MonitoringGateways.get_gateway_trends",
         return_value=samples,
     ) as mock_trends:
-        result = await tools["central_get_gateway_trends"](
+        result = await tools["central_get_device_trends"](
             ctx,
             serial_number="DL0006948",
             metric="cpu-utilization",
             scope="gateway",
         )
 
-    assert isinstance(result, list)
-    assert isinstance(result[0], TrendSample)
-    assert result[0].model_dump()["cpu_utilization"] == 2
+    assert isinstance(result, DeviceTrendsEnvelope)
+    assert isinstance(result.items[0], TrendSample)
+    assert result.items[0].model_dump()["cpu_utilization"] == 2
     call_kwargs = mock_trends.call_args.kwargs
     assert call_kwargs["metric"] == "cpu-utilization"
 
@@ -595,12 +949,12 @@ async def test_get_gateway_trends_gateway_memory(tools):
         "tools.gateway_monitoring.MonitoringGateways.get_gateway_trends",
         return_value=samples,
     ):
-        result = await tools["central_get_gateway_trends"](
+        result = await tools["central_get_device_trends"](
             ctx,
             serial_number="DL0006948",
             metric="memory-utilization",
         )
-    assert result[0].model_dump()["memory_utilization"] == 20
+    assert result.items[0].model_dump()["memory_utilization"] == 20
 
 
 @pytest.mark.asyncio
@@ -612,12 +966,12 @@ async def test_get_gateway_trends_wan_availability_minus_one(tools):
         "tools.gateway_monitoring.MonitoringGateways.get_gateway_trends",
         return_value=samples,
     ):
-        result = await tools["central_get_gateway_trends"](
+        result = await tools["central_get_device_trends"](
             ctx,
             serial_number="DL0006948",
             metric="wan-availability",
         )
-    assert result[0].model_dump()["wan_availability"] == -1
+    assert result.items[0].model_dump()["wan_availability"] == -1
 
 
 @pytest.mark.asyncio
@@ -629,7 +983,7 @@ async def test_get_gateway_trends_port_throughput(tools):
         "tools.gateway_monitoring.MonitoringGateways.get_gateway_port_trends",
         return_value=samples,
     ) as mock_port_trends:
-        result = await tools["central_get_gateway_trends"](
+        result = await tools["central_get_device_trends"](
             ctx,
             serial_number="DL0006948",
             metric="throughput",
@@ -637,8 +991,8 @@ async def test_get_gateway_trends_port_throughput(tools):
             port_number="0",
         )
 
-    assert isinstance(result, list)
-    assert result[0].model_dump()["tx"] == 27442
+    assert isinstance(result, DeviceTrendsEnvelope)
+    assert result.items[0].model_dump()["tx"] == 27442
     assert mock_port_trends.call_args.kwargs["port_number"] == "0"
 
 
@@ -651,7 +1005,7 @@ async def test_get_gateway_trends_tunnel_throughput(tools):
         "tools.gateway_monitoring.MonitoringGateways.get_gateway_tunnel_trends",
         return_value=samples,
     ) as mock_tunnel_trends:
-        result = await tools["central_get_gateway_trends"](
+        result = await tools["central_get_device_trends"](
             ctx,
             serial_number="DL0006948",
             metric="throughput",
@@ -659,8 +1013,11 @@ async def test_get_gateway_trends_tunnel_throughput(tools):
             tunnel_name="BO-BLR-GTW01:inet::BO-BLR-AP04:inet",
         )
 
-    assert isinstance(result, list)
-    assert mock_tunnel_trends.call_args.kwargs["tunnel_name"] == "BO-BLR-GTW01:inet::BO-BLR-AP04:inet"
+    assert isinstance(result, DeviceTrendsEnvelope)
+    assert (
+        mock_tunnel_trends.call_args.kwargs["tunnel_name"]
+        == "BO-BLR-GTW01:inet::BO-BLR-AP04:inet"
+    )
 
 
 @pytest.mark.asyncio
@@ -672,7 +1029,7 @@ async def test_get_gateway_trends_uplink_scope(tools):
         "tools.gateway_monitoring.MonitoringGateways.get_gateway_uplink_trends",
         return_value=samples,
     ) as mock_uplink_trends:
-        result = await tools["central_get_gateway_trends"](
+        result = await tools["central_get_device_trends"](
             ctx,
             serial_number="DL0006948",
             metric="throughput",
@@ -680,7 +1037,7 @@ async def test_get_gateway_trends_uplink_scope(tools):
             link_tag="uplink-0",
         )
 
-    assert isinstance(result, list)
+    assert isinstance(result, DeviceTrendsEnvelope)
     assert mock_uplink_trends.call_args.kwargs["link_tag"] == "uplink-0"
 
 
@@ -688,70 +1045,65 @@ async def test_get_gateway_trends_uplink_scope(tools):
 async def test_get_gateway_trends_port_missing_port_number(tools):
     """scope='port' without port_number returns formatted error containing 'port_number'."""
     ctx = make_ctx()
-    result = await tools["central_get_gateway_trends"](
-        ctx,
-        serial_number="DL0006948",
-        metric="throughput",
-        scope="port",
-    )
-    assert isinstance(result, str)
-    assert "port_number" in result
+    with pytest.raises(ToolError, match="port_number"):
+        await tools["central_get_device_trends"](
+            ctx,
+            serial_number="DL0006948",
+            metric="throughput",
+            scope="port",
+        )
 
 
 @pytest.mark.asyncio
 async def test_get_gateway_trends_tunnel_missing_tunnel_name(tools):
     """scope='tunnel' without tunnel_name returns formatted error containing 'tunnel_name'."""
     ctx = make_ctx()
-    result = await tools["central_get_gateway_trends"](
-        ctx,
-        serial_number="DL0006948",
-        metric="throughput",
-        scope="tunnel",
-    )
-    assert isinstance(result, str)
-    assert "tunnel_name" in result
+    with pytest.raises(ToolError, match="tunnel_name"):
+        await tools["central_get_device_trends"](
+            ctx,
+            serial_number="DL0006948",
+            metric="throughput",
+            scope="tunnel",
+        )
 
 
 @pytest.mark.asyncio
 async def test_get_gateway_trends_uplink_missing_link_tag(tools):
     """scope='uplink' without link_tag returns formatted error containing 'link_tag'."""
     ctx = make_ctx()
-    result = await tools["central_get_gateway_trends"](
-        ctx,
-        serial_number="DL0006948",
-        metric="throughput",
-        scope="uplink",
-    )
-    assert isinstance(result, str)
-    assert "link_tag" in result
+    with pytest.raises(ToolError, match="link_tag"):
+        await tools["central_get_device_trends"](
+            ctx,
+            serial_number="DL0006948",
+            metric="throughput",
+            scope="uplink",
+        )
 
 
 @pytest.mark.asyncio
 async def test_get_gateway_trends_invalid_metric_for_gateway_scope(tools):
     """scope='gateway' with a port-only metric returns error naming valid gateway metrics."""
     ctx = make_ctx()
-    result = await tools["central_get_gateway_trends"](
-        ctx,
-        serial_number="DL0006948",
-        metric="frames-errors",  # port-only metric
-        scope="gateway",
-    )
-    assert isinstance(result, str)
-    assert "cpu-utilization" in result
+    with pytest.raises(ToolError, match="cpu-utilization"):
+        await tools["central_get_device_trends"](
+            ctx,
+            serial_number="DL0006948",
+            metric="frames-errors",  # port-only metric
+            scope="gateway",
+        )
 
 
 @pytest.mark.asyncio
 async def test_get_gateway_trends_invalid_scope(tools):
     """An unrecognized scope returns a formatted error naming valid scopes."""
     ctx = make_ctx()
-    result = await tools["central_get_gateway_trends"](
-        ctx,
-        serial_number="DL0006948",
-        metric="cpu-utilization",
-        scope="blade",  # invalid
-    )
-    assert isinstance(result, str)
-    assert "gateway" in result
+    with pytest.raises(ToolError, match="gateway"):
+        await tools["central_get_device_trends"](
+            ctx,
+            serial_number="DL0006948",
+            metric="cpu-utilization",
+            scope="blade",  # invalid
+        )
 
 
 @pytest.mark.asyncio
@@ -763,7 +1115,7 @@ async def test_get_gateway_trends_explicit_time_window(tools):
         "tools.gateway_monitoring.MonitoringGateways.get_gateway_trends",
         return_value=samples,
     ) as mock_trends:
-        await tools["central_get_gateway_trends"](
+        await tools["central_get_device_trends"](
             ctx,
             serial_number="DL0006948",
             metric="cpu-utilization",
@@ -779,30 +1131,34 @@ async def test_get_gateway_trends_explicit_time_window(tools):
 async def test_get_gateway_trends_empty_returns_string(tools):
     ctx = make_ctx()
     with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_gateway_trends", return_value=[]
+        "tools.gateway_monitoring.MonitoringGateways.get_gateway_trends",
+        return_value=[],
     ):
-        result = await tools["central_get_gateway_trends"](
+        result = await tools["central_get_device_trends"](
             ctx,
             serial_number="DL0006948",
             metric="cpu-utilization",
         )
-    assert "No gateway trend data found for serial number 'DL0006948'" in result
+    assert isinstance(result, DeviceTrendsEnvelope)
+    assert result.items == []
+    assert result.meta.returned == 0
 
 
 @pytest.mark.asyncio
 async def test_get_gateway_trends_api_exception(tools):
     ctx = make_ctx()
-    with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_gateway_trends",
-        side_effect=RuntimeError("upstream failure"),
+    with (
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_gateway_trends",
+            side_effect=RuntimeError("upstream failure"),
+        ),
+        pytest.raises(ToolError, match="upstream failure"),
     ):
-        result = await tools["central_get_gateway_trends"](
+        await tools["central_get_device_trends"](
             ctx,
             serial_number="DL0006948",
             metric="cpu-utilization",
         )
-    assert "Error fetching gateway trends" in result
-    assert "upstream failure" in result
 
 
 # ---------------------------------------------------------------------------
@@ -818,15 +1174,16 @@ async def test_get_gateway_trends_temperature_normalization(tools):
         "tools.gateway_monitoring.MonitoringGateways.get_gateway_trends",
         return_value=RAW_TEMPERATURE_LIST,
     ):
-        result = await tools["central_get_gateway_trends"](
+        result = await tools["central_get_device_trends"](
             ctx,
             serial_number="DL0006948",
             metric="hardware-temperature",
         )
 
-    assert isinstance(result, list)
-    assert len(result) == 1  # single shared timestamp
-    sample = result[0].model_dump()
+    assert isinstance(result, DeviceTrendsEnvelope)
+    assert len(result.items) == 1  # single shared timestamp
+    assert result.meta.total_available == 1
+    sample = result.items[0].model_dump()
     assert sample["timestamp"] == "2026-06-05T19:05:00Z"
     assert sample["CPU"] == 42
     assert sample["Ambient"] == 30
@@ -860,14 +1217,14 @@ async def test_get_gateway_trends_temperature_multiple_timestamps(tools):
         "tools.gateway_monitoring.MonitoringGateways.get_gateway_trends",
         return_value=raw,
     ):
-        result = await tools["central_get_gateway_trends"](
+        result = await tools["central_get_device_trends"](
             ctx,
             serial_number="DL0006948",
             metric="hardware-temperature",
         )
 
-    assert len(result) == 2
-    samples = [r.model_dump() for r in result]
+    assert len(result.items) == 2
+    samples = [r.model_dump() for r in result.items]
     assert samples[0]["CPU"] == 42
     assert samples[0]["Ambient"] == 30
     assert samples[1]["CPU"] == 43
@@ -894,7 +1251,7 @@ def test_normalize_temperature_trends_empty_input():
 
 @pytest.mark.asyncio
 async def test_get_gateway_cluster_default(tools):
-    """Default snapshot (no includes) returns GatewayCluster with members and tunnel health."""
+    """Default snapshot returns one typed cluster item with member health."""
     ctx = make_ctx()
     with patch(
         "tools.gateway_monitoring.fetch_cluster_snapshot",
@@ -904,12 +1261,14 @@ async def test_get_gateway_cluster_default(tools):
             ctx, cluster_name="auto_group_168"
         )
 
-    assert isinstance(result, GatewayCluster)
-    assert result.cluster_name == "auto_group_168"
-    assert len(result.members) == 1
-    assert result.members[0].serial_number == "DL0006948"
-    assert result.members[0].status == "ONLINE"
-    assert result.tunnel_health_summary is not None
+    assert isinstance(result, GatewayClusterEnvelope)
+    assert isinstance(result.items[0], GatewayCluster)
+    cluster = result.items[0]
+    assert cluster.cluster_name == "auto_group_168"
+    assert len(cluster.members) == 1
+    assert cluster.members[0].serial_number == "DL0006948"
+    assert cluster.members[0].status == "ONLINE"
+    assert cluster.tunnel_health_summary is not None
     mock_snapshot.assert_called_once_with(
         mock_snapshot.call_args.args[0],  # conn
         "auto_group_168",
@@ -935,9 +1294,9 @@ async def test_get_gateway_cluster_with_vlan_mismatch_include(tools):
             ctx, cluster_name="auto_group_168", include=["vlan_mismatch"]
         )
 
-    assert isinstance(result, GatewayCluster)
-    assert result.vlan_mismatch is not None
-    assert result.vlan_mismatch["good"] == 1
+    cluster = result.items[0]
+    assert cluster.vlan_mismatch is not None
+    assert cluster.vlan_mismatch["good"] == 1
 
 
 @pytest.mark.asyncio
@@ -949,7 +1308,9 @@ async def test_get_gateway_cluster_with_connectivity_include(tools):
             {
                 "role": "Member",
                 "health": "Good",
-                "peers": [{"vlanMismatch": "Yes", "mismatchedVlan": 1, "name": "BO-BLR-GTW02"}],
+                "peers": [
+                    {"vlanMismatch": "Yes", "mismatchedVlan": 1, "name": "BO-BLR-GTW02"}
+                ],
                 "name": "BO-BLR-GTW01",
                 "serial": "DL0006948",
             }
@@ -964,27 +1325,32 @@ async def test_get_gateway_cluster_with_connectivity_include(tools):
             ctx, cluster_name="auto_group_168", include=["connectivity"]
         )
 
-    assert isinstance(result, GatewayCluster)
-    assert result.connectivity is not None
-    assert len(result.connectivity["nodes"]) == 1
+    cluster = result.items[0]
+    assert cluster.connectivity is not None
+    assert len(cluster.connectivity["nodes"]) == 1
 
 
 @pytest.mark.asyncio
-async def test_get_gateway_cluster_empty_members_returns_string(tools):
+async def test_get_gateway_cluster_empty_members_is_empty_envelope(tools):
     ctx = make_ctx()
     with patch(
         "tools.gateway_monitoring.fetch_cluster_snapshot",
-        return_value={"cluster_name": "empty_cluster", "members": [], "tunnel_health_summary": []},
+        return_value={
+            "cluster_name": "empty_cluster",
+            "members": [],
+            "tunnel_health_summary": [],
+        },
     ):
         result = await tools["central_get_gateway_cluster"](
             ctx, cluster_name="empty_cluster"
         )
-    assert isinstance(result, str)
-    assert "empty_cluster" in result
+    assert isinstance(result, GatewayClusterEnvelope)
+    assert result.items == []
+    assert result.meta.returned == 0
 
 
 @pytest.mark.asyncio
-async def test_get_gateway_cluster_none_result_returns_string(tools):
+async def test_get_gateway_cluster_none_result_is_empty_envelope(tools):
     ctx = make_ctx()
     with patch(
         "tools.gateway_monitoring.fetch_cluster_snapshot",
@@ -993,78 +1359,110 @@ async def test_get_gateway_cluster_none_result_returns_string(tools):
         result = await tools["central_get_gateway_cluster"](
             ctx, cluster_name="nonexistent"
         )
-    assert isinstance(result, str)
-    assert "nonexistent" in result
+    assert isinstance(result, GatewayClusterEnvelope)
+    assert result.items == []
 
 
 @pytest.mark.asyncio
 async def test_get_gateway_cluster_api_error(tools):
     ctx = make_ctx()
-    with patch(
-        "tools.gateway_monitoring.fetch_cluster_snapshot",
-        side_effect=Exception("network timeout"),
+    with (
+        patch(
+            "tools.gateway_monitoring.fetch_cluster_snapshot",
+            side_effect=Exception("network timeout"),
+        ),
+        pytest.raises(ToolError, match="network timeout"),
     ):
-        result = await tools["central_get_gateway_cluster"](
-            ctx, cluster_name="auto_group_168"
-        )
-    assert "Error fetching gateway cluster" in result
-    assert "network timeout" in result
+        await tools["central_get_gateway_cluster"](ctx, cluster_name="auto_group_168")
 
 
 # ---------------------------------------------------------------------------
-# central_get_cluster_capacity_trends
+# central_get_gateway_cluster include=capacity
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_cluster_capacity_trends_normalized(tools):
-    """Returns flat list with capacity_type and all metric keys."""
+async def test_get_gateway_cluster_include_capacity_normalized(tools):
+    """Capacity include adds typed flat samples to the cluster item."""
     ctx = make_ctx()
-    with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_cluster_capacity_trends",
-        return_value=RAW_CAPACITY_TRENDS,
-    ) as mock_capacity:
-        result = await tools["central_get_cluster_capacity_trends"](
-            ctx, cluster_name="auto_group_168"
+    with (
+        patch(
+            "tools.gateway_monitoring.fetch_cluster_snapshot",
+            return_value=dict(RAW_CLUSTER_SNAPSHOT),
+        ) as mock_snapshot,
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_cluster_capacity_trends",
+            return_value=RAW_CAPACITY_TRENDS,
+        ) as mock_capacity,
+    ):
+        result = await tools["central_get_gateway_cluster"](
+            ctx,
+            cluster_name="auto_group_168",
+            include=["capacity"],
         )
 
-    assert isinstance(result, list)
-    # Two capacity types, one sample each = 2 items
-    assert len(result) == 2
-    client_sample = next(r for r in result if r["capacity_type"] == "client_capacity")
-    device_sample = next(r for r in result if r["capacity_type"] == "device_capacity")
-    assert client_sample["cluster_client_max_capacity"] == 65536
-    assert client_sample["active_client_count"] == 0
-    assert device_sample["active_ap_count"] == 1
-    assert device_sample["cluster_device_max_capacity"] == 16384
+    mock_snapshot.assert_called_once_with(
+        mock_snapshot.call_args.args[0],
+        "auto_group_168",
+        None,
+    )
+    capacity = result.items[0].capacity
+    assert capacity is not None
+    assert all(isinstance(item, CapacityTrendSample) for item in capacity)
+    client_sample = next(
+        item for item in capacity if item.capacity_type == "client_capacity"
+    )
+    device_sample = next(
+        item for item in capacity if item.capacity_type == "device_capacity"
+    )
+    assert client_sample.cluster_client_max_capacity == 65536
+    assert client_sample.active_client_count == 0
+    assert device_sample.active_ap_count == 1
+    assert device_sample.cluster_device_max_capacity == 16384
     call_kwargs = mock_capacity.call_args.kwargs
     assert call_kwargs["cluster_name"] == "auto_group_168"
     assert call_kwargs["return_raw_response"] is True
 
 
 @pytest.mark.asyncio
-async def test_get_cluster_capacity_trends_serial_number_passed_through(tools):
+async def test_get_gateway_cluster_capacity_serial_number_passed_through(tools):
     ctx = make_ctx()
-    with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_cluster_capacity_trends",
-        return_value=RAW_CAPACITY_TRENDS,
-    ) as mock_capacity:
-        await tools["central_get_cluster_capacity_trends"](
-            ctx, cluster_name="auto_group_168", serial_number="DL0006948"
+    with (
+        patch(
+            "tools.gateway_monitoring.fetch_cluster_snapshot",
+            return_value=dict(RAW_CLUSTER_SNAPSHOT),
+        ),
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_cluster_capacity_trends",
+            return_value=RAW_CAPACITY_TRENDS,
+        ) as mock_capacity,
+    ):
+        await tools["central_get_gateway_cluster"](
+            ctx,
+            cluster_name="auto_group_168",
+            include=["capacity"],
+            serial_number="DL0006948",
         )
     assert mock_capacity.call_args.kwargs["serial_number"] == "DL0006948"
 
 
 @pytest.mark.asyncio
-async def test_get_cluster_capacity_trends_explicit_time_window(tools):
+async def test_get_gateway_cluster_capacity_explicit_time_window(tools):
     ctx = make_ctx()
-    with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_cluster_capacity_trends",
-        return_value=RAW_CAPACITY_TRENDS,
-    ) as mock_capacity:
-        await tools["central_get_cluster_capacity_trends"](
+    with (
+        patch(
+            "tools.gateway_monitoring.fetch_cluster_snapshot",
+            return_value=dict(RAW_CLUSTER_SNAPSHOT),
+        ),
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_cluster_capacity_trends",
+            return_value=RAW_CAPACITY_TRENDS,
+        ) as mock_capacity,
+    ):
+        await tools["central_get_gateway_cluster"](
             ctx,
             cluster_name="auto_group_168",
+            include=["capacity"],
             start_time="2026-06-05T18:00:00.000Z",
             end_time="2026-06-05T19:00:00.000Z",
         )
@@ -1074,30 +1472,65 @@ async def test_get_cluster_capacity_trends_explicit_time_window(tools):
 
 
 @pytest.mark.asyncio
-async def test_get_cluster_capacity_trends_empty_returns_string(tools):
+async def test_get_gateway_cluster_capacity_empty_is_additive_empty_list(tools):
     ctx = make_ctx()
-    with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_cluster_capacity_trends",
-        return_value=[],
+    with (
+        patch(
+            "tools.gateway_monitoring.fetch_cluster_snapshot",
+            return_value=dict(RAW_CLUSTER_SNAPSHOT),
+        ),
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_cluster_capacity_trends",
+            return_value=[],
+        ),
     ):
-        result = await tools["central_get_cluster_capacity_trends"](
-            ctx, cluster_name="auto_group_168"
+        result = await tools["central_get_gateway_cluster"](
+            ctx,
+            cluster_name="auto_group_168",
+            include=["capacity"],
         )
-    assert "No capacity trend data found for cluster 'auto_group_168'" in result
+    assert result.items[0].capacity == []
 
 
 @pytest.mark.asyncio
-async def test_get_cluster_capacity_trends_api_error(tools):
+async def test_get_gateway_cluster_capacity_api_error_raises_tool_error(tools):
     ctx = make_ctx()
-    with patch(
-        "tools.gateway_monitoring.MonitoringGateways.get_cluster_capacity_trends",
-        side_effect=Exception("API error"),
+    with (
+        patch(
+            "tools.gateway_monitoring.fetch_cluster_snapshot",
+            return_value=dict(RAW_CLUSTER_SNAPSHOT),
+        ),
+        patch(
+            "tools.gateway_monitoring.MonitoringGateways.get_cluster_capacity_trends",
+            side_effect=Exception("API error"),
+        ),
+        pytest.raises(ToolError, match="API error"),
     ):
-        result = await tools["central_get_cluster_capacity_trends"](
-            ctx, cluster_name="auto_group_168"
+        await tools["central_get_gateway_cluster"](
+            ctx,
+            cluster_name="auto_group_168",
+            include=["capacity"],
         )
-    assert "Error fetching cluster capacity trends" in result
-    assert "API error" in result
+
+
+@pytest.mark.asyncio
+async def test_get_gateway_cluster_capacity_params_require_include_before_connection(
+    tools,
+):
+    ctx = make_ctx()
+    with (
+        patch(
+            "tools.gateway_monitoring.api_context",
+            side_effect=AssertionError("connection opened"),
+        ) as mock_context,
+        pytest.raises(ToolError, match=r"serial_number.*include='capacity'"),
+    ):
+        await tools["central_get_gateway_cluster"](
+            ctx,
+            cluster_name="auto_group_168",
+            serial_number="DL0006948",
+        )
+    mock_context.assert_not_called()
 
 
 def test_normalize_capacity_trends_standalone():

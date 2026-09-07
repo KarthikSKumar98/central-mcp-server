@@ -39,7 +39,7 @@ Community MCP server for HPE Aruba Networking Central. This exposes your Central
 
 ## Overview
 
-`central-mcp-server` wraps Central REST APIs and exposes them as [MCP (Model Context Protocol)](https://modelcontextprotocol.io) tools — **25 MCP tools spanning 85+ distinct Central REST API endpoints**. Once configured, AI assistants like Claude or GitHub Copilot can answer questions like:
+`central-mcp-server` wraps Central REST APIs and exposes them as [MCP (Model Context Protocol)](https://modelcontextprotocol.io) tools — **12 MCP tools** across inventory, monitoring, events, alerts, and troubleshooting. Once configured, AI assistants like Claude or GitHub Copilot can answer questions like:
 
 - *"Which sites have poor health scores right now?"*
 - *"Show me all failed wireless clients at HQ in the last 24 hours."*
@@ -306,69 +306,19 @@ graph TD
 
 ### Tools
 
-These 25 tools reach **85+ distinct Central REST API endpoints** — a single tool such as `central_get_switch_details` fans out to as many as 9 endpoints via its `include` parameter.
+The 0.2.0 surface folds related operations into 12 tools. Envelope-returning reads default to `response_format="concise"`; use `"detailed"` for full item fields.
 
-#### Sites
 | Tool | Description |
 |------|-------------|
-| `central_get_sites` | Detailed health metrics for one or more sites (device/client/alert counts, health score) |
-| `central_get_summary` | Lightweight mapping of all site names to IDs and health scores |
-
-#### Devices
-| Tool | Description |
-|------|-------------|
-| `central_get_devices` | Filtered list of devices — filter by type, site, model, serial number, and more |
-| `central_find_device` | Look up a single device by serial number or device name |
-
-#### AP Monitoring
-| Tool | Description |
-|------|-------------|
-| `central_get_aps` | Filtered list of access points — filter by site, serial number, status, model, firmware version, deployment, or cluster |
-| `central_get_ap_details` | Detailed snapshot for a single AP by serial number; optionally embed richer radio (RF health) and uplink-port data via `include`. |
-| `central_get_ap_trends` | Time-series trends for an AP, a radio (`radio_number`), or an uplink port (`port_index`) over a time window — CPU/memory/power/throughput, RF channel/noise, port errors. |
-
-#### Switch Monitoring
-| Tool | Description |
-|------|-------------|
-| `central_get_switches` | Filtered list of switches — filter by site, model, status (title-case `Online`/`Offline`), or deployment (`Standalone`/`Stack`/`VSX`); each item embeds a current hardware-trend snapshot. |
-| `central_get_switch_details` | Detailed snapshot for a single switch (or stack conductor) by serial number; optionally add interfaces, VLANs, PoE, LAG, VSX, stack members, and hardware health via `include`. |
-| `central_get_switch_trends` | Time-series trends for a switch at hardware scope (CPU/memory/temperature/PoE/power) or interface scope (throughput/error counters) over a time window — all metrics returned per sample. |
-
-#### Gateway Monitoring
-| Tool | Description |
-|------|-------------|
-| `central_get_gateways` | Filtered list of gateways — filter by site, serial number, device name, model, status (title-case `Online`/`Offline`), or cluster name. |
-| `central_get_gateway_details` | Detailed snapshot for a single gateway by serial number; optionally add ports, tunnels, uplinks, and VLANs via `include`. |
-| `central_get_gateway_trends` | Time-series trends for a gateway, port (`port_number`), tunnel (`tunnel_name`), or uplink (`link_tag`) over a time window — CPU/memory/availability/temperature, throughput, errors. |
-| `central_get_gateway_cluster` | Snapshot of a gateway cluster — members and per-member tunnel health; optionally add cluster tunnels, VLAN-mismatch summary, and connectivity graph via `include`. |
-| `central_get_cluster_capacity_trends` | Capacity trend samples for a cluster — client and device (AP/switch) counts and percentages vs maximum capacity over a time window. |
-
-#### WLAN
-| Tool | Description |
-|------|-------------|
-| `central_get_wlans` | Configured WLANs (SSIDs) with optional filtering by WLAN name, site, and sort fields; filter by `serial_number` to list WLANs broadcast by a specific AP. |
-| `central_get_wlan_stats` | Throughput trend samples (tx/rx bps) for a specific WLAN over a selected time window |
-
-#### Clients
-| Tool | Description |
-|------|-------------|
-| `central_get_clients` | Filtered list of clients — filter by connection type, status, VLAN, WLAN, and more |
-| `central_find_client` | Look up a single client by MAC address |
-
-#### Alerts
-| Tool | Description |
-|------|-------------|
-| `central_get_alerts` | Active, cleared, or deferred alerts for a site — filter by device type or category |
-
-#### Events
-| Tool | Description |
-|------|-------------|
-| `central_get_events` | Events for a site, device, or client within a time window |
-| `central_get_events_count` | Event count breakdown by type with `response_mode="full"` (counts) or `response_mode="compact"` (ranked event id/name pairs + lists) |
-
-#### Troubleshooting
-| Tool | Description |
-|------|-------------|
+| `central_get_devices` | Browse inventory or family monitoring data; exact serial/name lookup is supported. |
+| `central_get_device_details` | Retrieve AP, switch, or gateway detail with family-specific includes. |
+| `central_get_device_trends` | Retrieve bounded AP, switch, or gateway time-series samples. |
+| `central_get_clients` | Browse filtered clients or look up one exact MAC address. |
+| `central_get_sites` | Retrieve summary or detailed site health views. |
+| `central_get_wlans` | List WLANs or add throughput to one exact SSID. |
+| `central_get_gateway_cluster` | Retrieve cluster members, health, and optional capacity/resources. |
+| `central_get_events` | Retrieve event records (`mode="records"`) or facets (`mode="facets"`). |
+| `central_get_alerts` | Retrieve filtered active, cleared, or deferred alerts for a site. |
 | `central_run_network_test` | Run a live network diagnostic (ping, traceroute, http, https, tcp, nslookup) against a device — device family resolved automatically from serial number |
 | `central_run_show_commands` | Execute show commands on a device; auto-validates against the device's supported command catalog and returns the catalog on any mismatch |
 | `central_bounce_port` | Bounce ports or toggle PoE on CX/AOS-S switches and gateways — fetches live interface state and requires user confirmation before executing |
@@ -379,10 +329,10 @@ Use this sequence for faster, lower-token event investigations:
 
 1. For site-level queries, call events tools with `site_id` only.
 2. For device/client queries, pass `site_id` plus `context_type` and `context_identifier`.
-3. Call `central_get_events_count` with `response_mode="compact"` to get ranked `event_names` (each with `event_id` + `event_name`), `source_types`, and `categories`.
+3. Call `central_get_events` with `mode="facets"` and `response_mode="compact"` to get ranked event names, source types, and categories.
 4. Pick the top category/source/event name as your likely starting point.
-5. Call `central_get_events` with targeted filters (`category`, `source_type`, and/or `event_id`) to fetch detailed records.
-6. Use `central_get_events_count` with `response_mode="full"` only when exact per-item counts are required.
+5. Call `central_get_events` with `mode="records"` and targeted filters to fetch detailed records.
+6. Use `mode="facets"`, `response_mode="full"` only when exact per-value counts are required.
 
 ### Guided Prompts
 

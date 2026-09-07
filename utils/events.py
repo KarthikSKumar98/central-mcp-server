@@ -64,10 +64,15 @@ def _resolve_time_window(
 ) -> tuple[str, str]:
     """Return (start_at, end_at) as RFC 3339 strings.
 
-    If both start_time and end_time are provided, use them as-is.
-    Otherwise compute the window from the time_range preset.
+    If both start_time and end_time are provided, use them as-is. If exactly one
+    is provided, reject the partial custom window. Otherwise compute the window
+    from the time_range preset.
     """
-    if start_time and end_time:
+    if (start_time is None) != (end_time is None):
+        raise ValueError(
+            "start_time and end_time must be provided together, or both omitted."
+        )
+    if start_time is not None and end_time is not None:
         return start_time, end_time
     start_dt, end_dt = compute_time_window(time_range)
     return format_rfc3339(start_dt), format_rfc3339(end_dt)

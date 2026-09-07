@@ -1,21 +1,14 @@
-"""Tests for tools/switch_monitoring.py — central_get_switches, central_get_switch_details,
-central_get_switch_trends.
-"""
-
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+from fastmcp.exceptions import ToolError
 
-import tools.switch_monitoring as mod
-from models import Switch, SwitchDetail, TrendSample
+import tools.devices as mod
+from models import DeviceEnvelope, DeviceTrendsEnvelope, Switch, SwitchDetail
 from tests.conftest import FakeMCP, make_ctx
-from utils.monitoring import resolve_switch_serial
+from utils.cursor import decode_cursor, hash_query
 
-# ---------------------------------------------------------------------------
-# Representative raw payloads (from a20-switch-monitoring-payloads.md)
-# ---------------------------------------------------------------------------
-
-RAW_SWITCH_TPD = {
+RAW_SWITCH = {
     "stackId": None,
     "model": "WS-C3850-12X48U-E",
     "siteId": "34011151398",
@@ -39,119 +32,81 @@ RAW_SWITCH_TPD = {
     "uptimeInMillis": 3628003016,
     "serialNumber": "FCW2026D0KV",
     "deviceName": "BO-MEX-EGSW02.owl.direct",
-    "type": "network-monitoring/switch-monitoring",
     "deployment": "Standalone",
     "status": "Online",
-    "ipv6": None,
-    "id": "FCW2026D0KV",
-    "jNumber": None,
     "publicIp": "10.128.235.11",
     "macAddress": "94:d4:69:46:74:72",
     "ipv4": "10.128.235.11",
     "stackMemberId": 0,
     "switchType": "tpd",
 }
-
-RAW_SWITCH_STACK_CONDUCTOR = {
-    "stackId": "e8a387e6-2c8d-414a-93d1-2927ea07471e",
-    "model": "CX-6300M",
-    "siteId": "site-lhr",
-    "siteName": "London (LHR) - Campus",
-    "switchRole": "Conductor",
-    "switchTrends": [
-        {
-            "cpuUtilization": 5,
-            "memoryUtilization": 42,
-            "poeAvailable": 370,
-            "poeConsumption": 30,
-            "powerConsumption": 80,
-            "totalPowerConsumption": 110,
-            "upLinkPorts": "['1/1/27','1/1/28']",
-            "usage": 9876543,
-        }
-    ],
-    "firmwareVersion": "10.12.0001",
-    "lastSeenAt": 0,
-    "uptimeInMillis": 86400000,
-    "serialNumber": "SG34L5002Y",
-    "deviceName": "LHR-SW-01",
-    "type": "network-monitoring/switch-monitoring",
-    "deployment": "Stack",
-    "status": "Online",
-    "ipv6": None,
-    "id": "SG34L5002Y",
-    "jNumber": None,
-    "publicIp": "192.0.2.10",
-    "macAddress": "aa:bb:cc:dd:ee:ff",
-    "ipv4": "192.168.1.10",
-    "stackMemberId": 1,
-    "switchType": "cx",
-}
-
-RAW_DETAIL_BASE = {
-    **RAW_SWITCH_TPD,
+RAW_DETAIL = {
+    **RAW_SWITCH,
     "health": "Good",
     "healthReasons": {"poorReasons": [], "fairReasons": []},
     "manufacturer": "Cisco",
     "lastRestartReason": "PowerUp",
     "configStatus": "In Sync",
-    "switchLinkType": None,
     "lastConfigChange": "2026-06-01T00:00:00Z",
 }
-
-# Hardware trend samples from capture doc (values are strings)
 RAW_HARDWARE_TRENDS = [
     {
         "timestamp": "2026-06-05T21:05:00Z",
         "serialNumber": "FCW2026D0KV",
         "cpuUtilization": "2",
         "memoryUtilization": "35",
-        "systemTemperature": "0",
-        "poeAvailable": "0",
-        "poeConsumption": "0",
-        "powerConsumption": "0",
-        "totalPowerConsumption": "0",
     },
     {
         "timestamp": "2026-06-05T21:10:00Z",
         "serialNumber": "FCW2026D0KV",
         "cpuUtilization": "3",
         "memoryUtilization": "36",
-        "systemTemperature": "0",
-        "poeAvailable": "0",
-        "poeConsumption": "0",
-        "powerConsumption": "0",
-        "totalPowerConsumption": "0",
     },
-    # sentinel — only timestamp
     {"timestamp": "2026-06-05T22:05:00Z"},
 ]
-
-# Interface trend samples (values are strings)
 RAW_INTERFACE_TRENDS = [
-    {
-        "timestamp": "2026-06-05T21:05:00Z",
-        "rxBytes": "89027",
-        "txBytes": "84434",
-        "inErrors": "0",
-        "outErrors": "0",
-        "inDiscards": "0",
-        "outDiscards": "0",
-        "inFcs": "0",
-        "inCrcErrors": "0",
-        "inFragmented": "0",
-        "outCollision": "0",
-        "inRunts": "0",
-        "inGiants": "0",
-    },
-    # sentinel
+    {"timestamp": "2026-06-05T21:05:00Z", "rxBytes": "89027", "txBytes": "84434"},
     {"timestamp": "2026-06-05T22:05:00Z"},
 ]
+STACK_ID = "e8a387e6-2c8d-414a-93d1-2927ea07471e"
+REAL_RESOLVER = mod._resolve_monitoring_family
 
 
-# ---------------------------------------------------------------------------
-# Fixture
-# ---------------------------------------------------------------------------
+def switch_page(
+    items: list[dict] | None = None,
+    *,
+    total: int | None = None,
+    next_cursor: str | None = None,
+) -> dict:
+    page_items = items or []
+    return {
+        "items": page_items,
+        "count": len(page_items),
+        "total": len(page_items) if total is None else total,
+        "next": next_cursor,
+    }
+
+
+def switch_query_hash() -> str:
+    return hash_query(
+        {
+            "device_type": "switch",
+            "site_id": None,
+            "site_name": None,
+            "device_name": None,
+            "serial_number": None,
+            "device_status": None,
+            "model": None,
+            "device_function": None,
+            "is_provisioned": None,
+            "site_assigned": None,
+            "firmware_version": None,
+            "deployment": None,
+            "cluster_id": None,
+            "cluster_name": None,
+            "sort": None,
+        }
+    )
 
 
 @pytest.fixture
@@ -161,22 +116,110 @@ def tools():
     return fake._tools
 
 
-# ---------------------------------------------------------------------------
-# Registration
-# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def resolve_as_switch():
+    def resolve(_conn, serial):
+        return "switch", STACK_ID if serial == "MEMBER" else serial
+
+    with patch("tools.devices._resolve_monitoring_family", side_effect=resolve):
+        yield
 
 
-def test_registers_switch_tools(tools):
-    assert "central_get_switches" in tools
-    assert "central_get_switch_details" in tools
-    assert "central_get_switch_trends" in tools
-    # No other tools leaked
-    assert len(tools) == 3
+@pytest.mark.asyncio
+async def test_get_devices_switch_page_one_uses_single_page_api_and_emits_cursor(
+    tools,
+):
+    ctx = make_ctx()
+    with (
+        patch(
+            "tools.devices.MonitoringSwitches.get_switches",
+            return_value=switch_page([RAW_SWITCH], total=150, next_cursor="2"),
+        ) as mock_api,
+        patch(
+            "tools.devices.MonitoringSwitches.get_all_switches",
+            side_effect=AssertionError("aggregation API called"),
+        ) as mock_all,
+    ):
+        result = await tools["central_get_devices"](ctx, device_type="switch")
+
+    decoded = decode_cursor(
+        result.next_cursor,
+        expected_tool="central_get_devices:switch",
+        expected_query_hash=switch_query_hash(),
+    )
+
+    assert isinstance(result, DeviceEnvelope)
+    assert result.total == 150
+    assert result.meta.total_available == 150
+    assert result.items[0].device_type == "SWITCH"
+    assert result.items[0].serial_number == "FCW2026D0KV"
+    assert result.items[0].status == "ONLINE"
+    assert result.items[0].name == "BO-MEX-EGSW02.owl.direct"
+    assert result.items[0].model == "WS-C3850-12X48U-E"
+    assert result.items[0].firmware_version == "Everest 16.6.2"
+    assert result.items[0].deployment == "Standalone"
+    assert result.items[0].role == "Standalone"
+    assert result.items[0].site_id == "34011151398"
+    assert result.items[0].site_name == "Mexico City (MEX) - Branch"
+    assert result.items[0].ipv4 == "10.128.235.11"
+    assert mock_api.call_args.kwargs["filter_str"] is None
+    assert mock_api.call_args.kwargs["limit"] == mod.DEFAULT_DEVICE_LIMIT
+    assert mock_api.call_args.kwargs["next_page"] == 1
+    assert decoded.page_size == mod.DEFAULT_DEVICE_LIMIT
+    assert decoded.position == {"upstream_next": "2"}
+    mock_api.assert_called_once()
+    mock_all.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# central_get_switches — filter construction
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_get_devices_switch_last_page_is_terminal(tools):
+    ctx = make_ctx()
+    with patch(
+        "tools.devices.MonitoringSwitches.get_switches",
+        return_value=switch_page([RAW_SWITCH], total=101, next_cursor=None),
+    ):
+        result = await tools["central_get_devices"](
+            ctx,
+            device_type="switch",
+            limit=50,
+        )
+
+    assert result.next_cursor is None
+    assert result.total == 101
+    assert result.meta.total_available == 101
+    assert result.truncated is False
+
+
+@pytest.mark.asyncio
+async def test_get_devices_switch_cursor_replay_fetches_next_upstream_page(tools):
+    ctx = make_ctx()
+    second_switch = {
+        **RAW_SWITCH,
+        "serialNumber": "FCW2026D0KX",
+        "deviceName": "BO-MEX-EGSW03.owl.direct",
+    }
+    with patch(
+        "tools.devices.MonitoringSwitches.get_switches",
+        side_effect=[
+            switch_page([RAW_SWITCH], total=2, next_cursor="2"),
+            switch_page([second_switch], total=2, next_cursor=None),
+        ],
+    ) as mock_api:
+        first_page = await tools["central_get_devices"](
+            ctx,
+            device_type="switch",
+            limit=50,
+        )
+        second_page = await tools["central_get_devices"](
+            ctx,
+            device_type="switch",
+            cursor=first_page.next_cursor,
+        )
+
+    second_call = mock_api.call_args_list[1].kwargs
+    assert second_call["next_page"] == 2
+    assert second_call["limit"] == 50
+    assert [item.serial_number for item in second_page.items] == ["FCW2026D0KX"]
 
 
 @pytest.mark.asyncio
@@ -184,929 +227,394 @@ def test_registers_switch_tools(tools):
     "tool_arg,tool_value,expected_filter",
     [
         ("site_id", "34011151398", "siteId eq '34011151398'"),
-        ("site_name", "Mexico City (MEX) - Branch", "siteName eq 'Mexico City (MEX) - Branch'"),
+        (
+            "site_name",
+            "Mexico City (MEX) - Branch",
+            "siteName eq 'Mexico City (MEX) - Branch'",
+        ),
         ("model", "WS-C3850-12X48U-E", "model eq 'WS-C3850-12X48U-E'"),
-        ("status", "Online", "status eq 'Online'"),
+        ("device_status", "ONLINE", "status eq 'Online'"),
         ("deployment", "Standalone", "deployment eq 'Standalone'"),
     ],
 )
-async def test_get_switches_filter_field_mappings(tools, tool_arg, tool_value, expected_filter):
+async def test_get_devices_switch_filter_mappings(
+    tools, tool_arg, tool_value, expected_filter
+):
     ctx = make_ctx()
     with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches", return_value=[]
+        "tools.devices.MonitoringSwitches.get_switches",
+        return_value=switch_page(),
     ) as mock_api:
-        await tools["central_get_switches"](ctx, **{tool_arg: tool_value})
+        result = await tools["central_get_devices"](
+            ctx, device_type="switch", **{tool_arg: tool_value}
+        )
+    assert result.items == []
     assert mock_api.call_args.kwargs["filter_str"] == expected_filter
 
 
 @pytest.mark.asyncio
-async def test_get_switches_no_filters_passes_none_filter(tools):
+async def test_get_devices_switch_combined_filters_and_sort(tools):
     ctx = make_ctx()
     with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches",
-        return_value=[RAW_SWITCH_TPD],
+        "tools.devices.MonitoringSwitches.get_switches",
+        return_value=switch_page(),
     ) as mock_api:
-        result = await tools["central_get_switches"](ctx)
-    assert mock_api.call_args.kwargs["filter_str"] is None
-    assert mock_api.call_args.kwargs["sort"] is None
-    assert isinstance(result, list)
-    assert isinstance(result[0], Switch)
-    assert result[0].serial_number == "FCW2026D0KV"
-
-
-@pytest.mark.asyncio
-async def test_get_switches_title_case_status_literal(tools):
-    """Status filter must be 'Online' not 'ONLINE' — title-case verified live."""
-    ctx = make_ctx()
-    with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches", return_value=[]
-    ) as mock_api:
-        await tools["central_get_switches"](ctx, status="Online")
-    assert mock_api.call_args.kwargs["filter_str"] == "status eq 'Online'"
-
-
-@pytest.mark.asyncio
-async def test_get_switches_combined_filters(tools):
-    ctx = make_ctx()
-    with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches", return_value=[]
-    ) as mock_api:
-        await tools["central_get_switches"](
+        await tools["central_get_devices"](
             ctx,
+            device_type="switch",
             site_id="34011151398",
-            status="Online",
+            device_status="OFFLINE",
             deployment="Stack",
-            sort="deviceName asc",
+            sort="deviceName desc",
         )
-    filter_str = mock_api.call_args.kwargs["filter_str"]
-    assert "siteId eq '34011151398'" in filter_str
-    assert "status eq 'Online'" in filter_str
-    assert "deployment eq 'Stack'" in filter_str
-    assert " and " in filter_str
-    assert mock_api.call_args.kwargs["sort"] == "deviceName ASC"
+    assert mock_api.call_args.kwargs["filter_str"] == (
+        "siteId eq '34011151398' and status eq 'Offline' and deployment eq 'Stack'"
+    )
+    assert mock_api.call_args.kwargs["sort"] == "deviceName DESC"
 
 
 @pytest.mark.asyncio
-async def test_get_switches_empty_returns_string(tools):
+async def test_get_devices_switch_error_raises_tool_error(tools):
     ctx = make_ctx()
-    with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches", return_value=[]
+    with (
+        patch(
+            "tools.devices.MonitoringSwitches.get_switches",
+            side_effect=RuntimeError("network timeout"),
+        ),
+        pytest.raises(ToolError, match="network timeout"),
     ):
-        result = await tools["central_get_switches"](ctx, site_id="missing")
-    assert result == "No switches found matching the specified criteria."
+        await tools["central_get_devices"](ctx, device_type="switch")
 
 
 @pytest.mark.asyncio
-async def test_get_switches_fetch_error_returns_formatted_error(tools):
-    ctx = make_ctx()
-    with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches",
-        side_effect=Exception("network timeout"),
-    ):
-        result = await tools["central_get_switches"](ctx)
-    assert "Error fetching switches" in result
-    assert "network timeout" in result
-
-
-@pytest.mark.asyncio
-async def test_get_switches_parse_error_returns_formatted_error(tools):
-    ctx = make_ctx()
-    # Provide a list where parsing fails (missing required serialNumber field)
-    with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches",
-        return_value=[{"model": "CX-6300M"}],  # no serialNumber → validation error
-    ):
-        result = await tools["central_get_switches"](ctx)
-    assert isinstance(result, str)
-    assert "Error parsing switch data" in result
-
-
-# ---------------------------------------------------------------------------
-# central_get_switches — payload validation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_switches_tpd_switch_fields(tools):
-    """All key fields from the captured tpd payload are correctly mapped."""
-    ctx = make_ctx()
-    with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches",
-        return_value=[RAW_SWITCH_TPD],
-    ):
-        result = await tools["central_get_switches"](ctx)
-
-    sw = result[0]
-    assert sw.serial_number == "FCW2026D0KV"
-    assert sw.model == "WS-C3850-12X48U-E"
-    assert sw.status == "Online"
-    assert sw.deployment == "Standalone"
-    assert sw.switch_type == "tpd"
-    assert sw.switch_role == "Standalone"
-    assert sw.site_id == "34011151398"
-    assert sw.site_name == "Mexico City (MEX) - Branch"
-    # switchTrends embedded
-    assert sw.switch_trends is not None
-    assert len(sw.switch_trends) == 1
-    assert sw.switch_trends[0].cpu_utilization == 2
-    assert sw.switch_trends[0].memory_utilization == 35
-    assert sw.switch_trends[0].up_link_ports is None
-
-
-@pytest.mark.asyncio
-async def test_get_switches_stack_conductor_uplink_ports_parsed(tools):
-    """UpLinkPorts stringified Python list is parsed into a real list."""
-    ctx = make_ctx()
-    with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches",
-        return_value=[RAW_SWITCH_STACK_CONDUCTOR],
-    ):
-        result = await tools["central_get_switches"](ctx)
-
-    sw = result[0]
-    assert sw.switch_role == "Conductor"
-    assert sw.deployment == "Stack"
-    assert sw.switch_trends[0].up_link_ports == ["1/1/27", "1/1/28"]
-
-
-# ---------------------------------------------------------------------------
-# central_get_switch_details
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_switch_details_base_only(tools):
-    """Base snapshot (no include) returns SwitchDetail; no sub-resource methods called."""
+async def test_get_device_details_switch_base_uses_original_fetch(tools):
     ctx = make_ctx()
     with patch(
         "utils.monitoring.MonitoringSwitches.get_switch_details",
-        return_value=dict(RAW_DETAIL_BASE),
+        return_value=dict(RAW_DETAIL),
     ) as mock_details:
-        result = await tools["central_get_switch_details"](ctx, serial_number="FCW2026D0KV")
-
+        result = await tools["central_get_device_details"](
+            ctx, serial_number="FCW2026D0KV"
+        )
     assert isinstance(result, SwitchDetail)
-    assert result.serial_number == "FCW2026D0KV"
     assert result.health == "Good"
     assert result.manufacturer == "Cisco"
-    assert result.config_status == "In Sync"
+    assert result.interfaces is None
     mock_details.assert_called_once()
 
-    serialized = result.model_dump()
-    # Include sub-resources absent when not requested
-    assert "interfaces" not in serialized
-    assert "vlans" not in serialized
-    assert "poe" not in serialized
-    assert "hardware" not in serialized
-
 
 @pytest.mark.asyncio
-async def test_get_switch_details_include_interfaces(tools):
-    """include=['interfaces'] calls get_switch_interfaces and attaches result."""
+async def test_get_device_details_explicit_switch_skips_family_resolution(tools):
     ctx = make_ctx()
-    interfaces_response = {
-        "count": 1,
-        "total": 48,
-        "offset": 0,
-        "items": [
-            {
-                "id": "Gi1/0/1",
-                "name": "Gi1/0/1",
-                "alias": "GigabitEthernet1/0/1",
-                "status": "Connected",
-                "adminStatus": "Up",
-                "operStatus": "Up",
-                "speed": 1000000000,
-                "uplink": False,
-            }
-        ],
-    }
     with (
         patch(
-            "utils.monitoring.MonitoringSwitches.get_switch_details",
-            return_value=dict(RAW_DETAIL_BASE),
-        ),
+            "tools.devices._resolve_monitoring_family",
+            side_effect=AssertionError("generic family resolver called"),
+        ) as mock_family_resolver,
         patch(
-            "utils.monitoring.MonitoringSwitches.get_switch_interfaces",
-            return_value=interfaces_response,
-        ) as mock_ifaces,
+            "tools.devices.resolve_switch_serial", return_value=STACK_ID
+        ) as mock_switch_resolver,
+        patch(
+            "tools.devices.fetch_switch_snapshot", return_value=dict(RAW_DETAIL)
+        ) as mock_snapshot,
     ):
-        result = await tools["central_get_switch_details"](
-            ctx, serial_number="FCW2026D0KV", include=["interfaces"]
+        result = await tools["central_get_device_details"](
+            ctx,
+            serial_number="FCW2026D0KV",
+            device_type="switch",
+            include=["interfaces"],
         )
 
     assert isinstance(result, SwitchDetail)
-    mock_ifaces.assert_called_once()
-    serialized = result.model_dump()
-    assert "interfaces" in serialized
-    assert serialized["interfaces"]["count"] == 1
+    mock_family_resolver.assert_not_called()
+    mock_switch_resolver.assert_called_once_with(
+        ctx.lifespan_context["conn"], "FCW2026D0KV"
+    )
+    mock_snapshot.assert_called_once_with(
+        ctx.lifespan_context["conn"], STACK_ID, ["interfaces"]
+    )
 
 
 @pytest.mark.asyncio
-async def test_get_switch_details_include_poe_double_wrap_unwrapped(tools):
-    """include=['poe'] unwraps the {response: {items, count}} double-wrapper."""
+async def test_get_device_details_switch_preserves_stack_identifier(tools):
     ctx = make_ctx()
-    poe_response = {"response": {"items": [], "count": 0}}
+    with patch(
+        "utils.monitoring.MonitoringSwitches.get_switch_details",
+        return_value={**RAW_DETAIL, "serialNumber": "MEMBER", "deployment": "Stack"},
+    ) as mock_details:
+        await tools["central_get_device_details"](ctx, serial_number="MEMBER")
+    assert mock_details.call_args.kwargs["serial_number"] == STACK_ID
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "include,method_name,response,expected",
+    [
+        (
+            "interfaces",
+            "get_switch_interfaces",
+            {"items": [{"id": "Gi1/0/1"}], "count": 1},
+            {"items": [{"id": "Gi1/0/1"}], "count": 1},
+        ),
+        (
+            "vlans",
+            "get_switch_vlans",
+            {"items": [{"id": "10"}]},
+            {"items": [{"id": "10"}]},
+        ),
+        (
+            "poe",
+            "get_switch_interface_poe",
+            {"response": {"items": [{"id": "Gi1/0/1"}], "count": 1}},
+            {"items": [{"id": "Gi1/0/1"}], "count": 1},
+        ),
+        ("lag", "get_switch_lag", [{"id": "lag1"}], {"items": [{"id": "lag1"}]}),
+        (
+            "vsx",
+            "get_switch_vsx",
+            {"items": [{"role": "primary"}]},
+            {"items": [{"role": "primary"}]},
+        ),
+        (
+            "stack_members",
+            "get_stack_members",
+            {"items": [{"topology": "Ring"}]},
+            {"items": [{"topology": "Ring"}]},
+        ),
+        (
+            "hardware",
+            "get_switch_hardware_categories",
+            [{"category": "CPU"}],
+            {"items": [{"category": "CPU"}]},
+        ),
+    ],
+)
+async def test_get_device_details_switch_routes_all_includes(
+    tools, include, method_name, response, expected
+):
+    ctx = make_ctx()
     with (
         patch(
             "utils.monitoring.MonitoringSwitches.get_switch_details",
-            return_value=dict(RAW_DETAIL_BASE),
+            return_value=dict(RAW_DETAIL),
         ),
         patch(
-            "utils.monitoring.MonitoringSwitches.get_switch_interface_poe",
-            return_value=poe_response,
-        ),
+            f"utils.monitoring.MonitoringSwitches.{method_name}",
+            return_value=response,
+        ) as mock_include,
     ):
-        result = await tools["central_get_switch_details"](
-            ctx, serial_number="FCW2026D0KV", include=["poe"]
+        result = await tools["central_get_device_details"](
+            ctx, serial_number="FCW2026D0KV", include=[include]
         )
-
-    assert isinstance(result, SwitchDetail)
-    serialized = result.model_dump()
-    assert "poe" in serialized
-    # Double-wrap should be stripped: no 'response' key inside poe
-    assert "response" not in serialized["poe"]
-    assert "items" in serialized["poe"]
-    assert serialized["poe"]["count"] == 0
+    mock_include.assert_called_once()
+    assert getattr(result, include) == expected
 
 
 @pytest.mark.asyncio
-async def test_get_switch_details_include_vsx_error_isolated(tools):
-    """include=['vsx'] on a non-VSX switch stores error dict instead of raising."""
+async def test_get_device_details_switch_isolates_vsx_include_failure(tools):
     ctx = make_ctx()
     with (
         patch(
             "utils.monitoring.MonitoringSwitches.get_switch_details",
-            return_value=dict(RAW_DETAIL_BASE),
+            return_value=dict(RAW_DETAIL),
         ),
         patch(
             "utils.monitoring.MonitoringSwitches.get_switch_vsx",
             side_effect=Exception("VSX is not supported on this switch platform"),
         ),
     ):
-        result = await tools["central_get_switch_details"](
-            ctx, serial_number="FCW2026D0KV", include=["vsx"]
+        result = await tools["central_get_device_details"](
+            ctx,
+            serial_number="FCW2026D0KV",
+            device_type="switch",
+            include=["vsx"],
         )
 
     assert isinstance(result, SwitchDetail)
-    serialized = result.model_dump()
-    assert "vsx" in serialized
-    assert "error" in serialized["vsx"]
-    assert "VSX" in serialized["vsx"]["error"]
+    assert result.vsx is not None
+    assert "VSX is not supported" in result.vsx["error"]
 
 
 @pytest.mark.asyncio
-async def test_get_switch_details_include_stack_members(tools):
-    """include=['stack_members'] calls get_stack_members using conductor serial."""
+async def test_get_device_details_switch_rejects_gateway_include(tools):
     ctx = make_ctx()
-    stack_response = {
-        "count": 1,
-        "items": [
-            {
-                "topology": "Ring",
-                "stackType": "vsf",
-                "id": "e8a387e6-2c8d-414a-93d1-2927ea07471e",
-                "members": [
-                    {"serialNumber": "SG34L5002Y", "switchRole": "Conductor", "health": "Good"},
-                    {"serialNumber": "SG34L5006M", "switchRole": "Standby", "health": "Good"},
-                ],
-                "portLinks": [],
-            }
-        ],
-    }
-    base_stack = {**RAW_DETAIL_BASE, "serialNumber": "SG34L5002Y", "deployment": "Stack"}
     with (
         patch(
-            "utils.monitoring.MonitoringSwitches.get_switch_details",
-            return_value=base_stack,
-        ),
+            "tools.devices._resolve_monitoring_family",
+            side_effect=AssertionError("generic family resolver called"),
+        ) as mock_family_resolver,
+        pytest.raises(ToolError, match=r"dhcp.*device_type='switch'"),
+    ):
+        await tools["central_get_device_details"](
+            ctx,
+            serial_number="FCW2026D0KV",
+            device_type="switch",
+            include=["dhcp"],
+        )
+    mock_family_resolver.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("raw", [None, {}])
+async def test_get_device_details_switch_not_found_raises_tool_error(tools, raw):
+    ctx = make_ctx()
+    with (
         patch(
-            "utils.monitoring.MonitoringSwitches.get_stack_members",
-            return_value=stack_response,
-        ) as mock_stack,
+            "utils.monitoring.MonitoringSwitches.get_switch_details", return_value=raw
+        ),
+        pytest.raises(ToolError, match="No switch found"),
     ):
-        result = await tools["central_get_switch_details"](
-            ctx, serial_number="SG34L5002Y", include=["stack_members"]
+        await tools["central_get_device_details"](ctx, serial_number="MISSING")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scope,extra,method_name,raw",
+    [
+        ("hardware", {}, "get_switch_hardware_trends", RAW_HARDWARE_TRENDS),
+        (
+            "interface",
+            {"interface_id": "Gi1/0/1"},
+            "get_switch_interface_trends",
+            RAW_INTERFACE_TRENDS,
+        ),
+        (
+            "interface",
+            {"uplink": True},
+            "get_switch_interface_trends",
+            RAW_INTERFACE_TRENDS,
+        ),
+    ],
+)
+async def test_get_device_trends_switch_routes_and_normalizes(
+    tools, scope, extra, method_name, raw
+):
+    ctx = make_ctx()
+    with patch(
+        f"utils.monitoring.MonitoringSwitches.{method_name}", return_value=raw
+    ) as mock_trends:
+        result = await tools["central_get_device_trends"](
+            ctx, serial_number="FCW2026D0KV", scope=scope, **extra
         )
-
-    assert isinstance(result, SwitchDetail)
-    mock_stack.assert_called_once()
-    serialized = result.model_dump()
-    assert "stack_members" in serialized
-
-
-@pytest.mark.asyncio
-async def test_get_switch_details_not_found(tools):
-    """fetch_switch_snapshot returning falsy yields a 'not found' message."""
-    ctx = make_ctx()
-    with patch(
-        "utils.monitoring.MonitoringSwitches.get_switch_details", return_value=None
-    ):
-        result = await tools["central_get_switch_details"](ctx, serial_number="MISSING")
-    assert "No switch found for serial number 'MISSING'" in result
+    assert isinstance(result, DeviceTrendsEnvelope)
+    assert result.meta.total_available == len(raw) - 1
+    assert result.items[0].model_dump()["timestamp"] == raw[0]["timestamp"]
+    if scope == "hardware":
+        assert result.items[0].model_dump()["cpuUtilization"] == 2
+    for key, value in extra.items():
+        assert mock_trends.call_args.kwargs[key] == value
 
 
 @pytest.mark.asyncio
-async def test_get_switch_details_empty_dict_not_found(tools):
-    """fetch_switch_snapshot returning empty dict also yields a 'not found' message."""
-    ctx = make_ctx()
-    with patch(
-        "utils.monitoring.MonitoringSwitches.get_switch_details", return_value={}
-    ):
-        result = await tools["central_get_switch_details"](ctx, serial_number="EMPTY")
-    assert "No switch found for serial number 'EMPTY'" in result
-
-
-@pytest.mark.asyncio
-async def test_get_switch_details_fetch_error(tools):
-    """Exception from get_switch_details is returned as a formatted error string."""
-    ctx = make_ctx()
-    with patch(
-        "utils.monitoring.MonitoringSwitches.get_switch_details",
-        side_effect=Exception("connection refused"),
-    ):
-        result = await tools["central_get_switch_details"](ctx, serial_number="FCW2026D0KV")
-    assert "Error fetching switch details" in result
-    assert "connection refused" in result
-
-
-# ---------------------------------------------------------------------------
-# central_get_switch_trends — hardware scope
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_switch_trends_hardware_sentinel_stripped_and_coerced(tools):
-    """Sentinel sample is stripped; string metric values are coerced to int."""
+async def test_get_device_trends_switch_defaults_hardware_and_uses_stack_id(tools):
     ctx = make_ctx()
     with patch(
         "utils.monitoring.MonitoringSwitches.get_switch_hardware_trends",
         return_value=RAW_HARDWARE_TRENDS,
     ) as mock_trends:
-        result = await tools["central_get_switch_trends"](
-            ctx,
-            serial_number="FCW2026D0KV",
-            scope="hardware",
+        result = await tools["central_get_device_trends"](
+            ctx, serial_number="MEMBER", max_points=1
         )
-
-    assert isinstance(result, list)
-    # 3 raw samples → 1 sentinel stripped → 2 returned
-    assert len(result) == 2
-    assert isinstance(result[0], TrendSample)
-    dumped = result[0].model_dump()
-    assert dumped["timestamp"] == "2026-06-05T21:05:00Z"
-    # Values coerced from str to int
-    assert dumped["cpuUtilization"] == 2
-    assert isinstance(dumped["cpuUtilization"], int)
-    assert dumped["memoryUtilization"] == 35
-    assert isinstance(dumped["memoryUtilization"], int)
-    # No sentinel: last sample should have metrics, not be timestamp-only
-    last = result[-1].model_dump()
-    assert "cpuUtilization" in last
-
-    # Verify mock called with correct API args
-    call_kwargs = mock_trends.call_args.kwargs
-    assert call_kwargs["serial_number"] == "FCW2026D0KV"
-    assert call_kwargs["start_time"] is not None
-    assert call_kwargs["end_time"] is not None
-    # metric is not forwarded (multi-metric scope)
-    assert "metric" not in call_kwargs
+    assert mock_trends.call_args.kwargs["serial_number"] == STACK_ID
+    assert result.meta.total_available == 2
+    assert result.meta.returned == 1
+    assert result.meta.sampled is True
 
 
 @pytest.mark.asyncio
-async def test_get_switch_trends_hardware_is_default_scope(tools):
-    """Default scope is 'hardware'."""
+async def test_get_device_trends_explicit_switch_skips_family_resolution(tools):
+    ctx = make_ctx()
+    with (
+        patch(
+            "tools.devices._resolve_monitoring_family",
+            side_effect=AssertionError("generic family resolver called"),
+        ) as mock_family_resolver,
+        patch(
+            "tools.devices.resolve_switch_serial", return_value=STACK_ID
+        ) as mock_switch_resolver,
+        patch(
+            "tools.devices.fetch_trends", return_value=RAW_HARDWARE_TRENDS
+        ) as mock_trends,
+    ):
+        result = await tools["central_get_device_trends"](
+            ctx,
+            serial_number="FCW2026D0KV",
+            device_type="switch",
+            scope="hardware",
+        )
+
+    assert isinstance(result, DeviceTrendsEnvelope)
+    mock_family_resolver.assert_not_called()
+    mock_switch_resolver.assert_called_once_with(
+        ctx.lifespan_context["conn"], "FCW2026D0KV"
+    )
+    assert mock_trends.call_args.args[1:4] == (STACK_ID, "hardware", None)
+
+
+@pytest.mark.asyncio
+async def test_get_device_trends_switch_empty_is_empty_envelope(tools):
     ctx = make_ctx()
     with patch(
         "utils.monitoring.MonitoringSwitches.get_switch_hardware_trends",
-        return_value=RAW_HARDWARE_TRENDS,
-    ) as mock_hw:
-        result = await tools["central_get_switch_trends"](
-            ctx,
-            serial_number="FCW2026D0KV",
-        )
-    mock_hw.assert_called_once()
-    assert isinstance(result, list)
-
-
-# ---------------------------------------------------------------------------
-# central_get_switch_trends — interface scope
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_switch_trends_interface_scope(tools):
-    """scope='interface' calls get_switch_interface_trends; metrics coerced."""
-    ctx = make_ctx()
-    with patch(
-        "utils.monitoring.MonitoringSwitches.get_switch_interface_trends",
-        return_value=RAW_INTERFACE_TRENDS,
-    ) as mock_iface:
-        result = await tools["central_get_switch_trends"](
-            ctx,
-            serial_number="FCW2026D0KV",
-            scope="interface",
-        )
-
-    assert isinstance(result, list)
-    assert len(result) == 1  # 2 raw - 1 sentinel
-    dumped = result[0].model_dump()
-    assert dumped["rxBytes"] == 89027
-    assert isinstance(dumped["rxBytes"], int)
-    assert dumped["txBytes"] == 84434
-    mock_iface.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_get_switch_trends_interface_with_interface_id(tools):
-    """interface_id is forwarded as an extra param to the underlying API."""
-    ctx = make_ctx()
-    with patch(
-        "utils.monitoring.MonitoringSwitches.get_switch_interface_trends",
-        return_value=RAW_INTERFACE_TRENDS,
-    ) as mock_iface:
-        await tools["central_get_switch_trends"](
-            ctx,
-            serial_number="FCW2026D0KV",
-            scope="interface",
-            interface_id="Gi1/0/1",
-        )
-
-    call_kwargs = mock_iface.call_args.kwargs
-    assert call_kwargs["interface_id"] == "Gi1/0/1"
-
-
-@pytest.mark.asyncio
-async def test_get_switch_trends_interface_with_uplink(tools):
-    """uplink=True is forwarded as an extra param to the underlying API."""
-    ctx = make_ctx()
-    with patch(
-        "utils.monitoring.MonitoringSwitches.get_switch_interface_trends",
-        return_value=RAW_INTERFACE_TRENDS,
-    ) as mock_iface:
-        await tools["central_get_switch_trends"](
-            ctx,
-            serial_number="FCW2026D0KV",
-            scope="interface",
-            uplink=True,
-        )
-
-    call_kwargs = mock_iface.call_args.kwargs
-    assert call_kwargs["uplink"] is True
-
-
-@pytest.mark.asyncio
-async def test_get_switch_trends_none_interface_id_not_forwarded(tools):
-    """interface_id=None is dropped from kwargs (not forwarded to API)."""
-    ctx = make_ctx()
-    with patch(
-        "utils.monitoring.MonitoringSwitches.get_switch_interface_trends",
-        return_value=RAW_INTERFACE_TRENDS,
-    ) as mock_iface:
-        await tools["central_get_switch_trends"](
-            ctx,
-            serial_number="FCW2026D0KV",
-            scope="interface",
-            interface_id=None,
-            uplink=None,
-        )
-
-    call_kwargs = mock_iface.call_args.kwargs
-    assert "interface_id" not in call_kwargs
-    assert "uplink" not in call_kwargs
-
-
-# ---------------------------------------------------------------------------
-# central_get_switch_trends — invalid scope
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_switch_trends_invalid_scope_returns_error(tools):
-    """An invalid scope returns a formatted validation error."""
-    ctx = make_ctx()
-    result = await tools["central_get_switch_trends"](
-        ctx,
-        serial_number="FCW2026D0KV",
-        scope="ap",  # type: ignore[arg-type]  — invalid for switch
-    )
-    assert isinstance(result, str)
-    assert "Error validating switch trend request" in result
-
-
-# ---------------------------------------------------------------------------
-# central_get_switch_trends — explicit start/end override
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_switch_trends_explicit_time_window(tools):
-    """Explicit start_time/end_time are passed through to the underlying API call."""
-    ctx = make_ctx()
-    with patch(
-        "utils.monitoring.MonitoringSwitches.get_switch_hardware_trends",
-        return_value=RAW_HARDWARE_TRENDS,
-    ) as mock_trends:
-        await tools["central_get_switch_trends"](
-            ctx,
-            serial_number="FCW2026D0KV",
-            scope="hardware",
-            start_time="2026-06-05T21:02:34.000Z",
-            end_time="2026-06-05T22:02:34.000Z",
-        )
-
-    call_kwargs = mock_trends.call_args.kwargs
-    assert call_kwargs["start_time"] == "2026-06-05T21:02:34.000Z"
-    assert call_kwargs["end_time"] == "2026-06-05T22:02:34.000Z"
-
-
-# ---------------------------------------------------------------------------
-# central_get_switch_trends — empty result and API error
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_switch_trends_empty_result(tools):
-    """Empty API response returns a 'no trend data found' message."""
-    ctx = make_ctx()
-    with patch(
-        "utils.monitoring.MonitoringSwitches.get_switch_hardware_trends", return_value=[]
+        return_value=[],
     ):
-        result = await tools["central_get_switch_trends"](
-            ctx,
-            serial_number="FCW2026D0KV",
-            scope="hardware",
+        result = await tools["central_get_device_trends"](
+            ctx, serial_number="FCW2026D0KV"
         )
-    assert "No hardware trend data found for serial number 'FCW2026D0KV'" in result
+    assert result.items == []
 
 
 @pytest.mark.asyncio
-async def test_get_switch_trends_sentinel_only_treated_as_empty(tools):
-    """A list containing only the sentinel sample is reported as no trend data.
-
-    When the API returns just the trailing sentinel (timestamp-only), normalize_switch_trends
-    strips it, yielding [].  The tool then returns the 'no trend data found' message rather
-    than an empty list.
-    """
+@pytest.mark.parametrize(
+    "kwargs,message",
+    [
+        ({"scope": "blade"}, "Invalid scope"),
+        ({"scope": "hardware", "metric": "cpu-utilization"}, "does not take a metric"),
+    ],
+)
+async def test_get_device_trends_switch_validation_raises_tool_error(
+    tools, kwargs, message
+):
     ctx = make_ctx()
-    # Only the sentinel
-    with patch(
-        "utils.monitoring.MonitoringSwitches.get_switch_hardware_trends",
-        return_value=[{"timestamp": "2026-06-05T22:05:00Z"}],
-    ):
-        result = await tools["central_get_switch_trends"](
-            ctx,
-            serial_number="FCW2026D0KV",
-            scope="hardware",
+    with pytest.raises(ToolError, match=message):
+        await tools["central_get_device_trends"](
+            ctx, serial_number="FCW2026D0KV", **kwargs
         )
-    assert isinstance(result, str)
-    assert "No hardware trend data found for serial number 'FCW2026D0KV'" in result
 
 
-@pytest.mark.asyncio
-async def test_get_switch_trends_api_error(tools):
-    """RuntimeError from the API is returned as a formatted 'fetching switch trends' error."""
-    ctx = make_ctx()
-    with patch(
-        "utils.monitoring.MonitoringSwitches.get_switch_hardware_trends",
-        side_effect=RuntimeError("upstream timeout"),
-    ):
-        result = await tools["central_get_switch_trends"](
-            ctx,
-            serial_number="FCW2026D0KV",
-            scope="hardware",
-        )
-    assert "Error fetching switch trends" in result
-    assert "upstream timeout" in result
-
-
-# ---------------------------------------------------------------------------
-# Model behaviour — Switch sparse serialization
-# ---------------------------------------------------------------------------
-
-
-def test_switch_model_dump_nulls_dropped():
-    """Switch.model_dump() excludes None fields."""
-    sw = Switch.from_api(
-        {
-            "serialNumber": "FCW2026D0KV",
-            "status": "Online",
-            "model": "WS-C3850-12X48U-E",
-        }
-    )
-    dumped = sw.model_dump()
-    assert dumped["serial_number"] == "FCW2026D0KV"
-    assert dumped["status"] == "Online"
-    assert dumped["model"] == "WS-C3850-12X48U-E"
-    assert "site_id" not in dumped
-    assert "ipv4" not in dumped
-    assert "switch_trends" not in dumped
-
-
-def test_switch_detail_health_reasons_preserved():
-    """SwitchDetail.from_api preserves health and healthReasons dicts."""
-    detail = SwitchDetail.from_api(
-        {
-            "serialNumber": "FCW2026D0KV",
-            "status": "Online",
-            "health": "Fair",
-            "healthReasons": {"poorReasons": [], "fairReasons": ["High CPU"]},
-        }
-    )
-    dumped = detail.model_dump()
-    assert dumped["health"] == "Fair"
-    assert dumped["health_reasons"]["fairReasons"] == ["High CPU"]
-
-
-# ---------------------------------------------------------------------------
-# BUG-1: SwitchDetail.lastConfigChange accepts integer (epoch ms)
-# ---------------------------------------------------------------------------
-
-
-def test_switch_detail_last_config_change_int_parsed():
-    """LastConfigChange as int (epoch ms) must parse without raising."""
-    detail = SwitchDetail.from_api(
-        {
-            "serialNumber": "SG34L5002Y",
-            "status": "Online",
-            "lastConfigChange": 1780519197187,
-        }
-    )
-    assert detail.last_config_change == 1780519197187
-
-
-def test_switch_detail_last_config_change_str_still_works():
-    """LastConfigChange as str must continue to parse without raising."""
-    detail = SwitchDetail.from_api(
-        {
-            "serialNumber": "FCW2026D0KV",
-            "status": "Online",
-            "lastConfigChange": "2026-06-01T00:00:00Z",
-        }
-    )
-    assert detail.last_config_change == "2026-06-01T00:00:00Z"
-
-
-def test_switch_detail_last_config_change_none_ok():
-    """LastConfigChange absent/null must remain None."""
-    detail = SwitchDetail.from_api(
-        {
-            "serialNumber": "FCW2026D0KV",
-            "status": "Online",
-        }
-    )
-    assert detail.last_config_change is None
-
-
-# ---------------------------------------------------------------------------
-# BUG-2: central_get_switches sort direction normalised to UPPERCASE
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_switches_sort_direction_uppercased(tools):
-    """sort='deviceName asc' must reach the API as 'deviceName ASC'."""
-    ctx = make_ctx()
-    with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches", return_value=[]
-    ) as mock_api:
-        await tools["central_get_switches"](ctx, sort="deviceName asc")
-    assert mock_api.call_args.kwargs["sort"] == "deviceName ASC"
-
-
-@pytest.mark.asyncio
-async def test_get_switches_sort_desc_direction_uppercased(tools):
-    """sort='model desc' must reach the API as 'model DESC'."""
-    ctx = make_ctx()
-    with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches", return_value=[]
-    ) as mock_api:
-        await tools["central_get_switches"](ctx, sort="model desc")
-    assert mock_api.call_args.kwargs["sort"] == "model DESC"
-
-
-@pytest.mark.asyncio
-async def test_get_switches_sort_already_uppercase_unchanged(tools):
-    """sort='deviceName ASC' must pass through unchanged."""
-    ctx = make_ctx()
-    with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches", return_value=[]
-    ) as mock_api:
-        await tools["central_get_switches"](ctx, sort="deviceName ASC")
-    assert mock_api.call_args.kwargs["sort"] == "deviceName ASC"
-
-
-@pytest.mark.asyncio
-async def test_get_switches_sort_none_unchanged(tools):
-    """sort=None must pass through as None."""
-    ctx = make_ctx()
-    with patch(
-        "tools.switch_monitoring.MonitoringSwitches.get_all_switches", return_value=[]
-    ) as mock_api:
-        await tools["central_get_switches"](ctx, sort=None)
-    assert mock_api.call_args.kwargs["sort"] is None
-
-
-# ---------------------------------------------------------------------------
-# BUG-3: Stack member serial redirect (resolve_switch_serial + tool integration)
-# ---------------------------------------------------------------------------
-
-STACK_MEMBER_INVENTORY = {
-    "serialNumber": "SG39KN419Z",
-    "stackId": "f91f11e4-ca19-4b1a-89b7-0a7130f65ad0",
-    "deployment": "Stack",
-    "role": "Member",
-    "deviceType": "SWITCH",
-    "model": "6300",
-    "status": "ONLINE",
-}
-
-STANDALONE_INVENTORY = {
-    "serialNumber": "FCW2026D0KV",
-    "stackId": None,
-    "deployment": "Standalone",
-    "deviceType": "SWITCH",
-    "model": "WS-C3850-12X48U-E",
-    "status": "ONLINE",
-}
-
-STACK_ID = "f91f11e4-ca19-4b1a-89b7-0a7130f65ad0"
-MEMBER_SERIAL = "SG39KN419Z"
-STANDALONE_SERIAL = "FCW2026D0KV"
-
-
-# --- resolve_switch_serial unit tests ---
-
-
-def test_resolve_switch_serial_returns_stack_id_for_member():
-    """resolve_switch_serial returns the stackId when the device is a Stack member."""
-    conn = MagicMock()
-    with patch(
-        "utils.monitoring.lookup_inventory_device", return_value=STACK_MEMBER_INVENTORY
-    ) as mock_lookup:
-        result = resolve_switch_serial(conn, MEMBER_SERIAL)
-    mock_lookup.assert_called_once_with(conn, MEMBER_SERIAL)
-    assert result == STACK_ID
-
-
-def test_resolve_switch_serial_returns_original_for_standalone():
-    """resolve_switch_serial returns the original serial for a standalone switch."""
-    conn = MagicMock()
-    with patch(
-        "utils.monitoring.lookup_inventory_device", return_value=STANDALONE_INVENTORY
-    ):
-        result = resolve_switch_serial(conn, STANDALONE_SERIAL)
-    assert result == STANDALONE_SERIAL
-
-
-def test_resolve_switch_serial_returns_original_when_lookup_returns_none():
-    """resolve_switch_serial falls back to original serial when lookup returns None."""
-    conn = MagicMock()
-    with patch("utils.monitoring.lookup_inventory_device", return_value=None):
-        result = resolve_switch_serial(conn, MEMBER_SERIAL)
-    assert result == MEMBER_SERIAL
-
-
-def test_resolve_switch_serial_returns_original_when_lookup_raises():
-    """resolve_switch_serial is resilient — returns original serial on lookup exception."""
-    conn = MagicMock()
-    with patch(
-        "utils.monitoring.lookup_inventory_device", side_effect=RuntimeError("inventory down")
-    ):
-        result = resolve_switch_serial(conn, MEMBER_SERIAL)
-    assert result == MEMBER_SERIAL
-
-
-# --- Tool integration: central_get_switch_details forwards stackId for stack members ---
-
-
-@pytest.mark.asyncio
-async def test_get_switch_details_stack_member_serial_redirected_to_stack_id(tools):
-    """central_get_switch_details resolves a stack member serial to stackId before API call."""
-    ctx = make_ctx()
-    # Return a detail dict keyed to the stack (conductor view)
-    stack_detail = {
-        **RAW_DETAIL_BASE,
-        "serialNumber": "SG39KN41B7",
+def test_resolver_maps_switch_member_to_stack_id():
+    inventory = {
+        "serialNumber": "MEMBER",
+        "deviceType": "SWITCH",
         "deployment": "Stack",
         "stackId": STACK_ID,
     }
-    with (
-        patch(
-            "tools.switch_monitoring.resolve_switch_serial", return_value=STACK_ID
-        ) as mock_resolve,
-        patch(
-            "utils.monitoring.MonitoringSwitches.get_switch_details",
-            return_value=stack_detail,
-        ) as mock_details,
-    ):
-        result = await tools["central_get_switch_details"](ctx, serial_number=MEMBER_SERIAL)
-
-    # Resolver was called with the original member serial
-    mock_resolve.assert_called_once()
-    assert mock_resolve.call_args.args[1] == MEMBER_SERIAL
-    # get_switch_details received the stackId, not the member serial
-    assert mock_details.call_args.kwargs["serial_number"] == STACK_ID
-    # Result parsed OK
-    assert isinstance(result, SwitchDetail)
+    with patch("tools.devices.lookup_inventory_device", return_value=inventory):
+        assert REAL_RESOLVER("conn", "MEMBER") == ("switch", STACK_ID)
 
 
-@pytest.mark.asyncio
-async def test_get_switch_details_standalone_serial_unchanged(tools):
-    """central_get_switch_details passes a standalone serial through unchanged."""
-    ctx = make_ctx()
-    with (
-        patch(
-            "tools.switch_monitoring.resolve_switch_serial", return_value=STANDALONE_SERIAL
-        ) as mock_resolve,
-        patch(
-            "utils.monitoring.MonitoringSwitches.get_switch_details",
-            return_value=dict(RAW_DETAIL_BASE),
-        ) as mock_details,
-    ):
-        result = await tools["central_get_switch_details"](ctx, serial_number=STANDALONE_SERIAL)
-
-    mock_resolve.assert_called_once()
-    assert mock_details.call_args.kwargs["serial_number"] == STANDALONE_SERIAL
-    assert isinstance(result, SwitchDetail)
+def test_resolver_maps_each_inventory_family_without_online_requirement():
+    for device_type, expected in [
+        ("ACCESS_POINT", "ap"),
+        ("SWITCH", "switch"),
+        ("GATEWAY", "gateway"),
+    ]:
+        inventory = {
+            "serialNumber": "SERIAL",
+            "deviceType": device_type,
+            "status": "OFFLINE",
+        }
+        with patch("tools.devices.lookup_inventory_device", return_value=inventory):
+            assert REAL_RESOLVER("conn", "SERIAL") == (expected, "SERIAL")
 
 
-@pytest.mark.asyncio
-async def test_get_switch_details_not_found_message_uses_original_serial(tools):
-    """Not-found message shows what the user typed (original serial), not the resolved one."""
-    ctx = make_ctx()
-    with (
-        patch("tools.switch_monitoring.resolve_switch_serial", return_value=STACK_ID),
-        patch(
-            "utils.monitoring.MonitoringSwitches.get_switch_details", return_value=None
-        ),
-    ):
-        result = await tools["central_get_switch_details"](ctx, serial_number=MEMBER_SERIAL)
-    assert MEMBER_SERIAL in result
-    assert "No switch found for serial number" in result
+def test_switch_model_keeps_list_specific_fields():
+    switch = Switch.from_api(RAW_SWITCH)
+    assert switch.switch_type == "tpd"
+    assert switch.switch_trends[0].cpu_utilization == 2
 
 
-# --- Tool integration: central_get_switch_trends forwards stackId for stack members ---
-
-
-@pytest.mark.asyncio
-async def test_get_switch_trends_stack_member_serial_redirected_to_stack_id(tools):
-    """central_get_switch_trends resolves a stack member serial to stackId before API call."""
-    ctx = make_ctx()
-    with (
-        patch(
-            "tools.switch_monitoring.resolve_switch_serial", return_value=STACK_ID
-        ) as mock_resolve,
-        patch(
-            "utils.monitoring.MonitoringSwitches.get_switch_hardware_trends",
-            return_value=RAW_HARDWARE_TRENDS,
-        ) as mock_trends,
-    ):
-        result = await tools["central_get_switch_trends"](
-            ctx, serial_number=MEMBER_SERIAL, scope="hardware"
-        )
-
-    mock_resolve.assert_called_once()
-    assert mock_resolve.call_args.args[1] == MEMBER_SERIAL
-    assert mock_trends.call_args.kwargs["serial_number"] == STACK_ID
-    assert isinstance(result, list)
-    assert len(result) == 2  # 3 raw - 1 sentinel
-
-
-@pytest.mark.asyncio
-async def test_get_switch_trends_standalone_serial_unchanged(tools):
-    """central_get_switch_trends passes a standalone serial through unchanged."""
-    ctx = make_ctx()
-    with (
-        patch(
-            "tools.switch_monitoring.resolve_switch_serial", return_value=STANDALONE_SERIAL
-        ) as mock_resolve,
-        patch(
-            "utils.monitoring.MonitoringSwitches.get_switch_hardware_trends",
-            return_value=RAW_HARDWARE_TRENDS,
-        ) as mock_trends,
-    ):
-        result = await tools["central_get_switch_trends"](
-            ctx, serial_number=STANDALONE_SERIAL, scope="hardware"
-        )
-
-    mock_resolve.assert_called_once()
-    assert mock_trends.call_args.kwargs["serial_number"] == STANDALONE_SERIAL
-    assert isinstance(result, list)
-
-
-@pytest.mark.asyncio
-async def test_get_switch_trends_not_found_message_uses_original_serial(tools):
-    """Not-found message shows the user-supplied serial (not the resolved stackId)."""
-    ctx = make_ctx()
-    with (
-        patch("tools.switch_monitoring.resolve_switch_serial", return_value=STACK_ID),
-        patch(
-            "utils.monitoring.MonitoringSwitches.get_switch_hardware_trends",
-            return_value=[],
-        ),
-    ):
-        result = await tools["central_get_switch_trends"](
-            ctx, serial_number=MEMBER_SERIAL, scope="hardware"
-        )
-    assert MEMBER_SERIAL in result
-    assert "No hardware trend data found for serial number" in result
+def test_switch_detail_preserves_health_fields():
+    detail = SwitchDetail.from_api(RAW_DETAIL)
+    assert detail.health_reasons == {"poorReasons": [], "fairReasons": []}
+    assert detail.last_config_change == "2026-06-01T00:00:00Z"

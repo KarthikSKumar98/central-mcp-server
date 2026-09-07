@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-09-06
+
+### Breaking Changes
+
+The 25-tool 0.1.x surface is folded into 12 tools. There are no compatibility aliases.
+
+| Old tool | New tool | Migration |
+|---|---|---|
+| `central_get_devices` | `central_get_devices` | Base inventory mode |
+| `central_get_aps` | `central_get_devices` | `device_type="ap"` |
+| `central_get_switches` | `central_get_devices` | `device_type="switch"` |
+| `central_get_gateways` | `central_get_devices` | `device_type="gateway"` |
+| `central_find_device` | `central_get_devices` | Exact `serial_number` or `device_name` |
+| `central_get_ap_details` | `central_get_device_details` | Serial-to-family resolution |
+| `central_get_switch_details` | `central_get_device_details` | Serial-to-family resolution |
+| `central_get_gateway_details` | `central_get_device_details` | Serial-to-family resolution and `include` |
+| `central_get_ap_trends` | `central_get_device_trends` | `scope` and `metric` |
+| `central_get_switch_trends` | `central_get_device_trends` | `scope` and `metric` |
+| `central_get_gateway_trends` | `central_get_device_trends` | `scope` and `metric` |
+| `central_get_clients` | `central_get_clients` | Base list mode |
+| `central_find_client` | `central_get_clients` | Exact `mac_address` |
+| `central_get_sites` | `central_get_sites` | `view="detail"` |
+| `central_get_summary` | `central_get_sites` | `view="summary"` |
+| `central_get_wlans` | `central_get_wlans` | Base list mode |
+| `central_get_wlan_stats` | `central_get_wlans` | `include=["throughput"]` |
+| `central_get_gateway_cluster` | `central_get_gateway_cluster` | Base snapshot mode |
+| `central_get_cluster_capacity_trends` | `central_get_gateway_cluster` | `include=["capacity"]` |
+| `central_get_events` | `central_get_events` | `mode="records"` |
+| `central_get_events_count` | `central_get_events` | `mode="facets"` |
+| `central_get_alerts` | `central_get_alerts` | Base |
+| `central_run_network_test` | `central_run_network_test` | Unchanged |
+| `central_run_show_commands` | `central_run_show_commands` | Unchanged |
+| `central_bounce_port` | `central_bounce_port` | Unchanged |
+
+### New
+
+- Shared typed envelopes expose `items`, `next_cursor`, `truncated`, `total`, and `meta` accounting.
+- Paginated tools use opaque, query-bound cursors and retain the 500-item response ceiling.
+- Envelope tools accept `response_format="concise"` (default) or `"detailed"`; metadata records the applied projection and any omitted fields.
+- Tool failures carry `CentralError {code,message,retryable,suggestion}` JSON in `ToolError` text. Codes are `rate_limited`, `upstream_timeout`, `upstream_server_error`, `upstream_request_error`, `timeout`, `connection_error`, `validation_error`, and `unexpected_error`. Consumers must tolerate unknown codes added by a future minor release; removing or renaming a code is breaking.
+- All tools publish read-only, diagnostic, or destructive annotations.
+
+### Fixed
+
+- Added typed envelopes, corrected health-score rounding, and separated event source-type enums (fixes #7, #8, #9).
+
 ## [0.1.9] - 2026-08-16
 
 ### Bug Fixes

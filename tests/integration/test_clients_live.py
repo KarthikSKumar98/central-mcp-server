@@ -1,7 +1,7 @@
 import pytest
 
 import tools.clients as mod
-from models import Client
+from models import Client, ClientEnvelope
 from tests.conftest import FakeMCP
 
 pytestmark = pytest.mark.integration
@@ -22,13 +22,13 @@ async def mixed_site_id(tools, live_ctx):
     Skips if no clients are available at all.
     """
     all_clients = await tools["central_get_clients"](live_ctx)
-    if not isinstance(all_clients, list) or not all_clients:
+    if not all_clients.items:
         pytest.skip("No clients available")
 
     # Group site_ids by connection types present
     site_types: dict[str, set[str]] = {}
     site_counts: dict[str, int] = {}
-    for c in all_clients:
+    for c in all_clients.items:
         if not c.site_id or not c.connection_type:
             continue
         site_types.setdefault(c.site_id, set()).add(c.connection_type)
@@ -48,65 +48,65 @@ async def mixed_site_id(tools, live_ctx):
 
 async def test_get_clients_no_filter(tools, live_ctx):
     result = await tools["central_get_clients"](live_ctx)
-    assert isinstance(result, list)
-    assert all(isinstance(c, Client) for c in result)
+    assert isinstance(result, ClientEnvelope)
+    assert all(isinstance(c, Client) for c in result.items)
 
 
 async def test_get_clients_wired(tools, live_ctx, mixed_site_id):
     result = await tools["central_get_clients"](
         live_ctx, site_id=mixed_site_id, connection_type="Wired"
     )
-    if isinstance(result, str):
+    if not result.items:
         pytest.skip("No wired clients in site")
-    assert isinstance(result, list)
-    assert all(c.connection_type == "Wired" for c in result)
+    assert all(c.connection_type == "Wired" for c in result.items)
 
 
 async def test_get_clients_wireless(tools, live_ctx, mixed_site_id):
     result = await tools["central_get_clients"](
         live_ctx, site_id=mixed_site_id, connection_type="Wireless"
     )
-    if isinstance(result, str):
+    if not result.items:
         pytest.skip("No wireless clients in site")
-    assert isinstance(result, list)
-    assert all(c.connection_type == "Wireless" for c in result)
+    assert all(c.connection_type == "Wireless" for c in result.items)
 
 
 async def test_get_clients_connected_status(tools, live_ctx):
     result = await tools["central_get_clients"](live_ctx, status="Connected")
-    assert isinstance(result, list)
-    assert all(c.status == "Connected" for c in result)
+    assert isinstance(result, ClientEnvelope)
+    assert all(c.status == "Connected" for c in result.items)
 
 
 async def test_get_clients_failed_status(tools, live_ctx):
     result = await tools["central_get_clients"](live_ctx, status="Failed")
-    assert isinstance(result, list)
+    assert isinstance(result, ClientEnvelope)
 
 
 async def test_get_clients_wired_and_connected(tools, live_ctx, mixed_site_id):
     result = await tools["central_get_clients"](
         live_ctx, site_id=mixed_site_id, connection_type="Wired", status="Connected"
     )
-    if isinstance(result, str):
+    if not result.items:
         pytest.skip("No wired connected clients in site")
-    assert isinstance(result, list)
-    assert all(c.connection_type == "Wired" and c.status == "Connected" for c in result)
+    assert all(
+        c.connection_type == "Wired" and c.status == "Connected" for c in result.items
+    )
 
 
 async def test_find_client_by_mac(tools, live_ctx, mixed_site_id):
     clients = await tools["central_get_clients"](live_ctx, site_id=mixed_site_id)
-    if not isinstance(clients, list) or not clients:
+    if not clients.items:
         pytest.skip("No clients available in site")
-    mac = clients[0].mac
+    mac = clients.items[0].mac
     if not mac:
         pytest.skip("First client has no MAC address")
-    result = await tools["central_find_client"](live_ctx, mac_address=mac)
-    assert isinstance(result, Client)
-    assert result.mac == mac
+    result = await tools["central_get_clients"](live_ctx, mac_address=mac)
+    assert isinstance(result, ClientEnvelope)
+    assert result.items[0].mac == mac
 
 
 async def test_find_client_not_found(tools, live_ctx):
-    result = await tools["central_find_client"](
+    result = await tools["central_get_clients"](
         live_ctx, mac_address="00:00:00:00:00:00"
     )
-    assert isinstance(result, str)
+    assert isinstance(result, ClientEnvelope)
+    assert result.items == []

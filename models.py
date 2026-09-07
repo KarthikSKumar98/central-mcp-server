@@ -1,16 +1,127 @@
 import ast as _ast
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from pydantic import (
     AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
+    GetJsonSchemaHandler,
     SerializationInfo,
     SerializerFunctionWrapHandler,
     model_serializer,
 )
+from pydantic.json_schema import JsonSchemaValue
+from pydantic_core import CoreSchema
+
+
+class ConciseProjectable(BaseModel):
+    """Keep projected fields typed but optional in serialized output schemas."""
+
+    concise_omit: ClassVar[frozenset[str]] = frozenset()
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls, core_schema: CoreSchema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        schema = handler(core_schema)
+        if required := schema.get("required"):
+            schema["required"] = [
+                name for name in required if name not in cls.concise_omit
+            ]
+        return schema
+
+
+class EnvelopeMeta(BaseModel):
+    """Shared response accounting for Central tool envelopes."""
+
+    returned: int = Field(description="Number of items returned in this envelope.")
+    total_available: int | None = Field(
+        default=None,
+        description="Number of items available before the response ceiling was applied.",
+    )
+    sampled: bool = Field(
+        default=False,
+        description="Whether the returned items are a bounded sample of a larger series.",
+    )
+    response_format: Literal["concise", "detailed"] = Field(
+        default="concise",
+        description="Response projection applied to envelope items.",
+    )
+    omitted_fields: list[str] | None = Field(
+        default=None,
+        description="Item fields suppressed by the concise projection.",
+    )
+
+
+class CentralEnvelope(BaseModel):
+    """Base response envelope subclassed by Central tools."""
+
+    items: list[Any] = Field(description="Typed records returned by the Central tool.")
+    next_cursor: str | None = Field(
+        default=None,
+        description="Opaque cursor for the next upstream page, when one is available.",
+    )
+    truncated: bool = Field(
+        default=False,
+        description="Whether records were omitted because a response ceiling was reached.",
+    )
+    total: int | None = Field(
+        default=None,
+        description="Total record count reported by the upstream API, when available.",
+    )
+    meta: EnvelopeMeta = Field(description="Shared response-size accounting metadata.")
+
+    @model_serializer(mode="wrap")
+    def serialize_response_format(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ):
+        """Apply an item's concise projection after normal typed serialization."""
+        data = handler(self)
+        meta = data["meta"]
+        if meta.get("response_format") == "detailed":
+            meta.pop("omitted_fields", None)
+            return data
+
+        omitted: set[str] = set()
+        for item, serialized in zip(self.items, data["items"], strict=True):
+            for field in getattr(item, "concise_omit", ()):
+                if field in serialized:
+                    serialized.pop(field)
+                    omitted.add(field)
+        if omitted:
+            meta["omitted_fields"] = sorted(omitted)
+        else:
+            meta.pop("omitted_fields", None)
+        return data
+
+
+class CentralError(BaseModel):
+    """Structured error contract shared by Central tools."""
+
+    code: Literal[
+        "rate_limited",
+        "upstream_timeout",
+        "upstream_server_error",
+        "upstream_request_error",
+        "timeout",
+        "connection_error",
+        "validation_error",
+        "unexpected_error",
+    ] = Field(description="Stable machine-readable error category.")
+    message: str = Field(
+        description="Human-readable description of the failed operation."
+    )
+    retryable: bool = Field(
+        description="Whether retrying the operation may succeed without changing the request."
+    )
+    suggestion: str | None = Field(
+        default=None,
+        description="Actionable guidance for correcting or retrying the operation.",
+    )
 
 
 class SourceType(str, Enum):
@@ -43,24 +154,69 @@ class SiteMetrics(BaseModel):
     )
 
 
-class SiteData(BaseModel):
+class SiteData(ConciseProjectable):
     """Standardized site data structure."""
+
+    concise_omit: ClassVar[frozenset[str]] = frozenset({"location"})
 
     site_id: str = Field(
         description="Unique identifier for the site in Central. Used to reference the site in other API calls."
     )
     name: str = Field(description="Display name of the site.")
-    address: dict = Field(
-        description="Physical address: zipCode, address, city, state, country."
-    )
     location: dict = Field(description="Geographic coordinates: lat and lng.")
     metrics: SiteMetrics = Field(
         description="Site performance metrics: health, devices, clients, alerts."
     )
 
 
-class Device(BaseModel):
+class SiteSummary(ConciseProjectable):
+    """Lightweight site overview used by the summary view."""
+
+    concise_omit: ClassVar[frozenset[str]] = frozenset()
+
+    name: str = Field(description="Display name of the site.")
+    site_id: str | None = Field(
+        default=None,
+        description="Unique identifier for the site in Central.",
+    )
+    health: int | None = Field(
+        default=None,
+        description="Weighted site health score, or null when health is unavailable.",
+    )
+    total_devices: int = Field(description="Total devices assigned to the site.")
+    total_clients: int = Field(
+        description="Total clients currently counted at the site."
+    )
+    critical_alerts: int = Field(description="Critical alerts at the site.")
+    total_alerts: int = Field(description="All alerts at the site.")
+
+
+class SiteEnvelope(CentralEnvelope):
+    """Typed response envelope for detailed and summary site views."""
+
+    items: list[SiteData | SiteSummary] = Field(
+        description="Detailed site records or compact site summaries."
+    )
+
+
+class Device(ConciseProjectable):
     """Device inventory data structure (duplicates removed)."""
+
+    concise_omit: ClassVar[frozenset[str]] = frozenset(
+        {
+            "part_number",
+            "function",
+            "is_provisioned",
+            "role",
+            "deployment",
+            "tier",
+            "firmware_version",
+            "device_group_name",
+            "scope_id",
+            "ipv4",
+            "stack_id",
+        }
+    )
 
     # Primary identifiers
     serial_number: str = Field(
@@ -122,6 +278,12 @@ class Device(BaseModel):
     stack_id: str | None = Field(
         description="Stack identifier for stack-capable devices."
     )
+
+
+class DeviceEnvelope(CentralEnvelope):
+    """Typed response envelope for device inventory and exact lookup results."""
+
+    items: list[Device] = Field(description="Central device inventory records.")
 
 
 _REBOOT_REASON_MAP: dict[str, str] = {
@@ -314,8 +476,10 @@ class AccessPointStatistics(BaseModel):
     )
 
 
-class WLAN(BaseModel):
+class WLAN(ConciseProjectable):
     """WLAN (wireless network) data structure."""
+
+    concise_omit: ClassVar[frozenset[str]] = frozenset()
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -339,6 +503,20 @@ class WLAN(BaseModel):
     )
     status: str | None = Field(default=None, description="WLAN operational status.")
     vlan: str | None = Field(default=None, description="VLAN assigned to this WLAN.")
+    throughput: list["WLANThroughputSample"] | None = Field(
+        default=None,
+        description="Throughput samples included only when include contains 'throughput'.",
+    )
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Omit additive fields unless the caller requested them."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
 
 
 class WLANThroughputSample(BaseModel):
@@ -353,6 +531,12 @@ class WLANThroughputSample(BaseModel):
         default=None,
         description="Received (rx) throughput reported for the WLAN at this timestamp, in bits per second.",
     )
+
+
+class WlanEnvelope(CentralEnvelope):
+    """Typed response envelope for WLANs and optional throughput samples."""
+
+    items: list[WLAN] = Field(description="Central WLAN configuration records.")
 
 
 class APRadio(BaseModel):
@@ -674,13 +858,15 @@ class APDetail(AccessPoint):
         return {key: value for key, value in data.items() if value is not None}
 
 
-class TrendSample(BaseModel):
+class TrendSample(ConciseProjectable):
     """Generic AP/radio/port trend sample with a dynamic metric value key.
 
     The metric value keys (e.g. ``cpu_utilization``, ``tx``, ``rx``,
     ``non_wifi_interference``) vary per metric type and are captured via
     ``extra="allow"``.  The sparse serializer drops any null extras.
     """
+
+    concise_omit: ClassVar[frozenset[str]] = frozenset()
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
@@ -697,8 +883,41 @@ class TrendSample(BaseModel):
         return {key: value for key, value in data.items() if value is not None}
 
 
-class Client(BaseModel):
+class DeviceTrendsEnvelope(CentralEnvelope):
+    """Typed response envelope for device trend samples."""
+
+    items: list[TrendSample] = Field(
+        description="Bounded time-series samples for the selected device trend."
+    )
+
+
+class Client(ConciseProjectable):
     """Client device data structure."""
+
+    concise_omit: ClassVar[frozenset[str]] = frozenset(
+        {
+            "ipv6",
+            "hostname",
+            "vendor",
+            "manufacturer",
+            "category",
+            "function",
+            "os",
+            "capabilities",
+            "last_seen_at",
+            "tunnel_type",
+            "tunnel_id",
+            "wireless_band",
+            "wireless_channel",
+            "wireless_security",
+            "key_management",
+            "bssid",
+            "radio_mac",
+            "authentication",
+            "role",
+            "tags",
+        }
+    )
 
     # Primary identifiers
     mac: str | None = Field(description="MAC address of the client.")
@@ -792,7 +1011,17 @@ class Client(BaseModel):
     tags: str | None = Field(description="Tags associated with the client.")
 
 
-class Alert(BaseModel):
+class ClientEnvelope(CentralEnvelope):
+    """Typed response envelope for client lists and exact MAC lookups."""
+
+    items: list[Client] = Field(description="Central wired or wireless client records.")
+
+
+class Alert(ConciseProjectable):
+    concise_omit: ClassVar[frozenset[str]] = frozenset(
+        {"cleared_reason", "updated_at", "updated_by"}
+    )
+
     summary: str = Field(description="Short summary of the alert.")
     cleared_reason: str | None = Field(
         description="Reason the alert was cleared, if applicable."
@@ -820,23 +1049,37 @@ class Alert(BaseModel):
     )
 
 
-class EventNameCount(BaseModel):
+class AlertEnvelope(CentralEnvelope):
+    """Typed response envelope for alert records."""
+
+    items: list[Alert] = Field(description="Central alert records.")
+
+
+class EventNameCount(ConciseProjectable):
+    concise_omit: ClassVar[frozenset[str]] = frozenset()
+
     event_id: str = Field(description="Event type identifier.")
     event_name: str = Field(description="Human-readable event name.")
     count: int = Field(description="Number of occurrences.")
 
 
-class EventSourceTypeCount(BaseModel):
+class EventSourceTypeCount(ConciseProjectable):
+    concise_omit: ClassVar[frozenset[str]] = frozenset()
+
     source_type: str = Field(description="Source type (e.g. 'Wireless Client').")
     count: int = Field(description="Number of events from this source type.")
 
 
-class EventCategoryCount(BaseModel):
+class EventCategoryCount(ConciseProjectable):
+    concise_omit: ClassVar[frozenset[str]] = frozenset()
+
     category: str = Field(description="Event category (e.g. 'Clients').")
     count: int = Field(description="Number of events in this category.")
 
 
-class EventFilters(BaseModel):
+class EventFilters(ConciseProjectable):
+    concise_omit: ClassVar[frozenset[str]] = frozenset()
+
     total: int = Field(description="Total event count (sum of all categories).")
     event_names: list[EventNameCount] = Field(
         description="Per-event-type breakdown, sorted by count descending."
@@ -854,7 +1097,9 @@ class CompactEventName(BaseModel):
     event_name: str = Field(description="Human-readable event name.")
 
 
-class CompactEventFilters(BaseModel):
+class CompactEventFilters(ConciseProjectable):
+    concise_omit: ClassVar[frozenset[str]] = frozenset()
+
     total: int = Field(description="Total event count (sum of all categories).")
     event_names: list[CompactEventName] = Field(
         description="All event id/name pairs sorted by descending count."
@@ -867,7 +1112,33 @@ class CompactEventFilters(BaseModel):
     )
 
 
-class Event(BaseModel):
+class EventFacetsEnvelope(CentralEnvelope):
+    """Typed response envelope for full or compact event facet aggregations."""
+
+    items: list[EventFilters | CompactEventFilters] = Field(
+        description="Full or compact aggregate event facets for the selected context."
+    )
+
+
+class EventAttribute(BaseModel):
+    """One additional label/value attribute for an event record."""
+
+    label: str = Field(description="Display label for the event attribute.")
+    value: str = Field(description="Value reported for the event attribute.")
+
+
+class Event(ConciseProjectable):
+    concise_omit: ClassVar[frozenset[str]] = frozenset(
+        {
+            "client_mac_address",
+            "device_mac_address",
+            "stack_id",
+            "bssid",
+            "reason",
+            "attributes",
+        }
+    )
+
     model_config = ConfigDict(populate_by_name=True)
     event_id: str = Field(alias="eventId", description="The event type identifier.")
     event_identifier: str = Field(
@@ -907,24 +1178,19 @@ class Event(BaseModel):
     )
     reason: str | None = Field(description="Reason or cause of the event.")
     severity: str | None = Field(description="Severity level of the event.")
-
-
-class PaginatedAlerts(BaseModel):
-    items: list[Alert] = Field(description="Page of alert records.")
-    total: int = Field(description="Total alerts matching the filter across all pages.")
-    next_cursor: int | None = Field(
+    attributes: list[EventAttribute] | None = Field(
         default=None,
-        description="Cursor for the next page. Pass as `cursor` in the next call. None means no more pages.",
+        validation_alias=AliasChoices("attributes", "eventExtraAttributes"),
+        description=(
+            "Additional label/value details populated when include='attributes'."
+        ),
     )
 
 
-class PaginatedEvents(BaseModel):
-    items: list[Event] = Field(description="Page of event records.")
-    total: int = Field(description="Total events matching the filter across all pages.")
-    next_cursor: int | None = Field(
-        default=None,
-        description="Cursor for the next page. Pass as `cursor` in the next call. None means no more pages.",
-    )
+class EventEnvelope(CentralEnvelope):
+    """Typed response envelope for event records."""
+
+    items: list[Event] = Field(description="Central event records.")
 
 
 class TroubleshootingResult(BaseModel):
@@ -1722,6 +1988,90 @@ class GatewayUplink(BaseModel):
         return {key: value for key, value in data.items() if value is not None}
 
 
+class GatewayDHCPPool(BaseModel):
+    """DHCP pool configured on a gateway."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    pool_name: str = Field(
+        validation_alias="poolName", description="Name of the gateway DHCP pool."
+    )
+    vlan_id: int = Field(
+        validation_alias="vlanId", description="VLAN ID served by the DHCP pool."
+    )
+    vlan_name: str = Field(
+        validation_alias="vlanName", description="Name of the VLAN served by the pool."
+    )
+    subnet: str = Field(description="IPv4 subnet allocated by the DHCP pool.")
+    lease_duration: int = Field(
+        validation_alias="leaseDuration",
+        description="Configured DHCP lease duration in seconds.",
+    )
+    pool_size: int = Field(
+        validation_alias="poolSize",
+        description="Total number of addresses in the DHCP pool.",
+    )
+    current_leases: int = Field(
+        validation_alias="currentLeases",
+        description="Number of currently active leases in the DHCP pool.",
+    )
+    utilization: int = Field(description="Current DHCP pool utilization percentage.")
+    available_addresses: int = Field(
+        validation_alias="availableAddresses",
+        description="Number of addresses currently available in the DHCP pool.",
+    )
+
+
+class GatewayDHCPLease(BaseModel):
+    """DHCP lease reported by a gateway."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    pool_name: str = Field(
+        validation_alias="poolName",
+        description="Name of the pool that issued the lease.",
+    )
+    ip_address: str = Field(
+        validation_alias="ipAddress", description="IPv4 address assigned to the client."
+    )
+    mac_address: str = Field(
+        validation_alias="macAddress", description="MAC address of the leased client."
+    )
+    client_site_id: str = Field(
+        validation_alias="clientSiteId",
+        description="Central site ID associated with the leased client.",
+    )
+    client_serial: str = Field(
+        validation_alias="clientSerial",
+        description="Central serial identifier associated with the leased client.",
+    )
+    infra_type: str | None = Field(
+        validation_alias="infraType",
+        description="Infrastructure type reported for the leased client, when available.",
+    )
+    host_name: str = Field(
+        validation_alias="hostName", description="Hostname reported by the DHCP client."
+    )
+    client_device_type: str = Field(
+        validation_alias="clientDeviceType",
+        description="Device type or vendor class reported by the DHCP client.",
+    )
+    start_time: int | float | str = Field(
+        validation_alias="startTime", description="Timestamp when the DHCP lease began."
+    )
+    expiration_time: int | float | str = Field(
+        validation_alias="expirationTime",
+        description="Timestamp when the DHCP lease expires.",
+    )
+    remaining_time: str = Field(
+        validation_alias="remainingTime",
+        description="Remaining DHCP lease time as reported by Central.",
+    )
+    reservation: str = Field(
+        description="Whether the DHCP lease is backed by a reservation."
+    )
+
+
 class GatewayDetail(Gateway):
     """Gateway detail snapshot with optional include sub-resources.
 
@@ -1745,6 +2095,14 @@ class GatewayDetail(Gateway):
         default=None,
         description="List of gateway uplinks (only when 'uplinks' is included).",
     )
+    dhcp_pools: list[GatewayDHCPPool] | None = Field(
+        default=None,
+        description="Gateway DHCP pools (only when 'dhcp' is included).",
+    )
+    dhcp_leases: list[GatewayDHCPLease] | None = Field(
+        default=None,
+        description="Gateway DHCP leases (only when 'dhcp' is included).",
+    )
     vlans: list[GatewayVlan] | None = Field(
         default=None,
         description="List of gateway VLANs (only when 'vlans' is included).",
@@ -1766,6 +2124,18 @@ class GatewayDetail(Gateway):
         raw_uplinks = normalized.pop("uplinks", None)
         if isinstance(raw_uplinks, list):
             normalized["uplinks"] = [GatewayUplink(**u) for u in raw_uplinks]
+
+        raw_dhcp_pools = normalized.pop("dhcp_pools", None)
+        if isinstance(raw_dhcp_pools, list):
+            normalized["dhcp_pools"] = [
+                GatewayDHCPPool(**pool) for pool in raw_dhcp_pools
+            ]
+
+        raw_dhcp_leases = normalized.pop("dhcp_leases", None)
+        if isinstance(raw_dhcp_leases, list):
+            normalized["dhcp_leases"] = [
+                GatewayDHCPLease(**lease) for lease in raw_dhcp_leases
+            ]
 
         raw_vlans = normalized.pop("vlans", None)
         if isinstance(raw_vlans, list):
@@ -1855,8 +2225,79 @@ class ClusterMember(BaseModel):
         return {key: value for key, value in data.items() if value is not None}
 
 
-class GatewayCluster(BaseModel):
+class CapacityTrendSample(BaseModel):
+    """Normalized client or device capacity sample for a gateway cluster."""
+
+    model_config = ConfigDict(extra="allow")
+
+    capacity_type: str = Field(
+        description="Capacity series type: client_capacity or device_capacity."
+    )
+    timestamp: str = Field(description="RFC 3339 timestamp for the capacity sample.")
+    active_client_count: int | float | None = Field(
+        default=None, description="Active clients handled by the cluster."
+    )
+    standby_client_count: int | float | None = Field(
+        default=None, description="Standby clients tracked by the cluster."
+    )
+    cluster_client_max_capacity: int | float | None = Field(
+        default=None, description="Maximum client capacity for the cluster."
+    )
+    active_client_percentage: int | float | None = Field(
+        default=None, description="Active client utilization percentage."
+    )
+    standby_client_percentage: int | float | None = Field(
+        default=None, description="Standby client utilization percentage."
+    )
+    active_ap_count: int | float | None = Field(
+        default=None, description="Active access points handled by the cluster."
+    )
+    standby_ap_count: int | float | None = Field(
+        default=None, description="Standby access points tracked by the cluster."
+    )
+    active_sw_count: int | float | None = Field(
+        default=None, description="Active switches handled by the cluster."
+    )
+    standby_sw_count: int | float | None = Field(
+        default=None, description="Standby switches tracked by the cluster."
+    )
+    active_ap_percentage: int | float | None = Field(
+        default=None, description="Active access-point utilization percentage."
+    )
+    standby_ap_percentage: int | float | None = Field(
+        default=None, description="Standby access-point utilization percentage."
+    )
+    active_sw_percentage: int | float | None = Field(
+        default=None, description="Active switch utilization percentage."
+    )
+    standby_sw_percentage: int | float | None = Field(
+        default=None, description="Standby switch utilization percentage."
+    )
+    cluster_device_max_capacity: int | float | None = Field(
+        default=None, description="Maximum AP and switch capacity for the cluster."
+    )
+    device_max_capacity: int | float | None = Field(
+        default=None,
+        description="Maximum capacity reported by a selected cluster member.",
+    )
+
+    @model_serializer(mode="wrap")
+    def serialize_sparse(
+        self,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> dict[str, Any]:
+        """Drop metrics that do not belong to this capacity series."""
+        data = handler(self)
+        return {key: value for key, value in data.items() if value is not None}
+
+
+class GatewayCluster(ConciseProjectable):
     """Gateway cluster snapshot with members and tunnel health summary."""
+
+    concise_omit: ClassVar[frozenset[str]] = frozenset(
+        {"tunnels", "vlan_mismatch", "connectivity", "capacity"}
+    )
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
@@ -1885,6 +2326,10 @@ class GatewayCluster(BaseModel):
         default=None,
         description="Cluster connectivity graph (only when 'connectivity' is included).",
     )
+    capacity: list[CapacityTrendSample] | None = Field(
+        default=None,
+        description="Capacity trend samples (only when 'capacity' is included).",
+    )
 
     @classmethod
     def from_api(cls, raw: dict[str, Any]) -> "GatewayCluster":
@@ -1904,3 +2349,11 @@ class GatewayCluster(BaseModel):
         """Drop null fields to keep cluster payloads compact."""
         data = handler(self)
         return {key: value for key, value in data.items() if value is not None}
+
+
+class GatewayClusterEnvelope(CentralEnvelope):
+    """Typed response envelope for gateway cluster snapshots."""
+
+    items: list[GatewayCluster] = Field(
+        description="Gateway cluster snapshots returned by the selected view."
+    )

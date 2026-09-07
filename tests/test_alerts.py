@@ -1,9 +1,15 @@
+import json
+
 import pytest
+from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 
 import tools.alerts as mod
-from models import Alert, PaginatedAlerts
+from constants import MAX_PAGE_SIZE
+from models import Alert, AlertEnvelope
 from tests.conftest import FakeMCP, make_ctx
 from utils.alerts import clean_alert_data
+from utils.cursor import decode_cursor, hash_query
 
 
 @pytest.fixture
@@ -15,6 +21,30 @@ def tools():
 
 def _make_alert_response(items=None, total=0, next_cursor=None):
     return {"code": 200, "msg": {"items": items or [], "total": total, "next": next_cursor}}
+
+
+@pytest.mark.asyncio
+async def test_get_alerts_fastmcp_contract_is_bounded_and_read_only():
+    mcp = FastMCP("alerts-contract")
+    mod.register(mcp)
+
+    tool = await mcp.get_tool("central_get_alerts")
+    limit_schema = tool.parameters["properties"]["limit"]
+
+    assert limit_schema["minimum"] == 1
+    assert limit_schema["maximum"] == MAX_PAGE_SIZE
+    cursor_schema = tool.parameters["properties"]["cursor"]
+    assert {schema["type"] for schema in cursor_schema["anyOf"]} == {
+        "string",
+        "null",
+    }
+    assert tool.annotations.readOnlyHint is True
+    assert tool.output_schema["description"].startswith("Typed response envelope")
+    output_cursor_schema = tool.output_schema["properties"]["next_cursor"]
+    assert {schema["type"] for schema in output_cursor_schema["anyOf"]} == {
+        "string",
+        "null",
+    }
 
 
 RAW_ALERT = {
@@ -127,21 +157,48 @@ async def test_get_alerts_no_cursor_when_none(tools):
 @pytest.mark.asyncio
 async def test_get_alerts_cursor_forwarded(tools):
     ctx = make_ctx()
-    ctx.lifespan_context["conn"].command.return_value = _make_alert_response()
-    await tools["central_get_alerts"](ctx, site_id="site-1", cursor=42)
-    assert ctx.lifespan_context["conn"].command.call_args.kwargs["api_params"]["next"] == 42
+    ctx.lifespan_context["conn"].command.side_effect = [
+        _make_alert_response(next_cursor="42"),
+        _make_alert_response(),
+    ]
+
+    first = await tools["central_get_alerts"](ctx, site_id="site-1")
+    await tools["central_get_alerts"](
+        ctx,
+        site_id="site-1",
+        cursor=first.next_cursor,
+    )
+
+    assert ctx.lifespan_context["conn"].command.call_args_list[1].kwargs[
+        "api_params"
+    ]["next"] == "42"
 
 
 @pytest.mark.asyncio
 async def test_get_alerts_returns_paginated_model(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = _make_alert_response(
-        items=[RAW_ALERT], total=100, next_cursor=2
+        items=[RAW_ALERT], total=100, next_cursor="2"
     )
     result = await tools["central_get_alerts"](ctx, site_id="site-1")
-    assert isinstance(result, PaginatedAlerts)
+    assert isinstance(result, AlertEnvelope)
     assert result.total == 100
-    assert result.next_cursor == 2
+    assert isinstance(result.next_cursor, str)
+    assert result.next_cursor
+    decoded = decode_cursor(
+        result.next_cursor,
+        expected_tool="central_get_alerts",
+        expected_query_hash=hash_query(
+            {
+                "status": "Active",
+                "device_type": None,
+                "category": None,
+                "site_id": "site-1",
+                "sort": "severity desc",
+            }
+        ),
+    )
+    assert decoded.position == {"upstream_next": "2"}
     assert len(result.items) == 1
 
 
@@ -152,27 +209,97 @@ async def test_get_alerts_next_cursor_none_at_last_page(tools):
         items=[RAW_ALERT], total=1, next_cursor=None
     )
     result = await tools["central_get_alerts"](ctx, site_id="site-1")
-    assert isinstance(result, PaginatedAlerts)
+    assert isinstance(result, AlertEnvelope)
     assert result.next_cursor is None
 
 
 @pytest.mark.asyncio
-async def test_get_alerts_empty_returns_string(tools):
+async def test_get_alerts_cursor_round_trip_and_query_binding(tools):
     ctx = make_ctx()
-    ctx.lifespan_context["conn"].command.return_value = _make_alert_response()
-    result = await tools["central_get_alerts"](ctx, site_id="site-1")
-    assert result == "No alerts found matching criteria"
+    ctx.lifespan_context["conn"].command.side_effect = [
+        _make_alert_response(items=[RAW_ALERT], total=2, next_cursor="2"),
+        _make_alert_response(
+            items=[{**RAW_ALERT, "summary": "Switch Down"}],
+            total=2,
+        ),
+    ]
+
+    first = await tools["central_get_alerts"](
+        ctx,
+        site_id="site-1",
+        limit=1,
+    )
+    decoded = decode_cursor(
+        first.next_cursor,
+        expected_tool="central_get_alerts",
+        expected_query_hash=hash_query(
+            {
+                "status": "Active",
+                "device_type": None,
+                "category": None,
+                "site_id": "site-1",
+                "sort": "severity desc",
+            }
+        ),
+    )
+    assert decoded.page_size == 1
+    assert decoded.position == {"upstream_next": "2"}
+
+    second = await tools["central_get_alerts"](
+        ctx,
+        site_id="site-1",
+        cursor=first.next_cursor,
+    )
+    assert second.items[0].summary == "Switch Down"
+    assert second.next_cursor is None
+    assert ctx.lifespan_context["conn"].command.call_args_list[1].kwargs[
+        "api_params"
+    ] == {
+        "sort": "severity desc",
+        "limit": 1,
+        "filter": "status eq 'Active' and siteId eq 'site-1'",
+        "next": "2",
+    }
 
 
 @pytest.mark.asyncio
-async def test_get_alerts_returns_error_on_non_200(tools):
+async def test_get_alerts_rejects_cross_query_cursor_replay(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = _make_alert_response(
+        next_cursor="2"
+    )
+    first = await tools["central_get_alerts"](ctx, site_id="site-1")
+
+    with pytest.raises(ToolError) as exc_info:
+        await tools["central_get_alerts"](
+            ctx,
+            site_id="site-1",
+            status="Cleared",
+            cursor=first.next_cursor,
+        )
+
+    error = json.loads(str(exc_info.value))
+    assert "invalid or stale cursor" in error["message"]
+
+
+@pytest.mark.asyncio
+async def test_get_alerts_empty_returns_empty_envelope(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = _make_alert_response()
+    result = await tools["central_get_alerts"](ctx, site_id="site-1")
+    assert isinstance(result, AlertEnvelope)
+    assert result.items == []
+    assert result.meta.returned == 0
+
+
+@pytest.mark.asyncio
+async def test_get_alerts_returns_tool_error_on_non_200(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = {
         "code": 500, "msg": "Internal Server Error"
     }
-    result = await tools["central_get_alerts"](ctx, site_id="site-1")
-    assert isinstance(result, str)
-    assert "fetching alerts" in result
+    with pytest.raises(ToolError, match="Internal Server Error"):
+        await tools["central_get_alerts"](ctx, site_id="site-1")
 
 
 # ---------------------------------------------------------------------------

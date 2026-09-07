@@ -1,13 +1,14 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastmcp.exceptions import ToolError
 from fastmcp.server.elicitation import AcceptedElicitation
 from mcp import McpError
 from mcp.server.elicitation import CancelledElicitation, DeclinedElicitation
 from mcp.types import ErrorData
 
 import tools.troubleshooting as mod
-from models import TroubleshootingResult
+from models import CentralError, TroubleshootingResult
 from tests.conftest import FakeMCP, make_ctx
 
 # ---------------------------------------------------------------------------
@@ -84,6 +85,24 @@ def _patch_inventory(raw_device):
     )
 
 
+def _assert_central_error(
+    exc_info: pytest.ExceptionInfo[ToolError],
+    operation: str,
+    *expected_fragments: str,
+) -> CentralError:
+    error = CentralError.model_validate_json(str(exc_info.value))
+    assert error.message.startswith(f"{operation} failed:")
+    for fragment in expected_fragments:
+        assert fragment in error.message
+    return error
+
+
+def _upstream_status_error(status_code: int) -> RuntimeError:
+    error = RuntimeError(f"Central inventory returned HTTP {status_code}")
+    error.response = MagicMock(status_code=status_code)
+    return error
+
+
 # ---------------------------------------------------------------------------
 # central_run_network_test — parameter validation
 # ---------------------------------------------------------------------------
@@ -91,29 +110,135 @@ def _patch_inventory(raw_device):
 @pytest.mark.asyncio
 async def test_network_test_invalid_max_attempts(tools):
     ctx = make_ctx()
-    result = await tools["central_run_network_test"](
-        ctx, test_type="ping", serial_number="AP001", destination="8.8.8.8", max_attempts=0
-    )
-    assert result.startswith("Error validating parameters:")
+    with pytest.raises(ToolError) as exc_info:
+        await tools["central_run_network_test"](
+            ctx,
+            test_type="ping",
+            serial_number="AP001",
+            destination="8.8.8.8",
+            max_attempts=0,
+        )
+    _assert_central_error(exc_info, "validating parameters", "max_attempts")
 
 
 @pytest.mark.asyncio
 async def test_network_test_invalid_poll_interval(tools):
     ctx = make_ctx()
-    result = await tools["central_run_network_test"](
-        ctx, test_type="ping", serial_number="AP001", destination="8.8.8.8", poll_interval=0
-    )
-    assert result.startswith("Error validating parameters:")
+    with pytest.raises(ToolError) as exc_info:
+        await tools["central_run_network_test"](
+            ctx,
+            test_type="ping",
+            serial_number="AP001",
+            destination="8.8.8.8",
+            poll_interval=0,
+        )
+    _assert_central_error(exc_info, "validating parameters", "poll_interval")
 
 
 @pytest.mark.asyncio
 async def test_network_test_tcp_requires_port(tools):
     ctx = make_ctx()
     with _patch_inventory(RAW_AP):
-        result = await tools["central_run_network_test"](
-            ctx, test_type="tcp", serial_number="AP001", destination="10.0.0.1"
-        )
-    assert result.startswith("Error validating parameters:")
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_run_network_test"](
+                ctx, test_type="tcp", serial_number="AP001", destination="10.0.0.1"
+            )
+    _assert_central_error(exc_info, "validating parameters", "port is required")
+
+
+@pytest.mark.parametrize(
+    ("test_type", "argument", "value"),
+    [
+        pytest.param("traceroute", "count", 3, id="count-on-traceroute"),
+        pytest.param("ping", "port", 443, id="port-on-ping"),
+        pytest.param(
+            "traceroute",
+            "packet_size",
+            1400,
+            id="packet-size-on-traceroute",
+        ),
+        pytest.param("tcp", "name_server", "1.1.1.1", id="name-server-on-tcp"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_network_test_rejects_args_not_used_by_test_type(
+    tools,
+    test_type,
+    argument,
+    value,
+):
+    ctx = make_ctx()
+    kwargs = {
+        "test_type": test_type,
+        "serial_number": "AP001",
+        "destination": "8.8.8.8",
+        argument: value,
+    }
+    if test_type == "tcp":
+        kwargs["port"] = 443
+
+    with pytest.raises(ToolError) as exc_info:
+        await tools["central_run_network_test"](ctx, **kwargs)
+
+    error = _assert_central_error(
+        exc_info,
+        "validating parameters",
+        argument,
+        test_type,
+    )
+    assert error.code == "validation_error"
+
+
+@pytest.mark.parametrize(
+    ("raw_device", "family", "test_type", "argument", "value"),
+    [
+        pytest.param(
+            RAW_AOSS,
+            "aos-s",
+            "ping",
+            "vrf",
+            "MGMT",
+            id="vrf-on-aoss-ping",
+        ),
+        pytest.param(
+            RAW_GW,
+            "gateways",
+            "https",
+            "name_server",
+            "1.1.1.1",
+            id="name-server-on-gateway-https",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_network_test_rejects_args_not_used_by_device_family(
+    tools,
+    raw_device,
+    family,
+    test_type,
+    argument,
+    value,
+):
+    ctx = make_ctx()
+    kwargs = {
+        "test_type": test_type,
+        "serial_number": raw_device["serialNumber"],
+        "destination": "8.8.8.8",
+        argument: value,
+    }
+
+    with _patch_inventory(raw_device):
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_run_network_test"](ctx, **kwargs)
+
+    error = _assert_central_error(
+        exc_info,
+        "validating parameters",
+        argument,
+        test_type,
+        family,
+    )
+    assert error.code == "validation_error"
 
 
 # ---------------------------------------------------------------------------
@@ -127,10 +252,222 @@ async def test_network_test_serial_not_found(tools):
         "utils.common.MonitoringDevices.get_all_device_inventory",
         return_value=[],
     ):
-        result = await tools["central_run_network_test"](
-            ctx, test_type="ping", serial_number="UNKNOWN", destination="8.8.8.8"
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_run_network_test"](
+                ctx, test_type="ping", serial_number="UNKNOWN", destination="8.8.8.8"
+            )
+    _assert_central_error(exc_info, "resolving device family", "not found")
+
+
+# ---------------------------------------------------------------------------
+# troubleshooting tools — outer error boundaries
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("upstream_error", "expected_code"),
+    [
+        pytest.param(
+            _upstream_status_error(429),
+            "rate_limited",
+            id="rate-limited",
+        ),
+        pytest.param(
+            TimeoutError("Central inventory request timed out"),
+            "timeout",
+            id="timeout",
+        ),
+        pytest.param(
+            _upstream_status_error(503),
+            "upstream_server_error",
+            id="server-error",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_network_test_family_resolution_failures_use_central_error_contract(
+    tools,
+    upstream_error,
+    expected_code,
+):
+    ctx = make_ctx()
+    with patch.object(
+        mod,
+        "resolve_family_from_serial",
+        new=AsyncMock(side_effect=upstream_error),
+    ):
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_run_network_test"](
+                ctx,
+                test_type="ping",
+                serial_number="AP001",
+                destination="8.8.8.8",
+            )
+
+    error = _assert_central_error(
+        exc_info,
+        "resolving device family",
+        str(upstream_error),
+    )
+    assert error.code == expected_code
+    assert error.retryable is True
+
+
+@pytest.mark.asyncio
+async def test_network_test_api_context_entry_failure_uses_central_error_contract(
+    tools,
+):
+    ctx = make_ctx()
+    ctx.lifespan_context = {}
+
+    with pytest.raises(ToolError) as exc_info:
+        await tools["central_run_network_test"](
+            ctx,
+            test_type="ping",
+            serial_number="AP001",
+            destination="8.8.8.8",
         )
-    assert result.startswith("Error resolving device family:")
+
+    error = _assert_central_error(exc_info, "running ping test", "api_semaphore")
+    assert error.code == "unexpected_error"
+
+
+@pytest.mark.asyncio
+async def test_show_commands_family_resolution_failure_uses_central_error_contract(
+    tools,
+):
+    ctx = make_ctx()
+    upstream_error = _upstream_status_error(503)
+    with patch.object(
+        mod,
+        "resolve_family_from_serial",
+        new=AsyncMock(side_effect=upstream_error),
+    ):
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_run_show_commands"](
+                ctx,
+                serial_number="AP001",
+                commands=["show version"],
+            )
+
+    error = _assert_central_error(
+        exc_info,
+        "resolving device family",
+        str(upstream_error),
+    )
+    assert error.code == "upstream_server_error"
+
+
+@pytest.mark.asyncio
+async def test_bounce_port_selection_failure_uses_central_error_contract(tools):
+    ctx = make_ctx()
+    with patch.object(
+        mod,
+        "resolve_family_from_serial",
+        new=AsyncMock(return_value=("cx", "SW001")),
+    ), patch.object(
+        mod,
+        "fetch_device_interfaces",
+        new=AsyncMock(return_value=[{"name": "1/1/1"}]),
+    ), patch.object(
+        mod,
+        "select_interfaces_for_ports",
+        side_effect=RuntimeError("port selection failed"),
+    ):
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_bounce_port"](
+                ctx,
+                serial_number="SW001",
+                ports=["1/1/1"],
+                bounce_type="port",
+            )
+
+    error = _assert_central_error(
+        exc_info,
+        "running port bounce",
+        "port selection failed",
+    )
+    assert error.code == "unexpected_error"
+
+
+@pytest.mark.asyncio
+async def test_bounce_port_formatting_failure_uses_central_error_contract(tools):
+    ctx = make_ctx()
+    with patch.object(
+        mod,
+        "resolve_family_from_serial",
+        new=AsyncMock(return_value=("cx", "SW001")),
+    ), patch.object(
+        mod,
+        "fetch_device_interfaces",
+        new=AsyncMock(return_value=[{"name": "1/1/1"}]),
+    ), patch.object(
+        mod,
+        "_format_port_lines",
+        side_effect=RuntimeError("port formatting failed"),
+    ):
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_bounce_port"](
+                ctx,
+                serial_number="SW001",
+                ports=["1/1/1"],
+                bounce_type="port",
+            )
+
+    error = _assert_central_error(
+        exc_info,
+        "running port bounce",
+        "port formatting failed",
+    )
+    assert error.code == "unexpected_error"
+
+
+@pytest.mark.asyncio
+async def test_bounce_port_elicitation_failure_uses_central_error_contract(tools):
+    ctx = make_ctx()
+    ctx.elicit = AsyncMock(side_effect=RuntimeError("elicitation transport failed"))
+    with patch.object(
+        mod,
+        "resolve_family_from_serial",
+        new=AsyncMock(return_value=("cx", "SW001")),
+    ), patch.object(
+        mod,
+        "fetch_device_interfaces",
+        new=AsyncMock(return_value=[{"name": "1/1/1"}]),
+    ):
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_bounce_port"](
+                ctx,
+                serial_number="SW001",
+                ports=["1/1/1"],
+                bounce_type="port",
+            )
+
+    error = _assert_central_error(
+        exc_info,
+        "running port bounce",
+        "elicitation transport failed",
+    )
+    assert error.code == "unexpected_error"
+
+
+@pytest.mark.asyncio
+async def test_network_test_tool_error_propagates_unchanged(tools):
+    ctx = make_ctx()
+    tool_error = ToolError("intentional tool signal")
+    with patch.object(
+        mod,
+        "resolve_family_from_serial",
+        new=AsyncMock(side_effect=tool_error),
+    ):
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_run_network_test"](
+                ctx,
+                test_type="ping",
+                serial_number="AP001",
+                destination="8.8.8.8",
+            )
+
+    assert exc_info.value is tool_error
 
 
 # ---------------------------------------------------------------------------
@@ -142,11 +479,15 @@ async def test_network_test_unsupported_pairing_tcp_on_switch(tools):
     """Tcp tests are only supported on APs; should return a clear error for a switch."""
     ctx = make_ctx()
     with _patch_inventory(RAW_CX):
-        result = await tools["central_run_network_test"](
-            ctx, test_type="tcp", serial_number="SW001", destination="10.0.0.1", port=443
-        )
-    assert result.startswith("Error running tcp test:")
-    assert "aps" in result
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_run_network_test"](
+                ctx,
+                test_type="tcp",
+                serial_number="SW001",
+                destination="10.0.0.1",
+                port=443,
+            )
+    _assert_central_error(exc_info, "running tcp test", "aps")
 
 
 # ---------------------------------------------------------------------------
@@ -366,11 +707,11 @@ async def test_network_test_initiate_exception(tools):
     ctx = make_ctx()
     with _patch_inventory(RAW_AP), \
          patch("utils.troubleshooting.Troubleshooting.initiate_ping_aps_test", side_effect=Exception("API error")):
-        result = await tools["central_run_network_test"](
-            ctx, test_type="ping", serial_number="AP001", destination="8.8.8.8"
-        )
-    assert isinstance(result, str)
-    assert result.startswith("Error running ping test:")
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_run_network_test"](
+                ctx, test_type="ping", serial_number="AP001", destination="8.8.8.8"
+            )
+    _assert_central_error(exc_info, "running ping test", "API error")
 
 
 # ---------------------------------------------------------------------------
@@ -380,27 +721,31 @@ async def test_network_test_initiate_exception(tools):
 @pytest.mark.asyncio
 async def test_show_commands_empty_list(tools):
     ctx = make_ctx()
-    result = await tools["central_run_show_commands"](ctx, serial_number="AP001", commands=[])
-    assert result.startswith("Error validating parameters:")
+    with pytest.raises(ToolError) as exc_info:
+        await tools["central_run_show_commands"](
+            ctx, serial_number="AP001", commands=[]
+        )
+    _assert_central_error(exc_info, "validating parameters", "must not be empty")
 
 
 @pytest.mark.asyncio
 async def test_show_commands_exceeds_max(tools):
     ctx = make_ctx()
-    result = await tools["central_run_show_commands"](
-        ctx, serial_number="AP001", commands=[f"show vlan {i}" for i in range(6)]
-    )
-    assert result.startswith("Error validating parameters:")
+    with pytest.raises(ToolError) as exc_info:
+        await tools["central_run_show_commands"](
+            ctx, serial_number="AP001", commands=[f"show vlan {i}" for i in range(6)]
+        )
+    _assert_central_error(exc_info, "validating parameters", "maximum 5")
 
 
 @pytest.mark.asyncio
 async def test_show_commands_invalid_prefix(tools):
     ctx = make_ctx()
-    result = await tools["central_run_show_commands"](
-        ctx, serial_number="AP001", commands=["reboot now"]
-    )
-    assert result.startswith("Error validating parameters:")
-    assert "reboot now" in result
+    with pytest.raises(ToolError) as exc_info:
+        await tools["central_run_show_commands"](
+            ctx, serial_number="AP001", commands=["reboot now"]
+        )
+    _assert_central_error(exc_info, "validating parameters", "reboot now")
 
 
 # ---------------------------------------------------------------------------
@@ -414,12 +759,16 @@ async def test_show_commands_unmatched_returns_catalog(tools):
     catalog = ["show version", "show arp", "show interfaces"]
     with _patch_inventory(RAW_AP), \
          patch("utils.troubleshooting.Troubleshooting.list_show_commands", return_value=catalog):
-        result = await tools["central_run_show_commands"](
-            ctx, serial_number="AP001", commands=["show nonsense"]
-        )
-    assert result.startswith("Error validating show commands:")
-    assert "show nonsense" in result
-    assert "show version" in result
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_run_show_commands"](
+                ctx, serial_number="AP001", commands=["show nonsense"]
+            )
+    _assert_central_error(
+        exc_info,
+        "validating show commands",
+        "show nonsense",
+        "show version",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -444,6 +793,29 @@ async def test_show_commands_success(tools):
     assert mock_init.call_args.kwargs["device_type"] == "aps"
 
 
+@pytest.mark.asyncio
+async def test_show_commands_substitutes_aoss_port_placeholder(tools):
+    ctx = make_ctx()
+    catalog = [{"command": "show loop-protect {{port}}"}]
+    interfaces = {"items": [{"name": "1/1/1"}]}
+    with _patch_inventory(RAW_AOSS), \
+         patch("utils.troubleshooting.Troubleshooting.list_show_commands", return_value=catalog), \
+         patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=interfaces), \
+         patch("utils.troubleshooting.Troubleshooting.initiate_show_commands", return_value={"location": "/tasks/T001"}) as mock_init, \
+         patch("utils.troubleshooting.Troubleshooting.get_show_commands_result", return_value={"status": "COMPLETED", "result": {"output": "ok"}}), \
+         patch("asyncio.sleep"):
+        result = await tools["central_run_show_commands"](
+            ctx,
+            serial_number="SW002",
+            commands=["show loop-protect {{port}}"],
+            max_attempts=1,
+            poll_interval=1,
+        )
+
+    assert isinstance(result, TroubleshootingResult)
+    assert mock_init.call_args.kwargs["commands"] == ["show loop-protect 1/1/1"]
+
+
 # ---------------------------------------------------------------------------
 # central_run_show_commands — show commands exception
 # ---------------------------------------------------------------------------
@@ -455,11 +827,11 @@ async def test_show_commands_run_exception(tools):
     with _patch_inventory(RAW_AP), \
          patch("utils.troubleshooting.Troubleshooting.list_show_commands", return_value=catalog), \
          patch("utils.troubleshooting.Troubleshooting.initiate_show_commands", side_effect=Exception("Central error")):
-        result = await tools["central_run_show_commands"](
-            ctx, serial_number="AP001", commands=["show version"]
-        )
-    assert isinstance(result, str)
-    assert result.startswith("Error running show commands:")
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_run_show_commands"](
+                ctx, serial_number="AP001", commands=["show version"]
+            )
+    _assert_central_error(exc_info, "running show commands", "Central error")
 
 
 # ---------------------------------------------------------------------------
@@ -475,37 +847,52 @@ _BOUNCE_COMPLETED = {"status": "COMPLETED", "result": {"output": "bounce OK"}, "
 @pytest.mark.asyncio
 async def test_bounce_invalid_max_attempts(tools):
     ctx = make_ctx()
-    result = await tools["central_bounce_port"](
-        ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port", max_attempts=0
-    )
-    assert result.startswith("Error validating parameters:")
+    with pytest.raises(ToolError) as exc_info:
+        await tools["central_bounce_port"](
+            ctx,
+            serial_number="SW001",
+            ports=["1/1/1"],
+            bounce_type="port",
+            max_attempts=0,
+        )
+    _assert_central_error(exc_info, "validating parameters", "max_attempts")
 
 
 @pytest.mark.asyncio
 async def test_bounce_invalid_poll_interval(tools):
     ctx = make_ctx()
-    result = await tools["central_bounce_port"](
-        ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port", poll_interval=0
-    )
-    assert result.startswith("Error validating parameters:")
+    with pytest.raises(ToolError) as exc_info:
+        await tools["central_bounce_port"](
+            ctx,
+            serial_number="SW001",
+            ports=["1/1/1"],
+            bounce_type="port",
+            poll_interval=0,
+        )
+    _assert_central_error(exc_info, "validating parameters", "poll_interval")
 
 
 @pytest.mark.asyncio
 async def test_bounce_empty_ports(tools):
     ctx = make_ctx()
-    result = await tools["central_bounce_port"](
-        ctx, serial_number="SW001", ports=[], bounce_type="port"
-    )
-    assert result.startswith("Error validating parameters:")
+    with pytest.raises(ToolError) as exc_info:
+        await tools["central_bounce_port"](
+            ctx, serial_number="SW001", ports=[], bounce_type="port"
+        )
+    _assert_central_error(exc_info, "validating parameters", "must not be empty")
 
 
 @pytest.mark.asyncio
 async def test_bounce_too_many_ports(tools):
     ctx = make_ctx()
-    result = await tools["central_bounce_port"](
-        ctx, serial_number="SW001", ports=[f"1/1/{i}" for i in range(6)], bounce_type="port"
-    )
-    assert result.startswith("Error validating parameters:")
+    with pytest.raises(ToolError) as exc_info:
+        await tools["central_bounce_port"](
+            ctx,
+            serial_number="SW001",
+            ports=[f"1/1/{i}" for i in range(6)],
+            bounce_type="port",
+        )
+    _assert_central_error(exc_info, "validating parameters", "maximum 5")
 
 
 # --- Family rejection ---
@@ -514,10 +901,11 @@ async def test_bounce_too_many_ports(tools):
 async def test_bounce_unsupported_family_ap(tools):
     ctx = make_ctx()
     with _patch_inventory(RAW_AP):
-        result = await tools["central_bounce_port"](
-            ctx, serial_number="AP001", ports=["1/1/1"], bounce_type="port"
-        )
-    assert result.startswith("Error running port bounce:")
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_bounce_port"](
+                ctx, serial_number="AP001", ports=["1/1/1"], bounce_type="port"
+            )
+    _assert_central_error(exc_info, "running port bounce", "does not support")
 
 
 # --- Unknown port ---
@@ -528,10 +916,11 @@ async def test_bounce_unknown_port(tools):
     ctx.elicit = AsyncMock()
     with _patch_inventory(RAW_CX), \
          patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_IFACE_RESPONSE):
-        result = await tools["central_bounce_port"](
-            ctx, serial_number="SW001", ports=["1/1/99"], bounce_type="port"
-        )
-    assert result.startswith("Error validating ports:")
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_bounce_port"](
+                ctx, serial_number="SW001", ports=["1/1/99"], bounce_type="port"
+            )
+    _assert_central_error(exc_info, "validating ports", "1/1/99")
     ctx.elicit.assert_not_called()
 
 
@@ -544,11 +933,11 @@ async def test_bounce_declined(tools):
     with _patch_inventory(RAW_CX), \
          patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_IFACE_RESPONSE), \
          patch("utils.troubleshooting.Troubleshooting.initiate_port_bounce_test") as mock_init:
-        result = await tools["central_bounce_port"](
-            ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port"
-        )
-    assert isinstance(result, str)
-    assert "bounce" in result.lower()
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_bounce_port"](
+                ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port"
+            )
+    _assert_central_error(exc_info, "running port bounce", "declined or cancelled")
     mock_init.assert_not_called()
 
 
@@ -559,10 +948,11 @@ async def test_bounce_cancelled(tools):
     with _patch_inventory(RAW_CX), \
          patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_IFACE_RESPONSE), \
          patch("utils.troubleshooting.Troubleshooting.initiate_port_bounce_test") as mock_init:
-        result = await tools["central_bounce_port"](
-            ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port"
-        )
-    assert isinstance(result, str)
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_bounce_port"](
+                ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port"
+            )
+    _assert_central_error(exc_info, "running port bounce", "declined or cancelled")
     mock_init.assert_not_called()
 
 
@@ -642,9 +1032,10 @@ async def test_bounce_poe_shows_poe_fields_in_elicit_message(tools):
     }
     with _patch_inventory(RAW_AOSS), \
          patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=poe_iface_response):
-        await tools["central_bounce_port"](
-            ctx, serial_number="SW002", ports=["1/1/1"], bounce_type="poe"
-        )
+        with pytest.raises(ToolError):
+            await tools["central_bounce_port"](
+                ctx, serial_number="SW002", ports=["1/1/1"], bounce_type="poe"
+            )
     ctx.elicit.assert_called_once()
     approval_msg = ctx.elicit.call_args.args[0]
     assert "WARNING:" in approval_msg
@@ -670,9 +1061,10 @@ async def test_bounce_port_shows_warning_and_neighbour(tools):
     }
     with _patch_inventory(RAW_AOSS), \
          patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=iface_response):
-        await tools["central_bounce_port"](
-            ctx, serial_number="SW002", ports=["1/1/2"], bounce_type="port"
-        )
+        with pytest.raises(ToolError):
+            await tools["central_bounce_port"](
+                ctx, serial_number="SW002", ports=["1/1/2"], bounce_type="port"
+            )
     ctx.elicit.assert_called_once()
     approval_msg = ctx.elicit.call_args.args[0]
     assert "WARNING:" in approval_msg
@@ -692,9 +1084,10 @@ async def test_bounce_port_omits_neighbour_line_when_no_neighbour(tools):
     }
     with _patch_inventory(RAW_AOSS), \
          patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=iface_response):
-        await tools["central_bounce_port"](
-            ctx, serial_number="SW002", ports=["1/1/3"], bounce_type="port"
-        )
+        with pytest.raises(ToolError):
+            await tools["central_bounce_port"](
+                ctx, serial_number="SW002", ports=["1/1/3"], bounce_type="port"
+            )
     ctx.elicit.assert_called_once()
     approval_msg = ctx.elicit.call_args.args[0]
     assert "connected:" not in approval_msg
@@ -750,9 +1143,10 @@ async def test_gateway_approval_shows_operState_and_health(tools):
     gw_response = {"ports": [_GW_IFACE_UP]}
     with _patch_inventory(RAW_GW), \
          patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
-        await tools["central_bounce_port"](
-            ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="port"
-        )
+        with pytest.raises(ToolError):
+            await tools["central_bounce_port"](
+                ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="port"
+            )
     approval_msg = ctx.elicit.call_args.args[0]
     assert "status=Up" in approval_msg
     assert "health=Good" in approval_msg
@@ -766,9 +1160,10 @@ async def test_gateway_approval_speed_auto_passes_through(tools):
     gw_response = {"ports": [_GW_IFACE_DOWN]}
     with _patch_inventory(RAW_GW), \
          patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
-        await tools["central_bounce_port"](
-            ctx, serial_number="GW001", ports=["GE 0/0/0"], bounce_type="port"
-        )
+        with pytest.raises(ToolError):
+            await tools["central_bounce_port"](
+                ctx, serial_number="GW001", ports=["GE 0/0/0"], bounce_type="port"
+            )
     approval_msg = ctx.elicit.call_args.args[0]
     assert "speed=Auto" in approval_msg
 
@@ -780,9 +1175,10 @@ async def test_gateway_approval_omits_neighbour_section(tools):
     gw_response = {"ports": [_GW_IFACE_UP]}
     with _patch_inventory(RAW_GW), \
          patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
-        await tools["central_bounce_port"](
-            ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="port"
-        )
+        with pytest.raises(ToolError):
+            await tools["central_bounce_port"](
+                ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="port"
+            )
     approval_msg = ctx.elicit.call_args.args[0]
     assert "connected:" not in approval_msg
 
@@ -794,9 +1190,10 @@ async def test_gateway_approval_omits_poe_fields_for_poe_bounce(tools):
     gw_response = {"ports": [_GW_IFACE_UP]}
     with _patch_inventory(RAW_GW), \
          patch("utils.troubleshooting.MonitoringGateways.get_all_gateway_ports", return_value=gw_response):
-        await tools["central_bounce_port"](
-            ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="poe"
-        )
+        with pytest.raises(ToolError):
+            await tools["central_bounce_port"](
+                ctx, serial_number="GW001", ports=["GE 0/0/1"], bounce_type="poe"
+            )
     approval_msg = ctx.elicit.call_args.args[0]
     assert "poeStatus" not in approval_msg
     assert "poeClass" not in approval_msg
@@ -808,17 +1205,17 @@ async def test_gateway_approval_omits_poe_fields_for_poe_bounce(tools):
 
 @pytest.mark.asyncio
 async def test_bounce_port_elicitation_unsupported(tools):
-    """ctx.elicit() raising McpError returns a graceful error message."""
+    """ctx.elicit() raising McpError preserves the intentional MCP-layer signal."""
     ctx = make_ctx()
-    ctx.elicit = AsyncMock(side_effect=McpError(ErrorData(code=-32601, message="Method not found")))
+    mcp_error = McpError(ErrorData(code=-32601, message="Method not found"))
+    ctx.elicit = AsyncMock(side_effect=mcp_error)
     with _patch_inventory(RAW_CX), \
          patch("utils.troubleshooting.MonitoringSwitches.get_switch_interfaces", return_value=_IFACE_RESPONSE):
-        result = await tools["central_bounce_port"](
-            ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port"
-        )
-    assert isinstance(result, str)
-    assert "elicitation" in result.lower()
-    assert "Error running port bounce:" in result
+        with pytest.raises(McpError) as exc_info:
+            await tools["central_bounce_port"](
+                ctx, serial_number="SW001", ports=["1/1/1"], bounce_type="port"
+            )
+    assert exc_info.value is mcp_error
 
 
 # ---------------------------------------------------------------------------

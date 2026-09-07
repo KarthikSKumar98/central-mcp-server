@@ -2,7 +2,7 @@ import re
 
 from constants import SITE_LIMIT
 from models import SiteData, SiteMetrics
-from utils.common import paginated_fetch
+from utils.common import offset_paginated_fetch
 
 
 def fetch_site_data(
@@ -30,7 +30,7 @@ def fetch_site_data(
     additional_params = {"filter": site_filter} if site_filter else None
 
     results = [
-        paginated_fetch(
+        offset_paginated_fetch(
             central_conn,
             endpoint,
             SITE_LIMIT,
@@ -111,7 +111,6 @@ def transform_to_site_data(site_raw: dict) -> SiteData:
     return SiteData(
         site_id=site_raw.get("id"),
         name=site_raw.get("siteName"),
-        address=site_raw.get("address", {}),
         location={"lat": lat, "lng": lng},
         metrics=metrics,
     )

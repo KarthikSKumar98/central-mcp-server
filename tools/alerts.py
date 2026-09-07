@@ -1,13 +1,23 @@
 import asyncio
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastmcp import Context, FastMCP
+from pydantic import Field
 
-from constants import ALERT_LIMIT
-from models import PaginatedAlerts
+from constants import ALERT_LIMIT, MAX_PAGE_SIZE
+from models import AlertEnvelope
 from tools import READ_ONLY
 from utils.alerts import clean_alert_data
-from utils.common import FilterField, api_context, build_filters, format_tool_error
+from utils.common import FilterField, api_context, build_filters
+from utils.cursor import (
+    INVALID_CURSOR_MESSAGE,
+    decode_cursor,
+    encode_cursor,
+    hash_query,
+)
+from utils.envelope import build_envelope, raise_central_error
+
+ALERTS_TOOL_NAME = "central_get_alerts"
 
 ALERT_FILTER_FIELDS: dict[str, FilterField] = {
     "status": FilterField("status"),
@@ -18,7 +28,7 @@ ALERT_FILTER_FIELDS: dict[str, FilterField] = {
 
 
 def register(mcp: FastMCP) -> None:
-    """Register alert tools with the MCP server."""
+    """Register the alert tool with the MCP server."""
 
     @mcp.tool(annotations=READ_ONLY)
     async def central_get_alerts(
@@ -32,40 +42,41 @@ def register(mcp: FastMCP) -> None:
         ]
         | None = None,
         sort: str = "severity desc",
-        limit: int = ALERT_LIMIT,
-        cursor: int | None = None,
-    ) -> PaginatedAlerts | str:
-        """Return a filtered list of alerts for a specific site which can be used this to drill into active issues by device type or category after identifying the target site.
+        limit: Annotated[int, Field(ge=1, le=MAX_PAGE_SIZE)] = ALERT_LIMIT,
+        cursor: str | None = None,
+        response_format: Literal["concise", "detailed"] = "concise",
+    ) -> AlertEnvelope:
+        """Retrieve a severity-sorted alert page for one site.
 
-        REQUIRES site_id — call central_get_sites(site_names=["<site name>"]) and extract
-        site_id from the returned SiteData. Do NOT call this tool without a site_id; it will
-        fail validation.
-        Results are sorted by severity descending by default (Critical first), making the most
-        important alerts appear in the first page. To page through results, pass the `next_cursor`
-        value from the previous response as `cursor` in the next call. When `next_cursor` is None,
-        there are no more pages.
-
-        If no alerts match the criteria, returns a message indicating so.
-
-        Parameters
-        ----------
-            - site_id: Site identifier. Obtain by calling central_get_sites(site_names=["<name>"]) and reading site_id from the result.
-            - status: "Active" (default) for unresolved alerts, "Cleared" for resolved ones.
-            - device_type: Narrow to a device class — "Access Point", "Gateway", "Switch", or "Bridge".
-            - category: Narrow to an alert domain — "Clients", "System", "LAN", "WLAN", "WAN",
-              "Cluster", "Routing", or "Security".
-            - sort: Sort expression (default "severity desc" — most critical first). Examples:
-              "createdAt desc", "createdAt asc".
-            - limit: Number of alerts per page (default 50, max 100).
-            - cursor: Pagination cursor from a previous response's `next_cursor` field. Omit or
-              pass None to start from the first page.
-
-        Note: Each alert includes summary, name, category, severity, priority, status,
-        deviceType, createdAt, updatedAt, updatedBy, and clearedReason.
-
+        Use after central_get_sites identifies the site; Active alerts are the default.
+        Cross-field rule: filters combine, and cursor requires the identical query and original limit.
+        Returns AlertEnvelope; response_format selects concise or detailed items. Replay next_cursor as cursor to continue.
         """
-        async with api_context(ctx) as conn:
-            try:
+        try:
+            query_filters = {
+                "status": status,
+                "device_type": device_type,
+                "category": category,
+                "site_id": site_id,
+                "sort": sort,
+            }
+            query_hash = hash_query(query_filters)
+            page_size = limit
+            upstream_next = None
+            if cursor is not None:
+                decoded_cursor = decode_cursor(
+                    cursor,
+                    expected_tool=ALERTS_TOOL_NAME,
+                    expected_query_hash=query_hash,
+                )
+                if decoded_cursor.page_size > MAX_PAGE_SIZE:
+                    raise ValueError(INVALID_CURSOR_MESSAGE)
+                page_size = decoded_cursor.page_size
+                upstream_next = decoded_cursor.position.get("upstream_next")
+                if not isinstance(upstream_next, str) or not upstream_next:
+                    raise ValueError(INVALID_CURSOR_MESSAGE)
+
+            async with api_context(ctx) as conn:
                 filter_str = build_filters(
                     ALERT_FILTER_FIELDS,
                     status=status,
@@ -73,13 +84,14 @@ def register(mcp: FastMCP) -> None:
                     category=category,
                     site_id=site_id,
                 )
-                query_params = {"sort": sort}
+                query_params: dict[str, object] = {
+                    "sort": sort,
+                    "limit": page_size,
+                }
                 if filter_str:
                     query_params["filter"] = filter_str
-
-                query_params["limit"] = limit
-                if cursor is not None:
-                    query_params["next"] = cursor
+                if upstream_next is not None:
+                    query_params["next"] = upstream_next
 
                 response = await asyncio.to_thread(
                     conn.command,
@@ -87,18 +99,48 @@ def register(mcp: FastMCP) -> None:
                     api_path="network-notifications/v1/alerts",
                     api_params=query_params,
                 )
-                if response["code"] != 200:
-                    return format_tool_error("fetching alerts", response["msg"])
-                msg = response["msg"]
-                raw_items = msg.get("items", [])
-                if not raw_items:
-                    return "No alerts found matching criteria"
-                return PaginatedAlerts(
-                    items=clean_alert_data(raw_items),
-                    total=msg.get("total", 0),
-                    next_cursor=msg.get("next"),
+                if response.get("code") != 200:
+                    raise RuntimeError(
+                        f"alerts API returned {response.get('code')}: {response.get('msg')}"
+                    )
+                payload = response.get("msg")
+                if not isinstance(payload, dict):
+                    raise ValueError(
+                        "Unexpected alerts response; expected an object payload."
+                    )
+                raw_items = payload.get("items", [])
+                if not isinstance(raw_items, list):
+                    raise ValueError(
+                        "Unexpected alerts response; expected an items list."
+                    )
+                items = clean_alert_data(raw_items)
+
+            response_next_value = payload.get("next")
+            response_next = (
+                str(response_next_value)
+                if not isinstance(response_next_value, bool)
+                and isinstance(response_next_value, (str, int))
+                else None
+            )
+            if not response_next:
+                response_next = None
+
+            next_cursor = None
+            if response_next is not None:
+                next_cursor = encode_cursor(
+                    ALERTS_TOOL_NAME,
+                    page_size,
+                    {"upstream_next": response_next},
+                    query_hash,
                 )
-            except Exception as e:
-                if isinstance(e, KeyError):
-                    return format_tool_error("parsing alerts", e)
-                return format_tool_error("fetching alerts", e)
+
+            return build_envelope(
+                AlertEnvelope,
+                items,
+                total=payload.get("total", 0),
+                next_cursor=next_cursor,
+                ceiling=page_size,
+                response_format=response_format,
+            )
+        except Exception as exc:
+            raise_central_error(exc, "retrieving alerts")

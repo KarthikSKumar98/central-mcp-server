@@ -45,7 +45,7 @@ The sections below follow that same path — from a network-wide view down to a 
 Start here. One question gives you a ranked, at-a-glance picture of every site so you know where to
 look first.
 
-*Powered by the Sites tools (`central_get_summary`, `central_get_sites`).*
+*Powered by the Sites tools (`central_get_sites`, `central_get_sites`).*
 
 > ### 🗨️ "Give me a health overview of all sites."
 
@@ -80,7 +80,7 @@ You can then sharpen the focus:
 
 Locate any device — or sweep the whole network for the ones that need attention — without knowing serial numbers in advance.
 
-*Powered by the Devices tools (`central_get_devices`, `central_find_device`).*
+*Powered by the Devices tools (`central_get_devices`, `central_get_devices`).*
 
 > ### 🗨️ "Are there any offline devices in the network?"
 
@@ -116,7 +116,7 @@ Locate any device — or sweep the whole network for the ones that need attentio
 Inventory your wireless, then go deep on a single AP's radios and trends — useful when a coverage
 area feels slow.
 
-*Powered by the AP monitoring tools (`central_get_aps`, `central_get_ap_details`, `central_get_ap_trends`).*
+*Powered by the AP monitoring tools (`central_get_devices`, `central_get_device_details`, `central_get_device_trends`).*
 
 > ### 🗨️ "What's the RF health on AP PHSXM52079?"
 
@@ -151,7 +151,7 @@ utilization, and noise floor across 2.4 / 5 / 6 GHz. Here all the clients sit on
 
 From a campus switch list down to per-port PoE and per-member hardware health on a single stack.
 
-*Powered by the switch monitoring tools (`central_get_switches`, `central_get_switch_details`, `central_get_switch_trends`).*
+*Powered by the switch monitoring tools (`central_get_devices`, `central_get_device_details`, `central_get_device_trends`).*
 
 > ### 🗨️ "Show me full details for switch SG34L5002Y — interfaces, PoE, and hardware health."
 
@@ -188,7 +188,7 @@ From a campus switch list down to per-port PoE and per-member hardware health on
 Check gateway health, cluster tunnel status, and capacity headroom — and catch a single down tunnel
 buried among dozens.
 
-*Powered by the gateway monitoring tools (`central_get_gateways`, `central_get_gateway_details`, `central_get_gateway_trends`, `central_get_gateway_cluster`, `central_get_cluster_capacity_trends`).*
+*Powered by the gateway monitoring tools (`central_get_devices`, `central_get_device_details`, `central_get_device_trends`, `central_get_gateway_cluster`, `central_get_gateway_cluster`).*
 
 > ### 🗨️ "Show me the tunnels on gateway TWSTKYH00D — are any down?"
 
@@ -221,7 +221,7 @@ buried among dozens.
 
 See every SSID at a glance, inspect one, and watch its traffic over time.
 
-*Powered by the WLAN tools (`central_get_wlans`, `central_get_wlan_stats`).*
+*Powered by the WLAN tools (`central_get_wlans`, `central_get_wlans`).*
 
 > ### 🗨️ "What SSIDs are configured across the network?"
 
@@ -257,7 +257,7 @@ much traffic it actually carries.*
 
 Find connected clients, surface failures, and pull a complete profile for any one device by MAC.
 
-*Powered by the Clients tools (`central_get_clients`, `central_find_client`).*
+*Powered by the Clients tools (`central_get_clients`, `central_get_clients`).*
 
 > ### 🗨️ "Look up the client f0:b3:ec:62:aa:3d."
 
@@ -325,7 +325,7 @@ Triage what's actually firing — across the network or scoped to a site, sorted
 
 Survey the firehose first, then drill into a specific failure type, device, or client.
 
-*Powered by the Events tools (`central_get_events_count`, `central_get_events`).*
+*Powered by the Events tools (`central_get_events`, `central_get_events`).*
 
 > ### 🗨️ "Summarize the events at the London campus over the last 24 hours."
 

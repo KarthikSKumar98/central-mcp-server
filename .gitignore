@@ -11,3 +11,5 @@ fastmcp-docs.md
 mcp.json
 .agents/*
 scripts/fetch_fastmcp_docs.py
+CLAUDE.local.md
+.superpowers/

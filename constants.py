@@ -1,5 +1,10 @@
 from typing import Literal
 
+MAX_PAGE_SIZE = 500  # Maximum caller-requested page size for list tools
+GATEWAY_MAX_PAGE_SIZE = 100  # Upstream gateway list API page-size ceiling
+# Shared item-count ceiling; responses beyond this are truncated with meta accounting.
+MAX_RESPONSE_ITEMS = 500
+
 SITE_LIMIT = 100  # Max number of sites returned per API call
 ALERT_LIMIT = 50  # Max number of alerts returned per API call
 EVENT_LIMIT = 50  # Max number of events returned per API call

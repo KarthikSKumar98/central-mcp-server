@@ -1,12 +1,27 @@
+import json
 from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
+from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 
 import tools.events as mod
-from models import CompactEventFilters, Event, EventFilters, PaginatedEvents
+from constants import MAX_PAGE_SIZE
+from models import (
+    CompactEventFilters,
+    Event,
+    EventEnvelope,
+    EventFacetsEnvelope,
+    EventFilters,
+)
 from tests.conftest import FakeMCP, make_ctx
-from utils.events import clean_event_filters, compact_event_filters
+from utils.cursor import decode_cursor, hash_query
+from utils.events import (
+    _resolve_time_window,
+    clean_event_filters,
+    compact_event_filters,
+)
 
 
 @pytest.fixture
@@ -45,6 +60,18 @@ RAW_EVENT = {
 }
 
 
+@pytest.mark.parametrize(
+    "start_time,end_time",
+    [
+        ("2026-03-21T00:00:00.000Z", None),
+        (None, "2026-03-21T01:00:00.000Z"),
+    ],
+)
+def test_resolve_time_window_rejects_partial_custom_window(start_time, end_time):
+    with pytest.raises(ValueError, match="start_time and end_time"):
+        _resolve_time_window("last_1h", start_time, end_time)
+
+
 # ---------------------------------------------------------------------------
 # get_events tests
 # ---------------------------------------------------------------------------
@@ -68,30 +95,28 @@ async def test_get_events_required_params_in_query(tools):
 async def test_get_events_site_context_rejects_context_identifier(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = _make_events_response()
-    result = await tools["central_get_events"](
-        ctx,
-        site_id="s1",
-        context_type="SITE",
-        context_identifier="s1",
-    )
-    assert isinstance(result, str)
-    assert "context_identifier must not be provided when context_type=SITE" in result
+    with pytest.raises(
+        ToolError,
+        match="context_identifier must not be provided when context_type=SITE",
+    ):
+        await tools["central_get_events"](
+            ctx,
+            site_id="s1",
+            context_type="SITE",
+            context_identifier="s1",
+        )
 
 
 @pytest.mark.asyncio
 async def test_get_events_non_site_context_requires_context_identifier(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = _make_events_response()
-    result = await tools["central_get_events"](
-        ctx,
-        site_id="s1",
-        context_type="ACCESS_POINT",
-    )
-    assert isinstance(result, str)
-    assert (
-        "context_identifier is required when context_type is ACCESS_POINT/SWITCH/GATEWAY/WIRELESS_CLIENT/WIRED_CLIENT/BRIDGE"
-        in result
-    )
+    with pytest.raises(ToolError, match="context_identifier is required"):
+        await tools["central_get_events"](
+            ctx,
+            site_id="s1",
+            context_type="ACCESS_POINT",
+        )
 
 
 @pytest.mark.asyncio
@@ -250,28 +275,169 @@ async def test_get_events_no_cursor_when_none(tools):
 @pytest.mark.asyncio
 async def test_get_events_cursor_forwarded(tools):
     ctx = make_ctx()
-    ctx.lifespan_context["conn"].command.return_value = _make_events_response()
+    ctx.lifespan_context["conn"].command.side_effect = [
+        _make_events_response(next_cursor="5"),
+        _make_events_response(),
+    ]
     with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
-        await tools["central_get_events"](
-            ctx, site_id="s1", cursor=5
+        first = await tools["central_get_events"](
+            ctx, site_id="s1"
         )
-    assert ctx.lifespan_context["conn"].command.call_args.kwargs["api_params"]["next"] == 5
+        await tools["central_get_events"](
+            ctx, site_id="s1", cursor=first.next_cursor
+        )
+    assert ctx.lifespan_context["conn"].command.call_args_list[1].kwargs[
+        "api_params"
+    ]["next"] == "5"
 
 
 @pytest.mark.asyncio
 async def test_get_events_returns_paginated_model(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = _make_events_response(
-        events=[RAW_EVENT], total=200, next_cursor=3
+        events=[RAW_EVENT], total=200, next_cursor="3"
     )
     with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
         result = await tools["central_get_events"](
             ctx, site_id="s1"
         )
-    assert isinstance(result, PaginatedEvents)
+    assert isinstance(result, EventEnvelope)
     assert result.total == 200
-    assert result.next_cursor == 3
+    assert isinstance(result.next_cursor, str)
+    assert result.next_cursor
+    decoded = decode_cursor(
+        result.next_cursor,
+        expected_tool="central_get_events",
+        expected_query_hash=hash_query(
+            {
+                "site_id": "s1",
+                "context_type": "SITE",
+                "context_identifier": None,
+                "event_id": None,
+                "category": None,
+                "source_type": None,
+                "search": None,
+                "include": None,
+                "time_range": "last_1h",
+                "start_time": None,
+                "end_time": None,
+            }
+        ),
+    )
+    assert decoded.position == {"upstream_next": "3"}
     assert isinstance(result.items[0], Event)
+
+
+@pytest.mark.asyncio
+async def test_get_events_cursor_round_trip_and_query_binding(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.side_effect = [
+        _make_events_response(events=[RAW_EVENT], total=2, next_cursor="2"),
+        _make_events_response(events=[RAW_EVENT], total=2),
+    ]
+
+    with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
+        first = await tools["central_get_events"](
+            ctx,
+            site_id="s1",
+            category="System",
+            limit=1,
+        )
+        decoded = decode_cursor(
+            first.next_cursor,
+            expected_tool="central_get_events",
+            expected_query_hash=hash_query(
+                {
+                    "site_id": "s1",
+                    "context_type": "SITE",
+                    "context_identifier": None,
+                    "event_id": None,
+                    "category": "System",
+                    "source_type": None,
+                    "search": None,
+                    "include": None,
+                    "time_range": "last_1h",
+                    "start_time": None,
+                    "end_time": None,
+                }
+            ),
+        )
+        assert decoded.page_size == 1
+        assert decoded.position == {"upstream_next": "2"}
+
+        second = await tools["central_get_events"](
+            ctx,
+            site_id="s1",
+            category="System",
+            cursor=first.next_cursor,
+        )
+
+    assert second.next_cursor is None
+    assert ctx.lifespan_context["conn"].command.call_args_list[1].kwargs[
+        "api_params"
+    ] == {
+        "context-type": "SITE",
+        "context-identifier": "s1",
+        "start-at": _fake_time_window()[0],
+        "end-at": _fake_time_window()[1],
+        "site-id": "s1",
+        "limit": 1,
+        "filter": "category eq 'System'",
+        "next": "2",
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_events_rejects_cross_query_cursor_replay(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response(
+        next_cursor="2"
+    )
+
+    with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
+        first = await tools["central_get_events"](
+            ctx,
+            site_id="s1",
+            category="System",
+            limit=1,
+        )
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_get_events"](
+                ctx,
+                site_id="s1",
+                category="Clients",
+                cursor=first.next_cursor,
+            )
+
+    error = json.loads(str(exc_info.value))
+    assert error["code"] == "validation_error"
+    assert "invalid or stale cursor" in error["message"]
+
+
+@pytest.mark.asyncio
+async def test_get_events_rejects_cursor_limit_conflict(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response(
+        next_cursor="2"
+    )
+
+    with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
+        first = await tools["central_get_events"](
+            ctx,
+            site_id="s1",
+            limit=2,
+        )
+        with pytest.raises(ToolError) as exc_info:
+            await tools["central_get_events"](
+                ctx,
+                site_id="s1",
+                limit=3,
+                cursor=first.next_cursor,
+            )
+
+    error = json.loads(str(exc_info.value))
+    assert error["code"] == "validation_error"
+    assert "limit conflicts with the cursor page_size" in error["message"]
 
 
 @pytest.mark.asyncio
@@ -296,13 +462,13 @@ async def test_get_events_empty_returns_empty_paginated(tools):
         result = await tools["central_get_events"](
             ctx, site_id="s1"
         )
-    assert isinstance(result, PaginatedEvents)
+    assert isinstance(result, EventEnvelope)
     assert result.items == []
     assert result.next_cursor is None
 
 
 # ---------------------------------------------------------------------------
-# get_events_count tests
+# get_events mode=facets tests
 # ---------------------------------------------------------------------------
 
 
@@ -321,54 +487,57 @@ def _make_count_response(total: int):
 
 
 @pytest.mark.asyncio
-async def test_get_events_count_returns_total(tools):
+async def test_get_events_facets_returns_total(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = _make_count_response(42)
     with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
-        result = await tools["central_get_events_count"](
-            ctx, site_id="s1"
+        result = await tools["central_get_events"](
+            ctx, site_id="s1", mode="facets"
         )
-    assert isinstance(result, EventFilters)
+    assert isinstance(result, EventFacetsEnvelope)
+    assert isinstance(result.items[0], EventFilters)
+    assert result.items[0].total == 42
     assert result.total == 42
 
 
 @pytest.mark.asyncio
-async def test_get_events_count_site_context_rejects_context_identifier(tools):
+async def test_get_events_facets_site_context_rejects_context_identifier(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = _make_count_response(0)
-    result = await tools["central_get_events_count"](
-        ctx,
-        site_id="s1",
-        context_type="SITE",
-        context_identifier="s1",
-    )
-    assert isinstance(result, str)
-    assert "context_identifier must not be provided when context_type=SITE" in result
+    with pytest.raises(
+        ToolError,
+        match="context_identifier must not be provided when context_type=SITE",
+    ):
+        await tools["central_get_events"](
+            ctx,
+            site_id="s1",
+            mode="facets",
+            context_type="SITE",
+            context_identifier="s1",
+        )
 
 
 @pytest.mark.asyncio
-async def test_get_events_count_non_site_context_requires_context_identifier(tools):
+async def test_get_events_facets_non_site_context_requires_context_identifier(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = _make_count_response(0)
-    result = await tools["central_get_events_count"](
-        ctx,
-        site_id="s1",
-        context_type="ACCESS_POINT",
-    )
-    assert isinstance(result, str)
-    assert (
-        "context_identifier is required when context_type is ACCESS_POINT/SWITCH/GATEWAY/WIRELESS_CLIENT/WIRED_CLIENT/BRIDGE"
-        in result
-    )
+    with pytest.raises(ToolError, match="context_identifier is required"):
+        await tools["central_get_events"](
+            ctx,
+            site_id="s1",
+            mode="facets",
+            context_type="ACCESS_POINT",
+        )
 
 
 @pytest.mark.asyncio
-async def test_get_events_count_required_params(tools):
+async def test_get_events_facets_required_params(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = _make_count_response(0)
     with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
-        await tools["central_get_events_count"](
+        await tools["central_get_events"](
             ctx,
+            mode="facets",
             context_type="ACCESS_POINT",
             context_identifier="SN123",
             site_id="site-99",
@@ -380,23 +549,24 @@ async def test_get_events_count_required_params(tools):
 
 
 @pytest.mark.asyncio
-async def test_get_events_count_default_time_range(tools):
+async def test_get_events_facets_default_time_range(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = _make_count_response(0)
     with patch("tools.events._resolve_time_window", return_value=_fake_time_window()) as mock_ctw:
-        await tools["central_get_events_count"](
-            ctx, site_id="s1"
+        await tools["central_get_events"](
+            ctx, site_id="s1", mode="facets"
         )
     mock_ctw.assert_called_once_with("last_1h", None, None)
 
 
 @pytest.mark.asyncio
-async def test_get_events_count_explicit_times_override_time_range(tools):
+async def test_get_events_facets_explicit_times_override_time_range(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = _make_count_response(0)
-    await tools["central_get_events_count"](
+    await tools["central_get_events"](
         ctx,
         site_id="s1",
+        mode="facets",
         start_time="2026-03-21T00:00:00.000Z",
         end_time="2026-03-21T23:59:59.999Z",
     )
@@ -406,18 +576,19 @@ async def test_get_events_count_explicit_times_override_time_range(tools):
 
 
 @pytest.mark.asyncio
-async def test_get_events_count_missing_total_returns_zero(tools):
+async def test_get_events_facets_missing_total_returns_zero(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = {"code": 200, "msg": {}}
     with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
-        result = await tools["central_get_events_count"](
-            ctx, site_id="s1"
+        result = await tools["central_get_events"](
+            ctx, site_id="s1", mode="facets"
         )
     assert result.total == 0
+    assert result.items[0].total == 0
 
 
 @pytest.mark.asyncio
-async def test_get_events_count_compact_returns_ranked_lists_with_event_ids(tools):
+async def test_get_events_facets_compact_returns_ranked_lists_with_event_ids(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = {
         "code": 200,
@@ -440,51 +611,57 @@ async def test_get_events_count_compact_returns_ranked_lists_with_event_ids(tool
         },
     }
     with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
-        result = await tools["central_get_events_count"](
+        result = await tools["central_get_events"](
             ctx,
             site_id="s1",
+            mode="facets",
             response_mode="compact",
         )
-    assert isinstance(result, CompactEventFilters)
-    assert result.total == 25
-    assert [item.model_dump() for item in result.event_names] == [
+    assert isinstance(result, EventFacetsEnvelope)
+    facets = result.items[0]
+    assert isinstance(facets, CompactEventFilters)
+    assert facets.total == 25
+    assert [item.model_dump() for item in facets.event_names] == [
         {"event_id": "13", "event_name": "Beta Event"},
         {"event_id": "12", "event_name": "Alpha Event"},
         {"event_id": "11", "event_name": "Zulu Event"},
     ]
-    assert result.source_types == ["Access Point", "Gateway", "Switch"]
-    assert result.categories == ["Audit", "Clients", "System"]
+    assert facets.source_types == ["Access Point", "Gateway", "Switch"]
+    assert facets.categories == ["Audit", "Clients", "System"]
 
 
 @pytest.mark.asyncio
-async def test_get_events_count_compact_empty_response(tools):
+async def test_get_events_facets_compact_empty_response(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = {"code": 200, "msg": {}}
     with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
-        result = await tools["central_get_events_count"](
+        result = await tools["central_get_events"](
             ctx,
             site_id="s1",
+            mode="facets",
             response_mode="compact",
         )
-    assert isinstance(result, CompactEventFilters)
-    assert result.total == 0
-    assert result.event_names == []
-    assert result.source_types == []
-    assert result.categories == []
+    assert isinstance(result, EventFacetsEnvelope)
+    facets = result.items[0]
+    assert isinstance(facets, CompactEventFilters)
+    assert facets.total == 0
+    assert facets.event_names == []
+    assert facets.source_types == []
+    assert facets.categories == []
 
 
 @pytest.mark.asyncio
-async def test_get_events_count_invalid_response_mode_returns_error(tools):
+async def test_get_events_facets_invalid_response_mode_raises_tool_error(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = _make_count_response(0)
     with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
-        result = await tools["central_get_events_count"](
-            ctx,
-            site_id="s1",
-            response_mode="invalid",  # type: ignore[arg-type]
-        )
-    assert isinstance(result, str)
-    assert "response_mode must be one of: full, compact" in result
+        with pytest.raises(ToolError, match="response_mode must be one of"):
+            await tools["central_get_events"](
+                ctx,
+                site_id="s1",
+                mode="facets",
+                response_mode="invalid",  # type: ignore[arg-type]
+            )
 
 
 @pytest.mark.asyncio
@@ -493,26 +670,24 @@ async def test_get_events_returns_error_on_non_200(tools):
     ctx.lifespan_context["conn"].command.return_value = {
         "code": 500, "msg": "Internal Server Error"
     }
-    with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
-        result = await tools["central_get_events"](
-            ctx, site_id="s1"
-        )
-    assert isinstance(result, str)
-    assert "fetching events" in result
+    with (
+        patch("tools.events._resolve_time_window", return_value=_fake_time_window()),
+        pytest.raises(ToolError, match="Internal Server Error"),
+    ):
+        await tools["central_get_events"](ctx, site_id="s1")
 
 
 @pytest.mark.asyncio
-async def test_get_events_count_returns_error_on_non_200(tools):
+async def test_get_events_facets_returns_error_on_non_200(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = {
         "code": 500, "msg": "Internal Server Error"
     }
-    with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
-        result = await tools["central_get_events_count"](
-            ctx, site_id="s1"
-        )
-    assert isinstance(result, str)
-    assert "fetching event filters" in result
+    with (
+        patch("tools.events._resolve_time_window", return_value=_fake_time_window()),
+        pytest.raises(ToolError, match="Internal Server Error"),
+    ):
+        await tools["central_get_events"](ctx, site_id="s1", mode="facets")
 
 
 @pytest.mark.asyncio
@@ -521,12 +696,106 @@ async def test_get_events_returns_error_on_404(tools):
     ctx.lifespan_context["conn"].command.return_value = {
         "code": 404, "msg": "Not Found"
     }
+    with (
+        patch("tools.events._resolve_time_window", return_value=_fake_time_window()),
+        pytest.raises(ToolError, match="Not Found"),
+    ):
+        await tools["central_get_events"](ctx, site_id="s1")
+
+
+def test_events_count_tool_is_removed(tools):
+    assert set(tools) == {"central_get_events"}
+
+
+@pytest.mark.asyncio
+async def test_get_events_fastmcp_contract_is_bounded_and_read_only():
+    mcp = FastMCP("events-contract")
+    mod.register(mcp)
+
+    tool = await mcp.get_tool("central_get_events")
+    limit_schema = tool.parameters["properties"]["limit"]
+    integer_schema = next(
+        schema for schema in limit_schema["anyOf"] if schema.get("type") == "integer"
+    )
+
+    assert integer_schema["minimum"] == 1
+    assert integer_schema["maximum"] == MAX_PAGE_SIZE
+    cursor_schema = tool.parameters["properties"]["cursor"]
+    assert {schema["type"] for schema in cursor_schema["anyOf"]} == {
+        "string",
+        "null",
+    }
+    assert tool.annotations.readOnlyHint is True
+    assert "EventEnvelope" in tool.output_schema["$defs"]
+    assert "EventFacetsEnvelope" in tool.output_schema["$defs"]
+    event_cursor_schema = tool.output_schema["$defs"]["EventEnvelope"]["properties"][
+        "next_cursor"
+    ]
+    assert {schema["type"] for schema in event_cursor_schema["anyOf"]} == {
+        "string",
+        "null",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kwargs,param",
+    [
+        ({"mode": "facets", "search": "AP"}, "search"),
+        ({"mode": "facets", "limit": 10}, "limit"),
+        ({"mode": "facets", "cursor": "2"}, "cursor"),
+        ({"mode": "facets", "include": "attributes"}, "include"),
+        ({"response_mode": "compact"}, "response_mode"),
+    ],
+)
+async def test_get_events_rejects_mode_specific_params_before_connection(
+    tools, kwargs, param
+):
+    ctx = make_ctx()
+    with (
+        patch(
+            "tools.events.api_context",
+            side_effect=AssertionError("connection opened"),
+        ) as mock_context,
+        pytest.raises(ToolError, match=param),
+    ):
+        await tools["central_get_events"](ctx, site_id="s1", **kwargs)
+    mock_context.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_events_include_attributes_enriches_each_record(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.side_effect = [
+        _make_events_response(events=[RAW_EVENT], total=1),
+        {
+            "code": 200,
+            "msg": {
+                "eventExtraAttributes": [
+                    {"label": "New EIRP", "value": "90 dBm"}
+                ]
+            },
+        },
+    ]
+
     with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
         result = await tools["central_get_events"](
-            ctx, site_id="s1"
+            ctx,
+            site_id="s1",
+            include="attributes",
         )
-    assert isinstance(result, str)
-    assert "fetching events" in result
+
+    assert result.items[0].attributes is not None
+    assert result.items[0].attributes[0].label == "New EIRP"
+    detail_call = ctx.lifespan_context["conn"].command.call_args_list[1]
+    assert detail_call.kwargs["api_path"] == (
+        "network-troubleshooting/v1/event-extra-attributes"
+    )
+    assert detail_call.kwargs["api_params"] == {
+        "event-identifier": "ev-uid-1",
+        "site-id": "s1",
+        "time-at": "2026-03-21T00:00:00.000Z",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -615,3 +884,72 @@ def test_compact_event_filters_returns_ranked_full_lists():
     ]
     assert result.source_types == ["Access Point", "Gateway", "Switch"]
     assert result.categories == ["Clients", "Audit", "System"]
+
+
+@pytest.mark.asyncio
+async def test_get_events_attributes_rejects_oversized_limit(tools):
+    ctx = make_ctx()
+    with pytest.raises(ToolError) as exc:
+        await tools["central_get_events"](
+            ctx, site_id="site-abc", include="attributes", limit=100
+        )
+    assert "include='attributes'" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_get_events_attributes_default_limit_capped(tools):
+    from tools.events import EVENT_ATTRIBUTES_MAX
+
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = _make_events_response()
+    with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
+        await tools["central_get_events"](
+            ctx, site_id="site-abc", include="attributes"
+        )
+    # first call is the records fetch; its limit must be the attributes cap, not EVENT_LIMIT
+    first_call = ctx.lifespan_context["conn"].command.call_args_list[0]
+    assert first_call.kwargs["api_params"]["limit"] == EVENT_ATTRIBUTES_MAX
+
+
+@pytest.mark.asyncio
+async def test_get_events_attributes_caps_overreturned_records_and_fanout(tools):
+    from tools.events import EVENT_ATTRIBUTES_MAX
+
+    ctx = make_ctx()
+    raw_events = [
+        {
+            **RAW_EVENT,
+            "eventIdentifier": f"ev-uid-{index}",
+            "timeAt": f"2026-03-21T00:00:{index:02d}.000Z",
+        }
+        for index in range(EVENT_ATTRIBUTES_MAX + 5)
+    ]
+
+    def command_response(*, api_path, **kwargs):
+        if api_path == "network-troubleshooting/v1/events":
+            return _make_events_response(events=raw_events, total=len(raw_events))
+        return {
+            "code": 200,
+            "msg": {"eventExtraAttributes": []},
+        }
+
+    ctx.lifespan_context["conn"].command.side_effect = command_response
+    with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
+        result = await tools["central_get_events"](
+            ctx,
+            site_id="site-abc",
+            include="attributes",
+            limit=EVENT_ATTRIBUTES_MAX,
+        )
+
+    attribute_calls = [
+        call
+        for call in ctx.lifespan_context["conn"].command.call_args_list
+        if call.kwargs["api_path"]
+        == "network-troubleshooting/v1/event-extra-attributes"
+    ]
+    assert len(attribute_calls) == EVENT_ATTRIBUTES_MAX
+    assert len(result.items) == EVENT_ATTRIBUTES_MAX
+    assert result.truncated is True
+    assert result.meta.returned == EVENT_ATTRIBUTES_MAX
+    assert result.meta.total_available == len(raw_events)
