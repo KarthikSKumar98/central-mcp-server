@@ -240,7 +240,7 @@ Or add it to your MCP client config:
 
 ## Supported Capabilities
 
-The server covers ten capability categories across the new Central REST API families
+The server covers eleven capability categories across the new Central REST API families
 (Network Monitoring, Network Notifications, Network Troubleshooting):
 
 | Category | What you can ask about |
@@ -252,6 +252,7 @@ The server covers ten capability categories across the new Central REST API fami
 | Gateways | Gateway lists, detail, clusters, capacity trends |
 | WLANs | Configured WLANs, per-WLAN throughput |
 | Clients | Connected/failed clients, find one by MAC |
+| Client analytics | Usage, roaming, and onboarding experience (assoc/auth/dhcp/dns) |
 | Alerts | Active alerts per site, by severity/category |
 | Events | Event history and counts for a site, device, or client |
 | Live troubleshooting | Ping-style tests, show commands, port bounce (with confirmation) |
@@ -270,6 +271,7 @@ Once connected, you can ask your AI assistant questions like:
 - *"How healthy is the BLR gateway cluster, and what's its client capacity trend?"*
 - *"What critical alerts are active across the network?"*
 - *"Find all failed wireless clients at HQ in the last 24 hours."*
+- *"How is client onboarding doing today, and why are clients failing authentication?"*
 - *"What events happened on switch SW-CORE-01 yesterday?"*
 - *"Ping 8.8.8.8 from switch SW-CORE-01."*
 - *"Run 'show version' and 'show interfaces brief' on switch SG43KN5017."*
@@ -306,7 +308,7 @@ graph TD
 
 ### Tools
 
-The 0.2.0 surface folds related operations into 12 tools. Envelope-returning reads default to `response_format="concise"`; use `"detailed"` for full item fields.
+The 0.2.x surface folds related operations into 13 tools. Envelope-returning reads default to `response_format="concise"`; use `"detailed"` for full item fields.
 
 | Tool | Description |
 |------|-------------|
@@ -314,6 +316,7 @@ The 0.2.0 surface folds related operations into 12 tools. Envelope-returning rea
 | `central_get_device_details` | Retrieve AP, switch, or gateway detail with family-specific includes. |
 | `central_get_device_trends` | Retrieve bounded AP, switch, or gateway time-series samples. |
 | `central_get_clients` | Browse filtered clients or look up one exact MAC address. |
+| `central_get_client_analytics` | Client usage, roam trail, or per-stage onboarding analytics (`metric` selects the family). |
 | `central_get_sites` | Retrieve summary or detailed site health views. |
 | `central_get_wlans` | List WLANs or add throughput to one exact SSID. |
 | `central_get_gateway_cluster` | Retrieve cluster members, health, and optional capacity/resources. |

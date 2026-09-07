@@ -240,7 +240,7 @@ New to driving an AI assistant over your network? See **[What You Can Ask](https
 
 ### Tools
 
-The 0.2.0 surface folds related operations into 12 tools. Envelope-returning reads default to `response_format="concise"`; use `"detailed"` for full item fields.
+The 0.2.x surface folds related operations into 13 tools. Envelope-returning reads default to `response_format="concise"`; use `"detailed"` for full item fields.
 
 | Tool | Description |
 |------|-------------|
@@ -248,6 +248,7 @@ The 0.2.0 surface folds related operations into 12 tools. Envelope-returning rea
 | `central_get_device_details` | Retrieve AP, switch, or gateway detail with family-specific includes. |
 | `central_get_device_trends` | Retrieve bounded AP, switch, or gateway time-series samples. |
 | `central_get_clients` | Browse filtered clients or look up one exact MAC address. |
+| `central_get_client_analytics` | Client usage, roam trail, or per-stage onboarding analytics (`metric` selects the family). |
 | `central_get_sites` | Retrieve summary or detailed site health views. |
 | `central_get_wlans` | List WLANs or add throughput to one exact SSID. |
 | `central_get_gateway_cluster` | Retrieve cluster members, health, and optional capacity/resources. |

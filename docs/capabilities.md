@@ -20,13 +20,13 @@ family they call. For real example questions per area, see
 | [Sites & network health](#sites--network-health) | Fleet-wide health overview, per-site metrics | 1 | Network Monitoring |
 | [Devices](#devices) | Inventory, family detail, and trends | 3 | Network Monitoring |
 | [WLANs](#wlans) | Configured WLANs, per-WLAN throughput | 1 | Network Monitoring |
-| [Clients](#clients) | Connected/failed clients, exact MAC lookup | 1 | Network Monitoring |
+| [Clients](#clients) | Connected/failed clients, exact MAC lookup, usage, roaming, onboarding | 2 | Network Monitoring |
 | [Alerts](#alerts) | Active alerts per site, by severity/category | 1 | Network Notifications |
 | [Events](#events) | Event records and facets for a site, device, or client | 1 | Network Troubleshooting |
 | [Gateway clusters](#gateway-clusters) | Cluster health, resources, and capacity | 1 | Network Monitoring |
 | [Live troubleshooting](#live-troubleshooting) | Ping/traceroute-style tests, show commands, port bounce | 3 | Network Troubleshooting |
 
-**12 tools total.** All tools are read-only except `central_bounce_port`, which changes device
+**13 tools total.** All tools are read-only except `central_bounce_port`, which changes device
 state and always asks for your confirmation first.
 
 ## Categories
@@ -52,6 +52,7 @@ Cross-type device queries when you don't yet know whether something is an AP, sw
 ### Clients
 
 - `central_get_clients` — filtered client lists or one exact MAC-address lookup.
+- `central_get_client_analytics` — `metric="usage"` for byte usage, top clients, or client-count trends; `metric="mobility"` for one client's roam trail; `metric="onboarding"` for per-stage (assoc, auth, dhcp, dns) attempt outcomes with an overall 0–100 score, top failure/delay reasons, or grouped counts.
 
 ### Alerts
 

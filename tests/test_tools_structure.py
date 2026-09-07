@@ -15,6 +15,7 @@ SURVIVING_TOOLS = {
     "central_get_device_details",
     "central_get_device_trends",
     "central_get_clients",
+    "central_get_client_analytics",
     "central_get_sites",
     "central_get_wlans",
     "central_get_gateway_cluster",
@@ -89,7 +90,7 @@ def test_tools_do_not_use_nested_try_except_blocks() -> None:
 def test_server_registers_exact_folded_tool_surface(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The 0.2.0 server exposes exactly the 12 folded tools, with no aliases."""
+    """The 0.2.0 server exposes exactly the 13 folded tools, with no aliases."""
     monkeypatch.setenv("DYNAMIC_TOOLS", "false")
     importlib.reload(config)
     static_server = importlib.reload(server)

@@ -7,6 +7,7 @@ from models import (
     Alert,
     AlertEnvelope,
     Client,
+    ClientAnalyticsEnvelope,
     ClientEnvelope,
     Device,
     DeviceEnvelope,
@@ -15,6 +16,7 @@ from models import (
     EventEnvelope,
     GatewayCluster,
     GatewayClusterEnvelope,
+    OnboardingStageSummary,
     SiteData,
     SiteEnvelope,
     SiteMetrics,
@@ -22,7 +24,16 @@ from models import (
     WLAN,
     WlanEnvelope,
 )
-from tools import alerts, clients, devices, events, gateway_monitoring, sites, wlans
+from tools import (
+    alerts,
+    client_analytics,
+    clients,
+    devices,
+    events,
+    gateway_monitoring,
+    sites,
+    wlans,
+)
 from utils.envelope import build_envelope
 
 
@@ -30,6 +41,7 @@ ENVELOPE_TOOLS = {
     "central_get_devices",
     "central_get_device_trends",
     "central_get_clients",
+    "central_get_client_analytics",
     "central_get_sites",
     "central_get_wlans",
     "central_get_gateway_cluster",
@@ -40,7 +52,16 @@ ENVELOPE_TOOLS = {
 
 def _registered_tools():
     mcp = FastMCP("response-format-schema")
-    for module in (alerts, clients, devices, events, gateway_monitoring, sites, wlans):
+    for module in (
+        alerts,
+        client_analytics,
+        clients,
+        devices,
+        events,
+        gateway_monitoring,
+        sites,
+        wlans,
+    ):
         module.register(mcp)
     return asyncio.run(mcp.list_tools(run_middleware=False))
 
@@ -73,6 +94,7 @@ CASES = [
         {"event_id", "event_identifier", "serial_number", "source_type", "description"},
     ),
     (AlertEnvelope, Alert, "updated_by", {"device_type", "status"}),
+    (ClientAnalyticsEnvelope, OnboardingStageSummary, "failed", {"stage"}),
 ]
 
 
@@ -82,7 +104,13 @@ def test_concise_projection_is_visible_and_preserves_identifiers(
 ) -> None:
     values = {field: f"value-{field}" for field in identifiers}
     if dropped is not None:
-        values[dropped] = [] if dropped in {"attributes", "capacity"} else f"value-{dropped}"
+        values[dropped] = (
+            []
+            if dropped in {"attributes", "capacity"}
+            else None
+            if dropped == "failed"
+            else f"value-{dropped}"
+        )
     if item_cls is SiteData:
         values["location"] = {}
         values["name"] = "HQ"

@@ -1,16 +1,18 @@
 import ast as _ast
 from enum import Enum
-from typing import Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import (
     AliasChoices,
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     GetJsonSchemaHandler,
     SerializationInfo,
     SerializerFunctionWrapHandler,
     model_serializer,
+    model_validator,
 )
 from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema
@@ -2356,4 +2358,222 @@ class GatewayClusterEnvelope(CentralEnvelope):
 
     items: list[GatewayCluster] = Field(
         description="Gateway cluster snapshots returned by the selected view."
+    )
+
+
+# --- Client analytics -------------------------------------------------------
+
+
+def coerce_number(value: object) -> int | float | None:
+    """Turn Central's stringified analytics numbers into numbers.
+
+    Central returns counts and percentages as strings (``"1624"``, ``"76.97%"``)
+    and uses ``-1`` as a no-data sentinel; the sentinel becomes ``None``.
+    """
+    if value is None or isinstance(value, bool):
+        return None if value is None else int(value)
+    if isinstance(value, str):
+        text = value.strip().rstrip("%")
+        if text == "":
+            return None
+        try:
+            value = float(text) if "." in text else int(text)
+        except ValueError as exc:
+            raise ValueError(f"expected a numeric value, got {value!r}") from exc
+    if value == -1:
+        return None
+    return value
+
+
+CentralCount = Annotated[int | None, BeforeValidator(coerce_number)]
+CentralScore = Annotated[float | None, BeforeValidator(coerce_number)]
+
+
+def _lower(value: object) -> object:
+    return value.lower() if isinstance(value, str) else value
+
+
+OnboardingStage = Annotated[str, BeforeValidator(_lower)]
+
+
+class ClientUsageSample(BaseModel):
+    """One timestamped TX/RX byte-usage sample."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    kind: Literal["usage_sample"] = "usage_sample"
+    timestamp: str = Field(
+        validation_alias=AliasChoices("ts", "timestamp"),
+        description="RFC 3339 timestamp for this sample.",
+    )
+    data: list[int | float] = Field(
+        default_factory=list,
+        description="Values ordered to match the analytics keys.",
+    )
+    keys: list[str] = Field(description="Names corresponding to each sample value.")
+    interval: str = Field(description="Sampling interval selected by Central.")
+
+
+class TopClientUsage(BaseModel):
+    """One client ranked by total byte usage."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    kind: Literal["top_client_usage"] = "top_client_usage"
+    client_name: str = Field(alias="clientName", description="Client display name.")
+    mac_address: str = Field(alias="macAddress", description="Client MAC address.")
+    usage: int = Field(description="Total usage in bytes.")
+    connection_type: str = Field(
+        alias="clientConnectionType",
+        description="Client connection type.",
+    )
+    site_name: str | None = Field(
+        default=None,
+        alias="siteName",
+        description="Site display name.",
+    )
+    site_id: str | int | None = Field(
+        default=None,
+        alias="siteId",
+        description="Site identifier.",
+    )
+
+
+class ClientTrendSample(BaseModel):
+    """One timestamped client-count sample grouped by category."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    kind: Literal["client_trend_sample"] = "client_trend_sample"
+    timestamp: str = Field(
+        validation_alias=AliasChoices("ts", "timestamp"),
+        description="RFC 3339 timestamp for this sample.",
+    )
+    data: list[int | float] = Field(
+        default_factory=list,
+        description="Values ordered to match the trend keys.",
+    )
+    keys: list[str] = Field(description="Categories corresponding to sample values.")
+    interval: str = Field(description="Sampling interval selected by Central.")
+
+
+class ClientMobilityEvent(BaseModel):
+    """One wireless client roaming transition."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    kind: Literal["mobility_event"] = "mobility_event"
+    occurred_at: str | None = Field(default=None, alias="occurredAt")
+    roam_time: str | None = Field(default=None, alias="roamTime")
+    wlan_name: str | None = Field(default=None, alias="wlanName")
+    source_ap: str | None = Field(default=None, alias="sourceAp")
+    destination_ap: str | None = Field(default=None, alias="destinationAp")
+    from_channel: str | None = Field(default=None, alias="fromChannel")
+    to_channel: str | None = Field(default=None, alias="toChannel")
+    from_bssid: str | None = Field(default=None, alias="fromBssid")
+    to_bssid: str | None = Field(default=None, alias="toBssid")
+    rssi: str | None = Field(default=None)
+    radio_band: str | None = Field(default=None, alias="radioBand")
+    roam_protocol: str | None = Field(default=None, alias="roamProtocol")
+
+
+class OnboardingStageDimensions(BaseModel):
+    """Top-five dimensions behind one stage's failed or delayed attempts."""
+
+    clients: list[str] = Field(default_factory=list, description="Client MACs.")
+    access_devices: list[str] = Field(
+        default_factory=list, description="Access device MACs."
+    )
+    wlans: list[str] = Field(default_factory=list, description="WLAN names.")
+    band: list[str] = Field(default_factory=list, description="Radio bands.")
+    servers: list[str] = Field(
+        default_factory=list,
+        description="Auth, DHCP, or DNS servers involved, by stage.",
+    )
+
+
+class OnboardingStageSummary(ConciseProjectable):
+    """Attempt outcome counts for one onboarding stage."""
+
+    concise_omit: ClassVar[frozenset[str]] = frozenset({"failed", "delayed"})
+
+    kind: Literal["onboarding_summary"] = "onboarding_summary"
+    stage: OnboardingStage = Field(description="assoc, auth, dhcp, or dns.")
+    attempts: CentralCount = Field(default=None)
+    failures: CentralCount = Field(default=None)
+    success: CentralCount = Field(default=None)
+    delays: CentralCount = Field(default=None)
+    success_percent: float | None = Field(
+        default=None,
+        description="success / attempts as a percentage; null without attempts.",
+    )
+    failure_reasons: list[str] = Field(
+        default_factory=list, description="Top failure reasons."
+    )
+    delay_reasons: list[str] = Field(
+        default_factory=list, description="Top delay reasons."
+    )
+    failed: OnboardingStageDimensions | None = Field(
+        default=None, description="Top dimensions behind failed attempts."
+    )
+    delayed: OnboardingStageDimensions | None = Field(
+        default=None, description="Top dimensions behind delayed attempts."
+    )
+
+    @model_validator(mode="after")
+    def _derive_success_percent(self) -> "OnboardingStageSummary":
+        if self.attempts and self.success is not None:
+            self.success_percent = round(self.success / self.attempts * 100, 2)
+        return self
+
+
+class OnboardingStageReasons(BaseModel):
+    """Top onboarding reasons for one stage."""
+
+    kind: Literal["onboarding_reasons"] = "onboarding_reasons"
+    stage: OnboardingStage = Field(alias="type", description="Onboarding stage.")
+    reasons: list[str] = Field(default_factory=list)
+
+
+class OnboardingCountDatum(BaseModel):
+    """One grouped onboarding count."""
+
+    value: str
+    field: str
+    count: int
+    stage: OnboardingStage
+
+
+class OnboardingStageCounts(BaseModel):
+    """Grouped onboarding counts for one stage."""
+
+    kind: Literal["onboarding_count"] = "onboarding_count"
+    stage: OnboardingStage = Field(alias="type", description="Onboarding stage.")
+    data: list[OnboardingCountDatum] = Field(default_factory=list)
+
+
+ClientAnalyticsItem = (
+    ClientUsageSample
+    | TopClientUsage
+    | ClientTrendSample
+    | ClientMobilityEvent
+    | OnboardingStageSummary
+    | OnboardingStageReasons
+    | OnboardingStageCounts
+)
+
+
+class ClientAnalyticsEnvelope(CentralEnvelope):
+    """Typed response envelope for client usage, mobility, and onboarding analytics."""
+
+    items: list[ClientAnalyticsItem] = Field(
+        description="Analytics records selected by metric and view."
+    )
+    overall_score: float | None = Field(
+        default=None,
+        description=(
+            "Overall onboarding experience score, 0-100, the product of the "
+            "per-stage success rates; null outside the onboarding summary view "
+            "or when Central reports no attempts."
+        ),
     )

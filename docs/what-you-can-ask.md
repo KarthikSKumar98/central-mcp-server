@@ -257,7 +257,7 @@ much traffic it actually carries.*
 
 Find connected clients, surface failures, and pull a complete profile for any one device by MAC.
 
-*Powered by the Clients tools (`central_get_clients`, `central_get_clients`).*
+*Powered by the Clients tools (`central_get_clients`, `central_get_client_analytics`).*
 
 > ### 🗨️ "Look up the client f0:b3:ec:62:aa:3d."
 
@@ -285,6 +285,17 @@ Find connected clients, surface failures, and pull a complete profile for any on
 - "Are there any clients on the PSK WLAN in Miami?"
 - "Show me clients on VLAN 101 at the Miami branch."
 - "Find the UXI sensor at Miami by its MAC address."
+
+### Client onboarding experience
+
+`central_get_client_analytics` with `metric="onboarding"` reports how clients fare at each connection stage — association, authentication, DHCP, and DNS — as attempts, failures, delays, and a success percentage per stage, plus an overall 0–100 experience score. Ask for the reasons behind failures, group them by client, AP, WLAN, band, or server, or switch `metric` to `usage` or `mobility` for top talkers, client-count trends, and a client's roam trail.
+
+**You can ask:**
+- "How is client onboarding doing across the network today?"
+- "Why are clients failing authentication at the Dallas campus?"
+- "Which access points had the most DHCP onboarding failures this week?"
+- "Who are the top five clients by usage in the last 24 hours?"
+- "Show me the roam trail for client f0:b3:ec:62:aa:3d."
 
 ---
 
