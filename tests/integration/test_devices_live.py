@@ -77,7 +77,10 @@ async def test_find_device_by_name(tools, live_ctx):
     devices = await tools["central_get_devices"](live_ctx)
     if not devices.items:
         pytest.skip("No devices available")
-    name = devices.items[0].name
+    # Unnamed devices carry an empty name, which would filter nothing.
+    name = next((device.name for device in devices.items if device.name), None)
+    if not name:
+        pytest.skip("No device with a non-empty name available")
     result = await tools["central_get_devices"](live_ctx, device_name=name)
     assert isinstance(result, DeviceEnvelope)
     assert len(result.items) <= 1

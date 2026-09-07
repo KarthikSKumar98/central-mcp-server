@@ -138,9 +138,16 @@ async def test_network_test_matrix(
     sn = serial_by_family[family]
     kwargs = _network_test_kwargs(test_type)
 
-    result = await tools["central_run_network_test"](
-        live_ctx, test_type=test_type, serial_number=sn, **kwargs
-    )
+    try:
+        result = await tools["central_run_network_test"](
+            live_ctx, test_type=test_type, serial_number=sn, **kwargs
+        )
+    except ToolError as exc:
+        # Tenant-side data issue: inventory lists the device but the
+        # Troubleshooting service does not know it.
+        if "DEVICE_NOT_FOUND" in str(exc) or "Device not found" in str(exc):
+            pytest.skip(f"Troubleshooting service does not know {family} device {sn}")
+        raise
 
     assert isinstance(result, TroubleshootingResult), (
         f"Expected TroubleshootingResult for ({test_type}, {family}), got: {result!r}"
