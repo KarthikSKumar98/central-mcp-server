@@ -54,9 +54,13 @@ async def test_onboarding_summary_default_returns_all_stages(analytics):
         if item.attempts:
             assert item.success_percent is not None
             assert 0 <= item.success_percent <= 100
-    if any(item.attempts for item in result.items):
+            assert item.success_percent + 0.01 >= (item.success or 0) / item.attempts * 100
+    if all(item.attempts for item in result.items):
+        product = 100.0
+        for item in result.items:
+            product *= item.success_percent / 100
         assert result.overall_score is not None
-        assert 0 <= result.overall_score <= 100
+        assert abs(result.overall_score - product) < 0.5
 
 
 async def test_onboarding_summary_stage_filter_and_detailed(analytics):

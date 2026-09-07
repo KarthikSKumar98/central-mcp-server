@@ -410,7 +410,8 @@ async def test_onboarding_defaults_to_summary_view_with_stage_items(tools):
         779,
         331,
     )
-    assert auth.success_percent == 59.6
+    # Central's stage score counts delayed attempts as successful.
+    assert auth.success_percent == round((1307 - 197) / 1307 * 100, 2) == 84.93
     assert auth.failure_reasons == ["Auth Failure: MIC Failure"]
     assert auth.delay_reasons == ["UNKNOWN"]
     assert auth.failed.servers == ["10.97.55.234"]

@@ -2501,11 +2501,19 @@ class OnboardingStageSummary(ConciseProjectable):
     stage: OnboardingStage = Field(description="assoc, auth, dhcp, or dns.")
     attempts: CentralCount = Field(default=None)
     failures: CentralCount = Field(default=None)
-    success: CentralCount = Field(default=None)
-    delays: CentralCount = Field(default=None)
+    success: CentralCount = Field(
+        default=None, description="Attempts that succeeded without delay."
+    )
+    delays: CentralCount = Field(
+        default=None, description="Attempts that succeeded but were slow."
+    )
     success_percent: float | None = Field(
         default=None,
-        description="success / attempts as a percentage; null without attempts.",
+        description=(
+            "Central's stage success rate: (attempts - failures) / attempts as a "
+            "percentage, so delayed attempts count as successful; null without "
+            "attempts."
+        ),
     )
     failure_reasons: list[str] = Field(
         default_factory=list, description="Top failure reasons."
@@ -2522,8 +2530,10 @@ class OnboardingStageSummary(ConciseProjectable):
 
     @model_validator(mode="after")
     def _derive_success_percent(self) -> "OnboardingStageSummary":
-        if self.attempts and self.success is not None:
-            self.success_percent = round(self.success / self.attempts * 100, 2)
+        if self.attempts and self.failures is not None:
+            self.success_percent = round(
+                (self.attempts - self.failures) / self.attempts * 100, 2
+            )
         return self
 
 
