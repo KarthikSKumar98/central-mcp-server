@@ -11,6 +11,7 @@ from constants import API_CONCURRENCY_LIMIT
 from services.central_service import get_conn, verify_connection
 from tools import (
     alerts,
+    client_analytics,
     clients,
     devices,
     events,
@@ -55,6 +56,7 @@ mcp = FastMCP(
 sites.register(mcp)
 devices.register(mcp)
 clients.register(mcp)
+client_analytics.register(mcp)
 alerts.register(mcp)
 events.register(mcp)
 gateway_monitoring.register(mcp)
