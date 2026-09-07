@@ -288,12 +288,28 @@ Find connected clients, surface failures, and pull a complete profile for any on
 
 ### Client onboarding experience
 
-`central_get_client_analytics` with `metric="onboarding"` reports how clients fare at each connection stage — association, authentication, DHCP, and DNS — as attempts, failures, delays, and a success percentage per stage, plus an overall 0–100 experience score. Ask for the reasons behind failures, group them by client, AP, WLAN, band, or server, or switch `metric` to `usage` or `mobility` for top talkers, client-count trends, and a client's roam trail.
+`central_get_client_analytics` with `metric="onboarding"` reports how clients fare at each connection stage — association, authentication, DHCP, and DNS — as attempts, failures, delays, and Central's per-stage success rate, plus an overall 0–100 experience score. Drill into the reasons behind failures or delays, group them by client, AP, WLAN, band, or server, compare time windows, or scope everything to one site.
 
-**You can ask:**
-- "How is client onboarding doing across the network today?"
-- "Why are clients failing authentication at the Dallas campus?"
+> ### 🗨️ "How is client onboarding doing across the network in the last 24 hours?"
+
+*One line per stage with attempts, failures, delays, and success rate, and the overall score on top — here association and authentication were the weak stages while DHCP and DNS were clean.*
+
+> ### 🗨️ "Why are clients failing authentication? Which WLANs and RADIUS servers are involved?"
+
+*The top failure reasons for the auth stage (RADIUS timeouts, rejects, MIC failures) with the WLANs, band, and RADIUS servers behind them (`response_format="detailed"`).*
+
+> ### 🗨️ "How many distinct clients are actually affected by auth failures, versus raw attempts?"
+
+*The same stage counted per attempt and per client (`view_type="BY_CLIENT"`) — retries from a handful of struggling clients can inflate the attempt-level failure rate several times over.*
+
+**More you can ask:**
+- "Compare onboarding today with the last 7 days. Is it getting better or worse?"
 - "Which access points had the most DHCP onboarding failures this week?"
+- "Which clients are slowest to get through DNS, and what DNS servers are they hitting?"
+- "What are the top failure reasons at every onboarding stage?"
+- "Is the 2.4 GHz or 5 GHz band worse for association failures?"
+- "How is onboarding at the Miami branch? Anything to worry about?"
+- "Did onboarding at the Miami branch have any failures in the last hour?"
 - "Who are the top five clients by usage in the last 24 hours?"
 - "Show me the roam trail for client f0:b3:ec:62:aa:3d."
 
