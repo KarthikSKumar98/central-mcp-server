@@ -62,15 +62,26 @@ jobs:
           git fetch --tags
           VERSION="${{ steps.version.outputs.version }}"
           if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
-            echo "Tag v${VERSION} already exists."
-            exit 1
+            if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
+              echo "Tag v${VERSION} already exists."
+              exit 1
+            fi
+            # Republish path: the tag was cut but publishing did not finish.
+            # Build from the tagged commit so the artifact matches the release.
+            RELEASE_SHA=$(git rev-parse "v${VERSION}^{}")
+            echo "Tag v${VERSION} already exists at ${RELEASE_SHA}; republishing from it."
+            echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+            echo "reused=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           RELEASE_SHA=$(git rev-parse HEAD)
           git tag "v${VERSION}" "$RELEASE_SHA"
           git push origin "v${VERSION}"
           echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "reused=false" >> "$GITHUB_OUTPUT"
 
       - name: Extract changelog entry for release notes
+        if: steps.release.outputs.reused != 'true'
         run: |
           python3 .github/scripts/extract_changelog_entry.py \
             --version "${{ steps.version.outputs.version }}" \
@@ -80,6 +91,7 @@ jobs:
           cat release_notes.md
 
       - name: Create GitHub Release
+        if: steps.release.outputs.reused != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -134,6 +146,8 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          # Republish runs re-upload files TestPyPI already holds.
+          skip-existing: true
 
   verify-test-pypi:
     needs: [tag-and-release, publish-test-pypi]
@@ -152,9 +166,14 @@ jobs:
           uv venv .venv-test-pypi
           # TestPyPI index propagation can lag the upload by a few minutes
           for attempt in 1 2 3 4 5; do
+            # uv gives the extra index priority and, by default, only considers
+            # the first index that carries the package. pypi.org carries older
+            # releases, so without unsafe-best-match the TestPyPI version is
+            # never even considered.
             if uv pip install --python .venv-test-pypi/bin/python \
               --index-url https://test.pypi.org/simple/ \
               --extra-index-url https://pypi.org/simple \
+              --index-strategy unsafe-best-match \
               "central-mcp-server==$VERSION"; then
               break
             fi
