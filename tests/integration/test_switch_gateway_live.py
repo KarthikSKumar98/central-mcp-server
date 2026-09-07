@@ -30,11 +30,12 @@ from models import (
     TrendSample,
 )
 from tests.conftest import FakeMCP
+from utils.common import lookup_inventory_device
 
 pytestmark = pytest.mark.integration
 
 # Known dev-account entities (fallbacks when discovery yields nothing).
-FALLBACK_SWITCHES = ["FCW2026D0KV", "SG34L5002Y", "SG34L5006M", "SG16KRR027"]
+FALLBACK_SWITCHES = ["SG16KRR027", "SG34L5002Y", "SG34L5006M", "FCW2026D0KV"]
 FALLBACK_GATEWAYS = ["DL0006948", "DL0006931", "TWSTKYH00D"]
 FALLBACK_CLUSTERS = ["auto_group_168", "CP-LHR-MBGW-CLUSTER"]
 
@@ -61,15 +62,19 @@ def gateway_tools():
 
 @pytest.fixture(scope="module")
 async def a_switch_serial(switch_tools, live_ctx):
-    """Serial of the first discoverable switch (online preferred), else a fallback."""
-    switches = await switch_tools["central_get_devices"](
+    """Serial of the first discoverable switch that also resolves in inventory.
+
+    Monitoring lists third-party/unmanaged switches that the inventory API
+    omits; details/trends need the inventory record, so skip those.
+    """
+    conn = live_ctx.lifespan_context["conn"]
+    online = await switch_tools["central_get_devices"](
         live_ctx, device_type="switch", device_status="ONLINE"
     )
-    if switches.items:
-        return switches.items[0].serial_number
-    switches = await switch_tools["central_get_devices"](live_ctx, device_type="switch")
-    if switches.items:
-        return switches.items[0].serial_number
+    everything = await switch_tools["central_get_devices"](live_ctx, device_type="switch")
+    for switch in [*online.items, *everything.items]:
+        if lookup_inventory_device(conn, switch.serial_number) is not None:
+            return switch.serial_number
     return FALLBACK_SWITCHES[0]
 
 
