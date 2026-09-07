@@ -589,7 +589,8 @@ async def test_get_device_details_auto_resolution_failure_recommends_device_type
     with (
         patch(
             "utils.common.MonitoringDevices.get_all_device_inventory",
-            side_effect=[[], stack_filter_error],
+            # serialNumber miss, stackId filter rejected, unfiltered rescan miss.
+            side_effect=[[], stack_filter_error, []],
         ),
         pytest.raises(ToolError) as exc_info,
     ):

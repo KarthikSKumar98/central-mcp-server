@@ -104,26 +104,9 @@ def to_central_error(
             suggestion="Correct the request parameters before retrying.",
         )
 
-    exception_name = exc.__class__.__name__.lower()
-    normalized_detail = detail.lower()
-    if "timeout" in exception_name or "timed out" in normalized_detail:
-        return CentralError(
-            code="timeout",
-            message=message,
-            retryable=True,
-            suggestion="Retry the operation after a short delay.",
-        )
-    if any(
-        marker in f"{exception_name} {normalized_detail}"
-        for marker in ("connection", "connect", "network", "socket", "dns")
-    ):
-        return CentralError(
-            code="connection_error",
-            message=message,
-            retryable=True,
-            suggestion="Retry after checking connectivity to the Central API.",
-        )
-
+    # A status reported in the message wins over the name/word heuristics below:
+    # Central error messages embed the endpoint path (e.g. "network-monitoring/
+    # v1/..."), whose words would otherwise read as a connectivity failure.
     status_match = re.search(r"\b([45]\d{2})\b", detail)
     if status_match and status_match.group(1) == "429":
         return CentralError(
@@ -154,6 +137,26 @@ def to_central_error(
             message=message,
             retryable=False,
             suggestion="Correct the request or credentials before retrying.",
+        )
+
+    exception_name = exc.__class__.__name__.lower()
+    if "timeout" in exception_name or "timed out" in detail.lower():
+        return CentralError(
+            code="timeout",
+            message=message,
+            retryable=True,
+            suggestion="Retry the operation after a short delay.",
+        )
+    # Matched against the exception class name only — the detail carries URLs.
+    if any(
+        marker in exception_name
+        for marker in ("connection", "connect", "network", "socket", "dns")
+    ):
+        return CentralError(
+            code="connection_error",
+            message=message,
+            retryable=True,
+            suggestion="Retry after checking connectivity to the Central API.",
         )
 
     return CentralError(

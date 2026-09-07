@@ -123,6 +123,19 @@ def test_to_central_error_classifies_status_codes_in_plain_error_messages():
     assert client_error.retryable is False
 
 
+def test_to_central_error_prefers_status_over_endpoint_path_words():
+    """Central messages embed the 'network-monitoring' path; the status wins."""
+    error = to_central_error(
+        Exception(
+            "Error retrieving data from network-monitoring/v1/device-inventory: "
+            "400 - {'httpStatusCode': 400, 'message': 'bad filter'}"
+        )
+    )
+
+    assert error.code == "upstream_request_error"
+    assert error.retryable is False
+
+
 def test_to_central_error_classifies_network_library_exception_names():
     timeout = to_central_error(FakeTransportTimeoutError("read failed"))
     connection = to_central_error(FakeConnectError("socket failed"))

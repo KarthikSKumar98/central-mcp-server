@@ -87,18 +87,28 @@ def build_odata_filter(pairs: list[tuple["FilterField", str]]) -> str | None:
     return " and ".join(parts)
 
 
+def http_status(exc: Exception) -> int | None:
+    """Best-effort HTTP status for a Central/pycentral exception.
+
+    Prefers an attached response object; otherwise reads the status out of the
+    message, which pycentral formats as ``"<endpoint>: 404 - {...}"`` (the
+    status is sometimes quoted inside the embedded body).
+    """
+    status_code = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(status_code, int):
+        return status_code
+    match = re.search(r"(?:HTTP|API(?: error)?|:)\s*['\"]?([45]\d{2})\b", str(exc))
+    return int(match.group(1)) if match else None
+
+
 def _is_unsupported_stack_id_filter(exc: Exception) -> bool:
     """Return whether Central rejected only the optional ``stackId`` filter."""
     response = getattr(exc, "response", None)
-    status_code = getattr(response, "status_code", None)
+    status_code = http_status(exc)
     body_parts = [str(exc)]
     response_text = getattr(response, "text", None)
     if isinstance(response_text, str):
         body_parts.append(response_text)
-
-    if not isinstance(status_code, int):
-        status_match = re.search(r"\b(?:HTTP|API(?: error)?)\s*(4\d{2})\b", str(exc))
-        status_code = int(status_match.group(1)) if status_match else None
 
     body = " ".join(body_parts).lower()
     return (
@@ -118,7 +128,9 @@ def lookup_inventory_device(conn, identifier: str) -> dict | None:
     serial, or by the shared ``stackId``. The inventory API is keyed on
     ``serialNumber``, so this first filters by ``serialNumber`` and, on a miss,
     retries with ``stackId`` (covering the case where a caller passed a stack ID
-    directly — which would otherwise never match a serialNumber filter).
+    directly — which would otherwise never match a serialNumber filter).  Some
+    tenants reject server-side ``stackId`` filtering outright; there the retry
+    falls back to an unfiltered inventory fetch matched client-side.
 
     Args:
         conn: Active Central connection.
@@ -134,9 +146,15 @@ def lookup_inventory_device(conn, identifier: str) -> dict | None:
                 central_conn=conn, filter_str=f"{field} eq '{identifier}'"
             )
         except Exception as exc:
-            if field == "stackId" and _is_unsupported_stack_id_filter(exc):
-                continue
-            raise
+            if field != "stackId" or not _is_unsupported_stack_id_filter(exc):
+                raise
+            results = [
+                device
+                for device in MonitoringDevices.get_all_device_inventory(
+                    central_conn=conn
+                )
+                if identifier in (device.get("stackId"), device.get("serialNumber"))
+            ]
         if results:
             return results[0]
     return None

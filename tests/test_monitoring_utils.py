@@ -4,7 +4,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from utils.monitoring import AP_INCLUDES, AP_TREND_SCOPES, fetch_snapshot, fetch_trends
+from utils.monitoring import (
+    AP_INCLUDES,
+    AP_TREND_SCOPES,
+    fetch_cluster_snapshot,
+    fetch_snapshot,
+    fetch_trends,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures / shared data
@@ -460,3 +466,25 @@ def test_fetch_trends_lazy_resolution_patch_on_real_class_is_used():
         )
     mock_method.assert_called_once()
     assert result == CPU_TREND_SAMPLES
+
+
+def test_fetch_cluster_snapshot_returns_none_on_404():
+    """An unknown cluster 404s on tunnels-health-summary — that means 'no cluster',
+    not a failure; anything else still propagates.
+    """
+    monitor_cls = MagicMock()
+    monitor_cls.get_cluster_tunnel_summary.side_effect = Exception(
+        "Error retrieving data from network-monitoring/v1/clusters/nope/"
+        "tunnels-health-summary: 404 - {'httpStatusCode': 404, "
+        "'message': 'No tunnels found for the cluster nope'}"
+    )
+    assert (
+        fetch_cluster_snapshot(MagicMock(), "nope", monitor_cls=monitor_cls) is None
+    )
+
+    monitor_cls.get_cluster_tunnel_summary.side_effect = Exception(
+        "Error retrieving data from network-monitoring/v1/clusters/nope/"
+        "tunnels-health-summary: 500 - {'httpStatusCode': 500}"
+    )
+    with pytest.raises(Exception, match="500"):
+        fetch_cluster_snapshot(MagicMock(), "nope", monitor_cls=monitor_cls)

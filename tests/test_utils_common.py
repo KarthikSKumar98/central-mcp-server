@@ -366,15 +366,27 @@ def test_lookup_inventory_device_returns_none_when_unmatched():
     assert md.get_all_device_inventory.call_count == 2
 
 
-def test_lookup_inventory_device_ignores_unsupported_stack_id_filter():
+def test_lookup_inventory_device_scans_inventory_when_stack_id_filter_unsupported():
+    """Central's real rejection ("...: 400 - {...not supported...}") is tolerated
+    and the stackId match is made client-side against unfiltered inventory.
+    """
+    stack_id = _STACK_MEMBER["stackId"]
     with patch("utils.common.MonitoringDevices") as md:
         md.get_all_device_inventory.side_effect = [
             [],
-            RuntimeError('HTTP 400: Filtering on field "stackId" is not supported'),
+            Exception(
+                "Error retrieving data from network-monitoring/v1/device-inventory: "
+                "400 - {'httpStatusCode': 400, 'message': 'Filtering on field "
+                "\"stackId\" is not supported'}"
+            ),
+            [_STANDALONE, _STACK_MEMBER],
         ]
-        result = lookup_inventory_device("conn", "FCW2026D0KV")
-    assert result is None
-    assert md.get_all_device_inventory.call_count == 2
+        result = lookup_inventory_device("conn", stack_id)
+    assert result == _STACK_MEMBER
+    assert md.get_all_device_inventory.call_count == 3
+    assert md.get_all_device_inventory.call_args_list[2].kwargs == {
+        "central_conn": "conn"
+    }
 
 
 @pytest.mark.parametrize(

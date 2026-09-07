@@ -13,7 +13,12 @@ import ast
 from pycentral.new_monitoring import MonitoringAPs, MonitoringSwitches
 
 from constants import AP_TREND_METRICS, PORT_TREND_METRICS, RADIO_TREND_METRICS
-from utils.common import lookup_inventory_device, rfc3339_to_epoch, stack_aware_serial
+from utils.common import (
+    http_status,
+    lookup_inventory_device,
+    rfc3339_to_epoch,
+    stack_aware_serial,
+)
 
 # ---------------------------------------------------------------------------
 # Routing maps — method names stored as strings so that patches applied to
@@ -251,12 +256,18 @@ def fetch_cluster_snapshot(
 
         monitor_cls = _MG
 
-    members = monitor_cls.get_all_cluster_members(
-        central_conn=conn, cluster_name=cluster_name
-    )
-    tunnel_health = monitor_cls.get_cluster_tunnel_summary(
-        central_conn=conn, cluster_name=cluster_name, summary_type="health"
-    )
+    try:
+        members = monitor_cls.get_all_cluster_members(
+            central_conn=conn, cluster_name=cluster_name
+        )
+        tunnel_health = monitor_cls.get_cluster_tunnel_summary(
+            central_conn=conn, cluster_name=cluster_name, summary_type="health"
+        )
+    except Exception as exc:
+        # An unknown cluster 404s here; that is "not found", not a failure.
+        if http_status(exc) != 404:
+            raise
+        return None
 
     result: dict = {
         "cluster_name": cluster_name,
