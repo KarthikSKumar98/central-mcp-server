@@ -19,6 +19,7 @@ from utils.common import api_context
 from utils.envelope import raise_central_error
 from utils.troubleshooting import (
     NETWORK_TEST_DISPATCH,
+    closest_catalog_commands,
     fetch_device_interfaces,
     format_port_speed,
     get_supported_families,
@@ -418,7 +419,7 @@ async def _run_show_commands_impl(
             raise_central_error(
                 ValueError(
                     f"Unsupported commands: {unmatched}. "
-                    f"Supported show commands for this device: {catalog}"
+                    f"Closest supported commands: {closest_catalog_commands(commands, catalog)}"
                 ),
                 "validating show commands",
             )
