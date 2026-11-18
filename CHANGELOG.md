@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-11-19
+
+### Fixed
+
+- #70: `central_run_show_commands` now accepts catalog commands that contain `{{placeholder}}` values (e.g. `show ap monitor ap-list`). Values containing `;`, `|`, `&` or a newline, and unfilled `{{...}}`, are rejected; the closest supported commands are suggested.
+- #71: `central_get_events` with `mode="facets"` no longer fails when Central returns `eventId` as an integer.
+- #73: `central_get_device_trends` accepts `_` or `-` and any case in metric names (e.g. `channel_utilization`).
+- #73: clarified in tool descriptions that `field` applies to `view="count"` only for client analytics, and that channel metrics need `scope="radio"` with `radio_number`.
+
 ## [0.2.1] - 2026-09-08
 
 ### New Tools
