@@ -1576,3 +1576,28 @@ def test_gateway_detail_uplinks_wired_into_model():
     assert len(detail.uplinks) == 1
     assert isinstance(detail.uplinks[0], GatewayUplink)
     assert detail.uplinks[0].link_tag == "uplink-0"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["hardware_temperature", "hardware-temperature"])
+async def test_get_gateway_trends_metric_underscore_or_hyphen(tools, name):
+    """Both spellings pass validation and still trigger temperature normalization."""
+    ctx = make_ctx()
+    with patch(
+        "tools.gateway_monitoring.MonitoringGateways.get_gateway_trends",
+        return_value=RAW_TEMPERATURE_LIST,
+    ) as mock_trends:
+        result = await tools["central_get_device_trends"](
+            ctx, serial_number="DL0006948", device_type="gateway", metric=name
+        )
+    assert mock_trends.call_args.kwargs["metric"] == "hardware-temperature"
+    assert result.items[0].model_dump()["CPU"] == 42
+
+
+@pytest.mark.asyncio
+async def test_get_gateway_trends_invalid_metric_lists_canonical(tools):
+    ctx = make_ctx()
+    with pytest.raises(ToolError, match="hardware-temperature"):
+        await tools["central_get_device_trends"](
+            ctx, serial_number="DL0006948", device_type="gateway", metric="bad_name"
+        )

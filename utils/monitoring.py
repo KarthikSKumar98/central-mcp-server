@@ -89,6 +89,11 @@ def fetch_snapshot(
     return base
 
 
+def normalize_metric(metric: str | None) -> str | None:
+    """Canonicalise a metric name: lowercase, ``_`` -> ``-``."""
+    return metric.lower().replace("_", "-") if isinstance(metric, str) else metric
+
+
 def fetch_trends(
     conn,
     serial_number: str,
@@ -145,6 +150,7 @@ def fetch_trends(
             argument.
 
     """
+    metric = normalize_metric(metric)
     if scope not in scopes:
         raise ValueError(f"Invalid scope '{scope}'. Valid scopes: {', '.join(scopes)}.")
 

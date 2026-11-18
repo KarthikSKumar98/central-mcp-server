@@ -544,3 +544,31 @@ def test_ap_detail_accepts_poe_class_negotiated_power():
     assert detail.negotiated_power == "802.3at"
     assert detail.cpu_utilization == 6
     assert detail.client_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["channel_utilization", "channel-utilization", "Channel_Utilization"])
+async def test_get_device_trends_metric_underscore_or_hyphen(tools, name):
+    ctx = make_ctx()
+    with patch(
+        "utils.monitoring.MonitoringAPs.get_ap_radio_trends", return_value=[]
+    ) as mock_trends:
+        await tools["central_get_device_trends"](
+            ctx,
+            serial_number="AP123456",
+            device_type="ap",
+            scope="radio",
+            radio_number=0,
+            metric=name,
+        )
+    assert mock_trends.call_args.kwargs["metric"] == "channel-utilization"
+
+
+@pytest.mark.asyncio
+async def test_get_device_trends_invalid_underscore_metric_lists_canonical(tools):
+    ctx = make_ctx()
+    with pytest.raises(ToolError, match="channel-utilization"):
+        await tools["central_get_device_trends"](
+            ctx, serial_number="AP123456", scope="radio", radio_number=0,
+            metric="power_consumption",
+        )

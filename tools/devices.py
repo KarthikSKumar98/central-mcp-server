@@ -55,6 +55,7 @@ from utils.monitoring import (
     fetch_snapshot,
     fetch_switch_snapshot,
     fetch_trends,
+    normalize_metric,
     normalize_switch_trends,
     resolve_switch_serial,
 )
@@ -802,6 +803,7 @@ def register(mcp: FastMCP) -> None:
         Returns DeviceTrendsEnvelope; response_format selects concise or detailed samples.
         """
         try:
+            metric = normalize_metric(metric)
             identifier_values = {
                 "radio_number": radio_number,
                 "port_index": port_index,
