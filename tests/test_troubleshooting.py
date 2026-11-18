@@ -1534,3 +1534,44 @@ def test_resolve_device_family_empty_model_raises_valueerror():
     """An empty model must raise ValueError (caught by the tool), not IndexError."""
     with pytest.raises(ValueError):
         resolve_device_family({**RAW_CX, "model": ""})
+
+
+# ---------------------------------------------------------------------------
+# validate_show_commands_against_catalog — template placeholders
+# ---------------------------------------------------------------------------
+
+from utils.troubleshooting import validate_show_commands_against_catalog as _validate  # noqa: E402
+
+_TMPL = ["show ap arm {{x}}", "show a {{x}} b {{y}} c", "show log {{n}}", "show version"]
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "show ap arm history",
+        "show a 1 b 2 c",
+        "show log last 50 lines",
+        "SHOW  AP   ARM  History",
+        "show version",
+    ],
+)
+def test_catalog_template_matches(cmd):
+    assert _validate([cmd], _TMPL) == []
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "foo ap arm history",  # wrong prefix
+        "show ap arm",  # missing value
+        "show a 1 2 b 3 c",  # extra tokens
+        "show version extra",
+        "show ap arm x; reboot",
+        "show ap arm x | y",
+        "show ap arm x && y",
+        "show log a\nreboot",
+        "show ap arm {{option}}",  # leftover template
+    ],
+)
+def test_catalog_template_rejects(cmd):
+    assert _validate([cmd], _TMPL) == [cmd]
