@@ -374,7 +374,7 @@ def register(mcp: FastMCP) -> None:
         """Retrieve client usage, mobility, or onboarding analytics.
 
         Use metric usage (views usage, top, trend) for byte usage, ranked clients, or client-count trends; mobility for one client's roam trail; onboarding (views summary, reasons, count) for per-stage assoc/auth/dhcp/dns experience.
-        Cross-field rules: mobility requires mac_address and alone takes limit/cursor; top_n needs usage/top; stage, status, field, version, view_type need onboarding, and status/field only reasons/count.
+        Cross-field rules: mobility requires mac_address and alone takes limit/cursor; top_n needs usage/top; stage, status, field, version, view_type need onboarding, status only reasons/count; field only count (the reasons endpoint rejects field with 400 Unknown query parameter).
         Returns ClientAnalyticsEnvelope; onboarding items are stages and summary sets overall_score (0-100). Replay next_cursor with identical filters.
         """
         try:

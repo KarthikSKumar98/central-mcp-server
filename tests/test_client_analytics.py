@@ -502,6 +502,28 @@ async def test_onboarding_reasons_view_lowercases_stage(tools):
 
 
 @pytest.mark.asyncio
+async def test_onboarding_reasons_view_never_sends_field(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = response(
+        {"id": "reasons-2", "type": "TOP_FAILED_REASONS", "items": [], "count": 0}
+    )
+
+    with fixed_window():
+        await tools["central_get_client_analytics"](
+            ctx,
+            metric="onboarding",
+            view="reasons",
+            status="FAILED",
+            field=None,
+        )
+
+    api_call = ctx.lifespan_context["conn"].command.call_args
+    assert api_call.kwargs["api_path"] == mod.ONBOARDING_REASONS_PATH
+    assert "field" not in api_call.kwargs["api_params"]
+    assert_get_only(ctx)
+
+
+@pytest.mark.asyncio
 async def test_onboarding_count_view(tools):
     ctx = make_ctx()
     ctx.lifespan_context["conn"].command.return_value = response(

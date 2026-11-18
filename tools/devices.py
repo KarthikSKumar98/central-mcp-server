@@ -798,7 +798,7 @@ def register(mcp: FastMCP) -> None:
         """Retrieve bounded time-series samples for one device.
 
         Use after central_get_devices; pass its device_type for reliable routing.
-        Cross-field rules: scope, metric, identifiers, and time window are family-specific; omitting device_type uses best-effort inventory resolution.
+        Cross-field rules: scope, metric, identifiers, and time window are family-specific; channel-* metrics need scope="radio" plus radio_number. Omitting device_type uses best-effort inventory resolution.
         Returns DeviceTrendsEnvelope; response_format selects concise or detailed samples.
         """
         try:
