@@ -11,7 +11,7 @@ individual API endpoints. Each category names the MCP tools that power it and th
 family they call. For real example questions per area, see
 [What You Can Ask](what-you-can-ask.md).
 
-**Current as of v0.2.0.** This reference is updated with every release.
+**Current as of v0.3.0.** This reference is updated with every release.
 
 ## At a glance
 

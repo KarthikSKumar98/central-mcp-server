@@ -953,3 +953,41 @@ async def test_get_events_attributes_caps_overreturned_records_and_fanout(tools)
     assert result.truncated is True
     assert result.meta.returned == EVENT_ATTRIBUTES_MAX
     assert result.meta.total_available == len(raw_events)
+
+
+# ---------------------------------------------------------------------------
+# int eventId from the API (#71)
+# ---------------------------------------------------------------------------
+
+_INT_ID_FILTERS = {
+    **_RAW_EVENT_FILTERS,
+    "eventNames": [{"eventId": 32, "eventName": "DHCP", "count": 25}],
+}
+
+
+def test_clean_event_filters_int_and_str_event_id():
+    result = clean_event_filters(_INT_ID_FILTERS)
+    assert result.event_names[0].event_id == "32"
+    assert clean_event_filters(_RAW_EVENT_FILTERS).event_names[0].event_id == "32"
+
+
+def test_compact_event_filters_string_ids():
+    compact = compact_event_filters(clean_event_filters(_INT_ID_FILTERS))
+    assert compact.event_names[0].event_id == "32"
+
+
+@pytest.mark.asyncio
+async def test_get_events_facets_int_event_id(tools):
+    ctx = make_ctx()
+    ctx.lifespan_context["conn"].command.return_value = {
+        "code": 200,
+        "msg": _INT_ID_FILTERS,
+    }
+    with patch("tools.events._resolve_time_window", return_value=_fake_time_window()):
+        result = await tools["central_get_events"](ctx, site_id="s1", mode="facets")
+    assert result.items[0].event_names[0].event_id == "32"
+
+
+def test_event_model_int_event_id():
+    ev = Event.model_validate({**RAW_EVENT, "eventId": 32})
+    assert ev.event_id == "32"

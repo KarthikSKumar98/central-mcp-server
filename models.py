@@ -1057,10 +1057,13 @@ class AlertEnvelope(CentralEnvelope):
     items: list[Alert] = Field(description="Central alert records.")
 
 
+_StrId = Annotated[str, BeforeValidator(lambda v: str(v) if isinstance(v, int) else v)]
+
+
 class EventNameCount(ConciseProjectable):
     concise_omit: ClassVar[frozenset[str]] = frozenset()
 
-    event_id: str = Field(description="Event type identifier.")
+    event_id: _StrId = Field(description="Event type identifier.")
     event_name: str = Field(description="Human-readable event name.")
     count: int = Field(description="Number of occurrences.")
 
@@ -1142,7 +1145,7 @@ class Event(ConciseProjectable):
     )
 
     model_config = ConfigDict(populate_by_name=True)
-    event_id: str = Field(alias="eventId", description="The event type identifier.")
+    event_id: _StrId = Field(alias="eventId", description="The event type identifier.")
     event_identifier: str = Field(
         alias="eventIdentifier", description="Unique identifier for the event."
     )

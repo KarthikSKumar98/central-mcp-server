@@ -22,7 +22,7 @@ def clean_event_filters(msg: dict) -> EventFilters:
         total=sum(c.count for c in categories),
         event_names=[
             EventNameCount(
-                event_id=e["eventId"], event_name=e["eventName"], count=e["count"]
+                event_id=str(e["eventId"]), event_name=e["eventName"], count=e["count"]
             )
             for e in msg.get("eventNames", [])
         ],
